@@ -70,37 +70,47 @@ export default function QuizzesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto p-4">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Quiz Management</h1>
+      <div className="max-w-6xl mx-auto px-4">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-800">Quiz Management</h1>
           <Link 
             href="/quizzes/new" 
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="px-5 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-lg font-medium shadow-md transition duration-150"
           >
             Create New Quiz
           </Link>
         </div>
 
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
           {loading ? (
-            <div className="p-6 text-center">Loading quizzes...</div>
+            <div className="p-8 text-center">
+              <p className="text-lg text-gray-600">Loading quizzes...</p>
+            </div>
           ) : error ? (
-            <div className="p-6 text-center text-red-600">{error}</div>
+            <div className="p-8 text-center">
+              <p className="text-lg text-red-600 font-medium">{error}</p>
+            </div>
           ) : quizzes.length === 0 ? (
-            <div className="p-6 text-center">
-              <p>No quizzes found. Create your first quiz to get started.</p>
+            <div className="p-8 text-center">
+              <p className="text-lg text-gray-600 mb-4">No quizzes found. Create your first quiz to get started.</p>
+              <Link 
+                href="/quizzes/new" 
+                className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block"
+              >
+                Create New Quiz
+              </Link>
             </div>
           ) : (
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     Quiz Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     Created At
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -109,30 +119,32 @@ export default function QuizzesPage() {
                 {quizzes.map((quiz) => (
                   <tr key={quiz._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{quiz.name}</div>
+                      <div className="text-lg font-medium text-gray-900">{quiz.name}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">{formatDate(quiz.createdAt)}</div>
+                      <div className="text-base text-gray-600">{formatDate(quiz.createdAt)}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <Link
-                        href={`/quizzes/${quiz._id}`}
-                        className="text-blue-600 hover:text-blue-900 mr-4"
-                      >
-                        View
-                      </Link>
-                      <Link
-                        href={`/quizzes/${quiz._id}/edit`}
-                        className="text-indigo-600 hover:text-indigo-900 mr-4"
-                      >
-                        Edit
-                      </Link>
-                      <button
-                        onClick={() => handleDeleteQuiz(quiz._id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
-                      </button>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <div className="flex justify-end space-x-4">
+                        <Link
+                          href={`/quizzes/${quiz._id}`}
+                          className="text-blue-600 hover:text-blue-900 font-medium text-base"
+                        >
+                          View
+                        </Link>
+                        <Link
+                          href={`/quizzes/${quiz._id}/edit`}
+                          className="text-indigo-600 hover:text-indigo-900 font-medium text-base"
+                        >
+                          Edit
+                        </Link>
+                        <button
+                          onClick={() => handleDeleteQuiz(quiz._id)}
+                          className="text-red-600 hover:text-red-900 font-medium text-base"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -141,8 +153,8 @@ export default function QuizzesPage() {
           )}
         </div>
 
-        <div className="mt-6">
-          <Link href="/" className="text-blue-600 hover:underline">
+        <div className="mt-8">
+          <Link href="/" className="text-blue-600 hover:underline text-lg font-medium">
             &larr; Back to Home
           </Link>
         </div>

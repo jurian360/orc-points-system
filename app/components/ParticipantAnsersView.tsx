@@ -1,5 +1,14 @@
 import React from 'react';
-import { ScoreKeyRow, ParticipantAnswerRow } from '../types';
+
+interface ScoreKeyRow {
+  rowNumber: number;
+  answers: string[];
+}
+
+interface ParticipantAnswerRow {
+  rowNumber: number;
+  selectedAnswers: string[];
+}
 
 interface ParticipantAnswersViewProps {
   participantId: number;
@@ -28,20 +37,20 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      <div className="p-6">
-        <h2 className="text-lg font-semibold mb-4">
+    <div className="bg-white rounded-xl shadow-xl overflow-hidden border-2 border-gray-200">
+      <div className="p-8">
+        <h2 className="text-3xl font-bold mb-6 text-gray-800">
           Participant {participantId}'s Answers
         </h2>
         <div className="overflow-x-auto">
-          <table className="min-w-full">
+          <table className="min-w-full border-collapse">
             <thead>
-              <tr className="bg-gray-100">
-                <th className="py-2 px-4 border-b text-left">Row</th>
-                <th className="py-2 px-4 border-b text-left">Column 1</th>
-                <th className="py-2 px-4 border-b text-left">Column 2</th>
-                <th className="py-2 px-4 border-b text-left">Column 3</th>
-                <th className="py-2 px-4 border-b text-left">Column 4</th>
+              <tr className="bg-purple-100">
+                <th className="py-4 px-6 border-2 border-gray-300 text-left font-bold text-xl text-gray-800">Row</th>
+                <th className="py-4 px-6 border-2 border-gray-300 text-left font-bold text-xl text-gray-800">Column 1</th>
+                <th className="py-4 px-6 border-2 border-gray-300 text-left font-bold text-xl text-gray-800">Column 2</th>
+                <th className="py-4 px-6 border-2 border-gray-300 text-left font-bold text-xl text-gray-800">Column 3</th>
+                <th className="py-4 px-6 border-2 border-gray-300 text-left font-bold text-xl text-gray-800">Column 4</th>
               </tr>
             </thead>
             <tbody>
@@ -50,24 +59,26 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({
                 
                 return (
                   <tr key={row.rowNumber} className={(row.rowNumber % 2 === 0) ? 'bg-gray-50' : 'bg-white'}>
-                    <td className="py-2 px-4 border-b font-medium">{row.rowNumber}</td>
+                    <td className="py-4 px-6 border-2 border-gray-300 font-bold text-xl text-gray-800">{row.rowNumber}</td>
                     {[0, 1, 2, 3].map((colIndex) => {
                       const answer = participantAnswer?.selectedAnswers[colIndex] || '';
                       const isCorrect = isAnswerCorrect(row.rowNumber, colIndex, answer);
                       
                       return (
-                        <td key={colIndex} className="py-2 px-4 border-b">
+                        <td key={colIndex} className="py-4 px-6 border-2 border-gray-300">
                           {answer ? (
                             <div
-                              className={`w-8 h-8 flex items-center justify-center rounded ${
-                                isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              className={`w-16 h-16 flex items-center justify-center rounded-lg shadow-md border-2 ${
+                                isCorrect 
+                                  ? 'bg-green-100 text-green-800 border-green-400' 
+                                  : 'bg-red-100 text-red-800 border-red-400'
                               }`}
                             >
-                              {answer}
+                              <span className="text-3xl font-bold">{answer}</span>
                             </div>
                           ) : (
-                            <div className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded">
-                              -
+                            <div className="w-16 h-16 flex items-center justify-center bg-gray-100 rounded-lg shadow-md border-2 border-gray-300">
+                              <span className="text-2xl text-gray-400">-</span>
                             </div>
                           )}
                         </td>

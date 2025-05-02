@@ -65,46 +65,50 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-4xl mx-auto p-4">
-      <div className="mb-6">
-        <label htmlFor="quizName" className="block text-sm font-medium mb-2">
+    <form onSubmit={handleSubmit} className="max-w-6xl mx-auto p-6">
+      <div className="mb-8">
+        <label htmlFor="quizName" className="block text-lg font-medium mb-2 text-gray-800">
           Quiz Name
         </label>
         <input
           type="text"
           id="quizName"
-          className="w-full p-2 border rounded"
+          className="w-full p-3 border border-gray-300 rounded-md shadow-sm text-lg"
           value={quizName}
           onChange={(e) => setQuizName(e.target.value)}
+          placeholder="Enter quiz name"
           required
         />
       </div>
       
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold mb-4">Score Key (40 rows with 4 columns each)</h2>
-        <div className="border rounded overflow-hidden">
-          <table className="min-w-full">
+      <div className="mb-8">
+        <h2 className="text-2xl font-semibold mb-4 text-gray-800">Score Key (40 rows with 4 columns each)</h2>
+        <div className="border rounded-lg shadow-md overflow-hidden">
+          <table className="min-w-full border-collapse">
             <thead>
-              <tr className="bg-gray-100">
-                <th className="py-2 px-4 border-b text-left">Row</th>
-                <th className="py-2 px-4 border-b text-left">Column 1</th>
-                <th className="py-2 px-4 border-b text-left">Column 2</th>
-                <th className="py-2 px-4 border-b text-left">Column 3</th>
-                <th className="py-2 px-4 border-b text-left">Column 4</th>
+              <tr className="bg-blue-50">
+                <th className="py-3 px-4 border-b border-r border-gray-300 text-left font-semibold text-base text-gray-800">Row</th>
+                <th className="py-3 px-4 border-b border-r border-gray-300 text-left font-semibold text-base text-gray-800">Column 1</th>
+                <th className="py-3 px-4 border-b border-r border-gray-300 text-left font-semibold text-base text-gray-800">Column 2</th>
+                <th className="py-3 px-4 border-b border-r border-gray-300 text-left font-semibold text-base text-gray-800">Column 3</th>
+                <th className="py-3 px-4 border-b border-gray-300 text-left font-semibold text-base text-gray-800">Column 4</th>
               </tr>
             </thead>
             <tbody>
               {scoreKey.map((row, rowIndex) => (
                 <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className="py-2 px-4 border-b">{rowIndex + 1}</td>
+                  <td className="py-3 px-4 border-b border-r border-gray-300 font-medium text-base text-gray-800">
+                    {rowIndex + 1}
+                  </td>
                   {[0, 1, 2, 3].map((colIndex) => (
-                    <td key={colIndex} className="py-2 px-4 border-b">
+                    <td key={colIndex} className="py-3 px-4 border-b border-r border-gray-300">
                       <input
                         type="text"
-                        className="w-full p-1 border rounded"
+                        className="w-12 h-12 p-1 border border-gray-300 rounded-md text-center text-xl font-bold shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
                         maxLength={1}
                         value={row.answers[colIndex] || ''}
                         onChange={(e) => handleAnswerChange(rowIndex, colIndex, e.target.value)}
+                        aria-label={`Answer for row ${rowIndex + 1}, column ${colIndex + 1}`}
                       />
                     </td>
                   ))}
@@ -118,7 +122,7 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
       <div className="text-right">
         <button
           type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-lg shadow-md transition duration-150"
         >
           {isEditing ? 'Update Score Key' : 'Save Score Key'}
         </button>
