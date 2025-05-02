@@ -1,3 +1,5 @@
+// Update the models/index.ts file
+
 import mongoose from 'mongoose';
 
 // Define the schema for a quiz
@@ -14,6 +16,14 @@ const QuizSchema = new mongoose.Schema({
   scoreKey: [{
     rowNumber: Number,
     answers: [String], // Array of up to 4 correct answers for each row
+    falseAnswers: [{
+      column: Number,
+      value: String
+    }], // Array of false answers for each column
+    maxPenalty: {
+      type: Number,
+      default: 0
+    } // Maximum penalty points for the row
   }],
 });
 
@@ -37,7 +47,11 @@ const ParticipantAnswerSchema = new mongoose.Schema({
   submittedAt: {
     type: Date,
     default: Date.now,
-  }
+  },
+  penalties: {
+    type: Number,
+    default: 0
+  } // Total penalty points for this participant
 });
 
 // Create models if they don't already exist

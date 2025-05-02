@@ -9,11 +9,12 @@ type Params = {
   };
 };
 
-export async function GET(request: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest, context: Params) {
   try {
     await dbConnect();
     
-    const id = params.id;
+    // Properly access the id after awaiting the params
+    const { id } = context.params;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid participant answer ID' }, { status: 400 });
@@ -31,11 +32,12 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 }
 
-export async function PUT(request: NextRequest, { params }: Params) {
+export async function PUT(request: NextRequest, context: Params) {
   try {
     await dbConnect();
     
-    const id = params.id;
+    // Properly access the id after awaiting the params
+    const { id } = context.params;
     const body = await request.json();
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -61,11 +63,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: Params) {
+export async function DELETE(request: NextRequest, context: Params) {
   try {
     await dbConnect();
     
-    const id = params.id;
+    // Properly access the id after awaiting the params
+    const { id } = context.params;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid participant answer ID' }, { status: 400 });

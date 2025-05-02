@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
 interface Quiz {
@@ -10,10 +11,16 @@ interface Quiz {
   scoreKey: {
     rowNumber: number;
     answers: string[];
+    falseAnswers?: { column: number, value: string }[];
+    maxPenalty?: number;
   }[];
 }
 
-export default function ViewQuizPage({ params }: { params: { id: string } }) {
+export default function ViewQuizPage() {
+  // Use the useParams hook to get the params object in client components
+  const params = useParams();
+  const id = params.id as string;
+  
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +28,7 @@ export default function ViewQuizPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     const fetchQuiz = async () => {
       try {
-        const response = await fetch(`/api/quizzes/${params.id}`);
+        const response = await fetch(`/api/quizzes/${id}`);
         
         if (!response.ok) {
           throw new Error('Failed to fetch quiz');
@@ -37,8 +44,10 @@ export default function ViewQuizPage({ params }: { params: { id: string } }) {
       }
     };
 
-    fetchQuiz();
-  }, [params.id]);
+    if (id) {
+      fetchQuiz();
+    }
+  }, [id]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -89,28 +98,60 @@ export default function ViewQuizPage({ params }: { params: { id: string } }) {
                 <thead>
                   <tr className="bg-blue-50">
                     <th className="py-3 px-6 border border-gray-300 text-left text-base font-semibold text-gray-800">Row</th>
-                    <th className="py-3 px-6 border border-gray-300 text-left text-base font-semibold text-gray-800">Answers</th>
+                    <th className="py-3 px-6 border border-gray-300 text-left text-base font-semibold text-gray-800">Correct Answers</th>
+                    <th className="py-3 px-6 border border-gray-300 text-left text-base font-semibold text-gray-800">False Answers</th>
+                    <th className="py-3 px-6 border border-gray-300 text-left text-base font-semibold text-gray-800">Max Penalty</th>
                   </tr>
                 </thead>
                 <tbody>
                   {quiz.scoreKey.map((row) => (
                     <tr key={row.rowNumber} className={(row.rowNumber % 2 === 0) ? 'bg-gray-50' : 'bg-white'}>
                       <td className="py-3 px-6 border border-gray-300 text-gray-800 font-medium text-lg">{row.rowNumber}</td>
+                      
+                      {/* Correct answers */}
                       <td className="py-3 px-6 border border-gray-300">
                         {row.answers.length > 0 ? (
                           <div className="flex space-x-3">
                             {row.answers.map((answer, index) => (
                               <div 
                                 key={index} 
-                                className="w-10 h-10 flex items-center justify-center bg-blue-100 rounded-md shadow-sm border border-blue-200"
+                                className="w-10 h-10 flex items-center justify-center bg-green-100 rounded-md shadow-sm border border-green-200"
                               >
-                                <span className="text-xl font-bold text-blue-800">{answer}</span>
+                                <span className="text-xl font-bold text-green-800">{answer}</span>
                               </div>
                             ))}
                           </div>
                         ) : (
                           <span className="text-gray-600 text-base font-medium">No answers</span>
                         )}
+                      </td>
+                      
+                      {/* False answers */}
+                      <td className="py-3 px-6 border border-gray-300">
+                        {row.falseAnswers && row.falseAnswers.length > 0 ? (
+                          <div className="flex space-x-3">
+                            {row.falseAnswers.map((fa, index) => (
+                              <div 
+                                key={index} 
+                                className="flex items-center"
+                              >
+                                <span className="text-sm text-gray-600 mr-1">Col {fa.column + 1}:</span>
+                                <div className="w-10 h-10 flex items-center justify-center bg-red-100 rounded-md shadow-sm border border-red-200">
+                                  <span className="text-xl font-bold text-red-800">{fa.value}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-600 text-base font-medium">No false answers</span>
+                        )}
+                      </td>
+                      
+                      {/* Max penalty */}
+                      <td className="py-3 px-6 border border-gray-300">
+                        <div className="w-12 h-10 flex items-center justify-center bg-blue-100 rounded-md shadow-sm border border-blue-200">
+                          <span className="text-xl font-bold text-blue-800">{row.maxPenalty || 0}</span>
+                        </div>
                       </td>
                     </tr>
                   ))}

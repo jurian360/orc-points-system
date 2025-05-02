@@ -7,6 +7,8 @@ interface ScoreKeyFormProps {
     scoreKey: {
       rowNumber: number;
       answers: string[];
+      falseAnswers?: { column: number, value: string }[];
+      maxPenalty?: number;
     }[];
   };
   isEditing?: boolean;
@@ -25,10 +27,12 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
       return initialData.scoreKey;
     }
     
-    // Create 40 rows with empty answers arrays
+    // Create 40 rows with empty answers arrays and new properties
     return Array.from({ length: 40 }, (_, index) => ({
       rowNumber: index + 1,
-      answers: ['', '', '', ''] // 4 columns per row
+      answers: ['', '', '', ''], // 4 columns per row
+      falseAnswers: [], // array to store false answers for each column
+      maxPenalty: 0 // default max penalty points for the row
     }));
   });
 
@@ -46,6 +50,50 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
     setScoreKey(newScoreKey);
   };
 
+  const handleFalseAnswerChange = (rowIndex: number, colIndex: number, value: string) => {
+    const newScoreKey = [...scoreKey];
+    
+    // Ensure the falseAnswers array exists
+    if (!newScoreKey[rowIndex].falseAnswers) {
+      newScoreKey[rowIndex].falseAnswers = [];
+    }
+    
+    // Check if we already have a false answer for this column
+    const existingIndex = newScoreKey[rowIndex].falseAnswers.findIndex(
+      fa => fa.column === colIndex
+    );
+    
+    if (value === '') {
+      // If the value is empty, remove the entry if it exists
+      if (existingIndex !== -1) {
+        newScoreKey[rowIndex].falseAnswers.splice(existingIndex, 1);
+      }
+    } else {
+      // If we have an existing entry, update it
+      if (existingIndex !== -1) {
+        newScoreKey[rowIndex].falseAnswers[existingIndex].value = value.toUpperCase();
+      } else {
+        // Otherwise add a new entry
+        newScoreKey[rowIndex].falseAnswers.push({
+          column: colIndex,
+          value: value.toUpperCase()
+        });
+      }
+    }
+    
+    setScoreKey(newScoreKey);
+  };
+
+  const handleMaxPenaltyChange = (rowIndex: number, value: string) => {
+    const newScoreKey = [...scoreKey];
+    
+    // Convert to number, default to 0 if invalid
+    const numValue = parseInt(value, 10);
+    newScoreKey[rowIndex].maxPenalty = isNaN(numValue) ? 0 : numValue;
+    
+    setScoreKey(newScoreKey);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -58,7 +106,9 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
     // Process the scoreKey to remove empty answers
     const processedScoreKey = scoreKey.map(row => ({
       rowNumber: row.rowNumber,
-      answers: row.answers.filter(answer => answer.trim() !== '')
+      answers: row.answers.filter(answer => answer.trim() !== ''),
+      falseAnswers: row.falseAnswers || [],
+      maxPenalty: row.maxPenalty || 0
     }));
     
     onSubmit(quizName, processedScoreKey);
@@ -91,7 +141,24 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
                 <th className="py-3 px-4 border-b border-r border-gray-300 text-left font-semibold text-base text-gray-800">Column 1</th>
                 <th className="py-3 px-4 border-b border-r border-gray-300 text-left font-semibold text-base text-gray-800">Column 2</th>
                 <th className="py-3 px-4 border-b border-r border-gray-300 text-left font-semibold text-base text-gray-800">Column 3</th>
-                <th className="py-3 px-4 border-b border-gray-300 text-left font-semibold text-base text-gray-800">Column 4</th>
+                <th className="py-3 px-4 border-b border-r border-gray-300 text-left font-semibold text-base text-gray-800">Column 4</th>
+                <th className="py-3 px-4 border-b border-gray-300 text-left font-semibold text-base text-gray-800">Max Penalty</th>
+              </tr>
+              <tr className="bg-gray-100">
+                <th className="py-2 px-4 border-b border-r border-gray-300 text-left text-xs text-gray-600">Row #</th>
+                <th className="py-2 px-4 border-b border-r border-gray-300 text-left text-xs text-gray-600">
+                  Correct / False
+                </th>
+                <th className="py-2 px-4 border-b border-r border-gray-300 text-left text-xs text-gray-600">
+                  Correct / False
+                </th>
+                <th className="py-2 px-4 border-b border-r border-gray-300 text-left text-xs text-gray-600">
+                  Correct / False
+                </th>
+                <th className="py-2 px-4 border-b border-r border-gray-300 text-left text-xs text-gray-600">
+                  Correct / False
+                </th>
+                <th className="py-2 px-4 border-b border-gray-300 text-left text-xs text-gray-600">Points</th>
               </tr>
             </thead>
             <tbody>
@@ -102,16 +169,42 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
                   </td>
                   {[0, 1, 2, 3].map((colIndex) => (
                     <td key={colIndex} className="py-3 px-4 border-b border-r border-gray-300">
-                      <input
-                        type="text"
-                        className="w-12 h-12 p-1 border border-gray-300 rounded-md text-center text-xl font-bold shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
-                        maxLength={1}
-                        value={row.answers[colIndex] || ''}
-                        onChange={(e) => handleAnswerChange(rowIndex, colIndex, e.target.value)}
-                        aria-label={`Answer for row ${rowIndex + 1}, column ${colIndex + 1}`}
-                      />
+                      <div className="flex flex-col space-y-2">
+                        <div className="flex items-center">
+                          <label className="text-xs text-gray-600 mr-2">Correct:</label>
+                          <input
+                            type="text"
+                            className="w-12 h-12 p-1 border border-green-300 rounded-md text-center text-xl font-bold shadow-sm focus:border-green-500 focus:ring focus:ring-green-200"
+                            maxLength={1}
+                            value={row.answers[colIndex] || ''}
+                            onChange={(e) => handleAnswerChange(rowIndex, colIndex, e.target.value)}
+                            aria-label={`Correct answer for row ${rowIndex + 1}, column ${colIndex + 1}`}
+                          />
+                        </div>
+                        <div className="flex items-center">
+                          <label className="text-xs text-gray-600 mr-2">False:</label>
+                          <input
+                            type="text"
+                            className="w-12 h-12 p-1 border border-red-300 rounded-md text-center text-xl font-bold shadow-sm focus:border-red-500 focus:ring focus:ring-red-200"
+                            maxLength={1}
+                            value={row.falseAnswers?.find(fa => fa.column === colIndex)?.value || ''}
+                            onChange={(e) => handleFalseAnswerChange(rowIndex, colIndex, e.target.value)}
+                            aria-label={`False answer for row ${rowIndex + 1}, column ${colIndex + 1}`}
+                          />
+                        </div>
+                      </div>
                     </td>
                   ))}
+                  <td className="py-3 px-4 border-b border-gray-300">
+                    <input
+                      type="number"
+                      min="0"
+                      className="w-16 h-12 p-1 border border-blue-300 rounded-md text-center text-lg font-bold shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
+                      value={row.maxPenalty || 0}
+                      onChange={(e) => handleMaxPenaltyChange(rowIndex, e.target.value)}
+                      aria-label={`Maximum penalty points for row ${rowIndex + 1}`}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

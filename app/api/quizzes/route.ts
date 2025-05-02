@@ -18,9 +18,17 @@ export async function POST(request: NextRequest) {
     
     await dbConnect();
     
+    // Prepare the scoreKey with all the required fields
+    const processedScoreKey = body.scoreKey.map((row: any) => ({
+      rowNumber: row.rowNumber,
+      answers: row.answers || [],
+      falseAnswers: row.falseAnswers || [],
+      maxPenalty: typeof row.maxPenalty === 'number' ? row.maxPenalty : 0
+    }));
+    
     const quiz = new Quiz({
       name: body.name,
-      scoreKey: body.scoreKey
+      scoreKey: processedScoreKey
     });
     
     const savedQuiz = await quiz.save();

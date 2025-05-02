@@ -3,17 +3,21 @@ import dbConnect from '../../../lib/mongodb';
 import { Quiz } from '../../../models';
 import mongoose from 'mongoose';
 
-type Params = {
-  params: {
-    id: string;
-  };
-};
+// type Params = {
+//   params: {
+//     id: string;
+//   };
+// };
 
-export async function GET(request: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest,
+  context: { params: { id: string } }
+) {
   try {
     await dbConnect();
     
-    const id = params.id;
+    const { id } = await context.params
+    // Access the id directly from the context object
+    //const id = context.params.id;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid quiz ID' }, { status: 400 });
@@ -31,22 +35,33 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 }
 
-export async function PUT(request: NextRequest, { params }: Params) {
+export async function PUT(request: NextRequest,
+  context: { params: { id: string } }
+) {
   try {
     await dbConnect();
     
-    const id = params.id;
+    // Access the id directly from the context object
+    const id = context.params.id;
     const body = await request.json();
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid quiz ID' }, { status: 400 });
     }
     
+    // Prepare the scoreKey with all the required fields
+    const processedScoreKey = body.scoreKey.map((row: any) => ({
+      rowNumber: row.rowNumber,
+      answers: row.answers || [],
+      falseAnswers: row.falseAnswers || [],
+      maxPenalty: typeof row.maxPenalty === 'number' ? row.maxPenalty : 0
+    }));
+    
     const updatedQuiz = await Quiz.findByIdAndUpdate(
       id,
       { 
         name: body.name,
-        scoreKey: body.scoreKey 
+        scoreKey: processedScoreKey
       },
       { new: true, runValidators: true }
     );
@@ -61,11 +76,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: Params) {
+export async function DELETE(request: NextRequest,
+  context: { params: { id: string } }
+) {
   try {
     await dbConnect();
     
-    const id = params.id;
+    // Access the id directly from the context object
+    const id = context.params.id;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid quiz ID' }, { status: 400 });
