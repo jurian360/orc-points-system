@@ -33,6 +33,18 @@ export default function Home() {
               </div>
             </Link>
           </div>
+
+          <div className="mt-8">
+            <Link href="/participant-answers" className="block p-8 bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow border border-gray-100">
+              <div className="flex flex-col h-full">
+                <h2 className="text-2xl font-bold mb-4 text-purple-700">Participant Scoring</h2>
+                <p className="text-lg text-gray-600 mb-6">View scoring details for specific participants. See correct and incorrect answers with penalty calculations.</p>
+                <div className="mt-auto">
+                  <span className="px-4 py-2 bg-purple-600 text-white rounded-md inline-block font-medium">View Scoring</span>
+                </div>
+              </div>
+            </Link>
+          </div>
           
           <div className="mt-12 bg-white rounded-xl shadow-lg p-8 border border-gray-100">
             <h2 className="text-2xl font-bold mb-4 text-gray-800">How to Use</h2>
@@ -40,7 +52,7 @@ export default function Home() {
               <li>First, create a quiz with a name and score key for each row.</li>
               <li>Enter participant answers by selecting the quiz and providing the participant ID.</li>
               <li>View and manage all quizzes and participant submissions from their respective pages.</li>
-              <li>In the future, penalty points calculation will be available.</li>
+              <li>Use the Participant Scoring section to view detailed performance with penalty calculations.</li>
             </ol>
           </div>
         </div>

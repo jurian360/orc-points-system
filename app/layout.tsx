@@ -53,6 +53,12 @@ export default function RootLayout({
                   >
                     Participants
                   </a>
+                  <a
+                    href="/participant-answers"
+                    className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Participant Scoring
+                  </a>
                 </div>
               </div>
             </div>

@@ -280,12 +280,20 @@ export default function ParticipantsPage() {
                           </div>
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap text-right">
-                          <button
-                            onClick={() => handleDeleteParticipant(participant._id)}
-                            className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-lg transition-colors"
-                          >
-                            Delete
-                          </button>
+                          <div className="flex justify-end space-x-3">
+                            <Link
+                              href="/participant-answers"
+                              className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-medium text-lg transition-colors"
+                            >
+                              View Score
+                            </Link>
+                            <button
+                              onClick={() => handleDeleteParticipant(participant._id)}
+                              className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-lg transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
