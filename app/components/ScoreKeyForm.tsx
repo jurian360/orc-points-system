@@ -123,7 +123,7 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
         <input
           type="text"
           id="quizName"
-          className="w-full p-3 border border-gray-300 rounded-md shadow-sm text-lg"
+          className="w-full p-3 border border-gray-300 rounded-md shadow-sm text-lg text-gray-800"
           value={quizName}
           onChange={(e) => setQuizName(e.target.value)}
           placeholder="Enter quiz name"
@@ -174,7 +174,7 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
                           <label className="text-xs text-gray-600 mr-2">Correct:</label>
                           <input
                             type="text"
-                            className="w-12 h-12 p-1 border border-green-300 rounded-md text-center text-xl font-bold shadow-sm focus:border-green-500 focus:ring focus:ring-green-200"
+                            className="w-12 h-12 p-1 border border-green-300 rounded-md text-center text-xl font-bold shadow-sm focus:border-green-500 focus:ring focus:ring-green-200 text-gray-700"
                             maxLength={1}
                             value={row.answers[colIndex] || ''}
                             onChange={(e) => handleAnswerChange(rowIndex, colIndex, e.target.value)}
@@ -185,7 +185,7 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
                           <label className="text-xs text-gray-600 mr-2">False:</label>
                           <input
                             type="text"
-                            className="w-12 h-12 p-1 border border-red-300 rounded-md text-center text-xl font-bold shadow-sm focus:border-red-500 focus:ring focus:ring-red-200"
+                            className="w-12 h-12 p-1 border border-red-300 rounded-md text-center text-xl font-bold shadow-sm focus:border-red-500 focus:ring focus:ring-red-200 text-gray-700"
                             maxLength={1}
                             value={row.falseAnswers?.find(fa => fa.column === colIndex)?.value || ''}
                             onChange={(e) => handleFalseAnswerChange(rowIndex, colIndex, e.target.value)}
@@ -199,7 +199,7 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
                     <input
                       type="number"
                       min="0"
-                      className="w-16 h-12 p-1 border border-blue-300 rounded-md text-center text-lg font-bold shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
+                      className="w-16 h-12 p-1 border border-blue-300 rounded-md text-center text-lg font-bold shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700"
                       value={row.maxPenalty || 0}
                       onChange={(e) => handleMaxPenaltyChange(rowIndex, e.target.value)}
                       aria-label={`Maximum penalty points for row ${rowIndex + 1}`}
