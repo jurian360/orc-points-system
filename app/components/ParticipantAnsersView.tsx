@@ -163,21 +163,47 @@ const ParticipantAnswerView: React.FC = () => {
         if (participantRow) {
           let rowPenalty = 0;
           
-          // Check for false answers
-          participantRow.selectedAnswers.forEach((answer, colIndex) => {
+          // 1. Check for false answers - apply 30 points for each false answer
+          participantRow.selectedAnswers.forEach((answer) => {
             if (answer && scoreKeyRow.falseAnswers) {
+              // Check if the answer exists in any false answers for this row
               const isFalse = scoreKeyRow.falseAnswers.some(
-                fa => fa.column === colIndex && fa.value === answer
+                fa => fa.value === answer
               );
               
               if (isFalse) {
-                rowPenalty += 1;
+                rowPenalty += 30; // Add 30 points for each false answer
               }
             }
           });
           
-          // Apply max penalty cap for this row
-          if (scoreKeyRow.maxPenalty !== undefined && rowPenalty > scoreKeyRow.maxPenalty) {
+          // 2. Special case: Check if correct answer appears multiple times
+          const correctAnswersByParticipant = participantRow.selectedAnswers.filter(answer => 
+            scoreKeyRow.answers.includes(answer)
+          );
+          
+          // If correct answer appears more than the expected number of times, apply penalty
+          if (correctAnswersByParticipant.length > scoreKeyRow.answers.length) {
+            rowPenalty += 30;
+          }
+          
+          // 3. Check for missing correct answers - apply 30 points for each missing correct answer
+          // Create a copy of the correct answers array to track which have been found
+          const requiredAnswers = [...scoreKeyRow.answers];
+          
+          // Remove each found correct answer from the required list
+          participantRow.selectedAnswers.forEach((answer) => {
+            const index = requiredAnswers.indexOf(answer);
+            if (index >= 0) {
+              requiredAnswers.splice(index, 1);
+            }
+          });
+          
+          // Each remaining required answer counts as a missing answer
+          rowPenalty += requiredAnswers.length * 30;
+          
+          // Apply max penalty cap for this row (only if maxPenalty > 0)
+          if (scoreKeyRow.maxPenalty !== undefined && rowPenalty > scoreKeyRow.maxPenalty && scoreKeyRow.maxPenalty > 0) {
             rowPenalty = scoreKeyRow.maxPenalty;
           }
           
@@ -217,9 +243,8 @@ const ParticipantAnswerView: React.FC = () => {
     const scoreKeyRow = quiz.scoreKey.find(row => row.rowNumber === rowNumber);
     if (!scoreKeyRow || !scoreKeyRow.falseAnswers) return false;
     
-    return scoreKeyRow.falseAnswers.some(
-      fa => fa.column === colIndex && fa.value === answer
-    );
+    // Check if this answer is a false answer regardless of column
+    return scoreKeyRow.falseAnswers.some(fa => fa.value === answer);
   };
 
   // Calculate row penalties
@@ -233,21 +258,47 @@ const ParticipantAnswerView: React.FC = () => {
     
     let rowPenalty = 0;
     
-    // Check each answer for false values
-    participantRow.selectedAnswers.forEach((answer, colIndex) => {
+    // 1. Check for false answers - apply 30 points for each false answer
+    participantRow.selectedAnswers.forEach((answer) => {
       if (answer && scoreKeyRow.falseAnswers) {
+        // Check if this answer is a false answer for this row
         const isFalse = scoreKeyRow.falseAnswers.some(
-          fa => fa.column === colIndex && fa.value === answer
+          fa => fa.value === answer
         );
         
         if (isFalse) {
-          rowPenalty += 1;
+          rowPenalty += 30; // Add 30 points for each false answer
         }
       }
     });
     
-    // Apply maximum penalty cap
-    if (scoreKeyRow.maxPenalty !== undefined && rowPenalty > scoreKeyRow.maxPenalty) {
+    // 2. Special case: Check if correct answer appears multiple times
+    const correctAnswersByParticipant = participantRow.selectedAnswers.filter(answer => 
+      scoreKeyRow.answers.includes(answer)
+    );
+    
+    // If correct answer appears more than the expected number of times, apply penalty
+    if (correctAnswersByParticipant.length > scoreKeyRow.answers.length) {
+      rowPenalty += 30;
+    }
+    
+    // 3. Check for missing correct answers - apply 30 points for each missing correct answer
+    // Create a copy of the correct answers array to track which have been found
+    const requiredAnswers = [...scoreKeyRow.answers];
+    
+    // Remove each found correct answer from the required list
+    participantRow.selectedAnswers.forEach((answer) => {
+      const index = requiredAnswers.indexOf(answer);
+      if (index >= 0) {
+        requiredAnswers.splice(index, 1);
+      }
+    });
+    
+    // Each remaining required answer counts as a missing answer
+    rowPenalty += requiredAnswers.length * 30;
+    
+    // Apply maximum penalty cap (only if maxPenalty > 0)
+    if (scoreKeyRow.maxPenalty !== undefined && rowPenalty > scoreKeyRow.maxPenalty && scoreKeyRow.maxPenalty > 0) {
       rowPenalty = scoreKeyRow.maxPenalty;
     }
     
