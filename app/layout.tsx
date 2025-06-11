@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import Link from "next/link"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,33 +33,33 @@ export default function RootLayout({
             <div className="flex justify-between items-center h-16">
               <div className="flex">
                 <div className="flex-shrink-0 flex items-center">
-                  <a href="/" className="text-white text-xl font-bold">ORC Points System</a>
+                  <Link href="/" className="text-white text-xl font-bold">ORC Points System</Link>
                 </div>
                 <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                  <a
+                  <Link
                     href="/"
                     className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
                   >
                     Home
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/quizzes"
                     className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
                   >
                     Quizzes
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/participants"
                     className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
                   >
                     Participants
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/participant-answers"
                     className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
                   >
                     Participant Scoring
-                  </a>
+                  </Link>
                 </div>
               </div>
             </div>

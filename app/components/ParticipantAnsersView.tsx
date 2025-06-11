@@ -98,7 +98,7 @@ const ParticipantAnswerView: React.FC = () => {
     };
 
     fetchParticipants();
-  }, [quizId]);
+  }, [quizId, participantId]);
 
   // Fetch selected quiz details
   useEffect(() => {
@@ -377,7 +377,7 @@ const ParticipantAnswerView: React.FC = () => {
         <div className="bg-white rounded-xl shadow-xl overflow-hidden border-2 border-gray-200">
           <div className="p-8">
             <h2 className="text-3xl font-bold mb-2 text-gray-800">
-              Participant {participantAnswer.eq}'s Answers for {quiz.name}
+              Participant {participantAnswer.eq}&apos;s Answers for {quiz.name}
             </h2>
             <p className="text-xl font-semibold mb-6 text-red-600">
               Total Penalties: {totalPenalties} points
