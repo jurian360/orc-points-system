@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
 interface Quiz {
@@ -16,19 +15,27 @@ interface Quiz {
   }[];
 }
 
-export default function ViewQuizPage() {
-  // Use the useParams hook to get the params object in client components
-  const params = useParams();
-  const id = params.id as string;
-  
+export default function ViewQuizPage({ params }: { params: Promise<{ id: string }> }) {
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [quizId, setQuizId] = useState<string>('');
+
+  // Resolve params first
+  useEffect(() => {
+    const getParams = async () => {
+      const resolvedParams = await params;
+      setQuizId(resolvedParams.id);
+    };
+    getParams();
+  }, [params]);
 
   useEffect(() => {
+    if (!quizId) return;
+
     const fetchQuiz = async () => {
       try {
-        const response = await fetch(`/api/quizzes/${id}`);
+        const response = await fetch(`/api/quizzes/${quizId}`);
         
         if (!response.ok) {
           throw new Error('Failed to fetch quiz');
@@ -44,10 +51,8 @@ export default function ViewQuizPage() {
       }
     };
 
-    if (id) {
-      fetchQuiz();
-    }
-  }, [id]);
+    fetchQuiz();
+  }, [quizId]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {

@@ -14,17 +14,29 @@ interface Quiz {
   }[];
 }
 
-export default function EditQuizPage({ params }: { params: { id: string } }) {
+export default function EditQuizPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [quizId, setQuizId] = useState<string>('');
+
+  // Resolve params first
+  useEffect(() => {
+    const getParams = async () => {
+      const resolvedParams = await params;
+      setQuizId(resolvedParams.id);
+    };
+    getParams();
+  }, [params]);
 
   useEffect(() => {
+    if (!quizId) return;
+
     const fetchQuiz = async () => {
       try {
-        const response = await fetch(`/api/quizzes/${params.id}`);
+        const response = await fetch(`/api/quizzes/${quizId}`);
         
         if (!response.ok) {
           throw new Error('Failed to fetch quiz');
@@ -41,14 +53,14 @@ export default function EditQuizPage({ params }: { params: { id: string } }) {
     };
 
     fetchQuiz();
-  }, [params.id]);
+  }, [quizId]);
 
   const handleSubmit = async (quizName: string, scoreKey: any[]) => {
     setSubmitting(true);
     setError(null);
 
     try {
-      const response = await fetch(`/api/quizzes/${params.id}`, {
+      const response = await fetch(`/api/quizzes/${quizId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

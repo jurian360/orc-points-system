@@ -10,12 +10,12 @@ import mongoose from 'mongoose';
 // };
 
 export async function GET(request: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await dbConnect();
     
-    const { id } = await context.params
+    const { id } = await params
     // Access the id directly from the context object
     //const id = context.params.id;
     
@@ -36,13 +36,13 @@ export async function GET(request: NextRequest,
 }
 
 export async function PUT(request: NextRequest,
-  context: { params: { id: string } }
+   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await dbConnect();
     
     // Access the id directly from the context object
-    const id = context.params.id;
+    const { id } = await params;
     const body = await request.json();
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -77,13 +77,13 @@ export async function PUT(request: NextRequest,
 }
 
 export async function DELETE(request: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await dbConnect();
     
     // Access the id directly from the context object
-    const id = context.params.id;
+    const { id } = await params;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid quiz ID' }, { status: 400 });
