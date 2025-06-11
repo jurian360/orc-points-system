@@ -9,12 +9,12 @@ type Params = {
   };
 };
 
-export async function GET(request: NextRequest, context: Params) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     await dbConnect();
     
     // Properly access the id after awaiting the params
-    const { id } = context.params;
+    const { id } = await params;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid participant answer ID' }, { status: 400 });
