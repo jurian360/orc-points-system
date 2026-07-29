@@ -53,7 +53,9 @@ export async function POST(request: NextRequest) {
     const participantAnswer = new ParticipantAnswer({
       eq: body.eq,
       quizId: body.quizId,
-      answers: body.answers
+      answers: body.answers,
+      timePenalties: body.timePenalties || [],
+      merkScores: body.merkScores || []
     });
     
     const savedAnswer = await participantAnswer.save();

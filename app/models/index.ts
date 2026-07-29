@@ -25,6 +25,27 @@ const QuizSchema = new mongoose.Schema({
       default: 0
     } // Maximum penalty points for the row
   }],
+  // Time-based scoring reference (IPT / WPT / +/-), 10 rows.
+  // UI only for now; scoring logic to be added later.
+  timeScoreKey: [{
+    rowNumber: Number,
+    ipt: String,
+    wpt: String,
+    plusMinus: String,
+    maxPenalty: {
+      type: Number,
+      default: 0
+    }
+  }],
+  // "Merk" reference rows for additional scoring by officials, 6 rows.
+  merkScoreKey: [{
+    rowNumber: Number,
+    merk: String,
+    maxPenalty: {
+      type: Number,
+      default: 0
+    }
+  }],
 });
 
 // Define the schema for participant answers
@@ -43,6 +64,31 @@ const ParticipantAnswerSchema = new mongoose.Schema({
   answers: [{
     rowNumber: Number,
     selectedAnswers: [String], // Array of selected answers (up to 4 per row)
+    strafp: {
+      type: Number,
+      default: 0
+    } // ORC penalty points for the row
+  }],
+  // Time-based penalty entry (IPT / WPT / +/- / strafpunten), 10 rows.
+  // UI only for now; scoring logic to be added later.
+  timePenalties: [{
+    rowNumber: Number,
+    ipt: String,
+    wpt: String,
+    plusMinus: String,
+    strafp: {
+      type: Number,
+      default: 0
+    }
+  }],
+  // "Merk" scoring by officials, 6 rows.
+  merkScores: [{
+    rowNumber: Number,
+    merk: String,
+    strafp: {
+      type: Number,
+      default: 0
+    }
   }],
   submittedAt: {
     type: Date,
