@@ -270,7 +270,7 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
   const rightRows = scoreKey.slice(half);
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-7xl mx-auto p-6">
+    <form onSubmit={handleSubmit} className="w-full mx-auto p-6">
       <div className="mb-8">
         <label htmlFor="quizName" className="block text-lg font-medium mb-2 text-gray-800">
           Quiz Name
@@ -286,40 +286,45 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
         />
       </div>
 
-      {/* ORC's score key — 30 rows split into two columns */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold mb-2 text-gray-800">
-          ORC&apos;s Score Key (30 rows &times; 4 letters)
-        </h2>
-        <p className="mb-4 text-base text-gray-700">
+      {/* Score key laid out as 4 main columns, like the SARK controlekaart:
+          ORC's 1-15 | ORC's 16-30 | For Official Use Only (time) | Merk + totals */}
+      <div className="mb-4">
+        <p className="text-base text-gray-700">
           Enter the correct answer (green) and any explicit false answer (red) per column, plus the
-          max penalty for the row.
+          max penalty for each row.
         </p>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {[leftRows, rightRows].map((rows, colGroup) => (
-            <div
-              key={colGroup}
-              className="border border-gray-300 rounded-lg shadow-md overflow-x-auto"
-            >
-              <table className="min-w-full border-collapse">
-                {scoreKeyHeader}
-                <tbody>
-                  {rows.map((row) => renderScoreKeyRow(row, row.rowNumber - 1))}
-                </tbody>
-              </table>
-            </div>
-          ))}
-        </div>
       </div>
 
-      {/* Official use + Merk + Totals */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* For official use only — IPT / WPT / +/- reference */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8 items-start">
+        {/* Column 1 — ORC's rows 1-15 */}
         <div>
-          <h2 className="text-2xl font-semibold mb-2 text-gray-800">For Official Use Only</h2>
-          <p className="mb-4 text-base text-gray-700">
-            Time-based scoring reference (IPT / WPT / +/-). 10 rows.
-          </p>
+          <h2 className="text-lg font-semibold mb-2 text-gray-800">ORC&apos;s (1&ndash;15)</h2>
+          <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto">
+            <table className="min-w-full border-collapse">
+              {scoreKeyHeader}
+              <tbody>
+                {leftRows.map((row) => renderScoreKeyRow(row, row.rowNumber - 1))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Column 2 — ORC's rows 16-30 */}
+        <div>
+          <h2 className="text-lg font-semibold mb-2 text-gray-800">ORC&apos;s (16&ndash;30)</h2>
+          <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto">
+            <table className="min-w-full border-collapse">
+              {scoreKeyHeader}
+              <tbody>
+                {rightRows.map((row) => renderScoreKeyRow(row, row.rowNumber - 1))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Column 3 — For official use only (IPT / WPT / +/- reference) */}
+        <div>
+          <h2 className="text-lg font-semibold mb-2 text-gray-800">For Official Use Only</h2>
           <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full border-collapse">
               <thead>
@@ -381,12 +386,9 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
           </div>
         </div>
 
-        {/* Merk reference + Totaal overview */}
+        {/* Column 4 — Merk reference + Totaal overview */}
         <div>
-          <h2 className="text-2xl font-semibold mb-2 text-gray-800">Merk</h2>
-          <p className="mb-4 text-base text-gray-700">
-            Additional scoring by officials. 6 rows.
-          </p>
+          <h2 className="text-lg font-semibold mb-2 text-gray-800">Merk</h2>
           <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full border-collapse">
               <thead>
