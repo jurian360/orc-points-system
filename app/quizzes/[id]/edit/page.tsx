@@ -11,6 +11,20 @@ interface Quiz {
   scoreKey: {
     rowNumber: number;
     answers: string[];
+    falseAnswers?: { column: number; value: string }[];
+    maxPenalty?: number;
+  }[];
+  timeScoreKey?: {
+    rowNumber: number;
+    ipt: string;
+    wpt: string;
+    plusMinus: string;
+    maxPenalty?: number;
+  }[];
+  merkScoreKey?: {
+    rowNumber: number;
+    merk: string;
+    maxPenalty?: number;
   }[];
 }
 
@@ -55,7 +69,12 @@ export default function EditQuizPage({ params }: { params: Promise<{ id: string 
     fetchQuiz();
   }, [quizId]);
 
-  const handleSubmit = async (quizName: string, scoreKey: any[]) => {
+  const handleSubmit = async (
+    quizName: string,
+    scoreKey: any[],
+    timeScoreKey: any[],
+    merkScoreKey: any[]
+  ) => {
     setSubmitting(true);
     setError(null);
 
@@ -68,6 +87,8 @@ export default function EditQuizPage({ params }: { params: Promise<{ id: string 
         body: JSON.stringify({
           name: quizName,
           scoreKey: scoreKey,
+          timeScoreKey: timeScoreKey,
+          merkScoreKey: merkScoreKey,
         }),
       });
 

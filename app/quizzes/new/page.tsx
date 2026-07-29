@@ -10,7 +10,12 @@ export default function NewQuizPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (quizName: string, scoreKey: any[]) => {
+  const handleSubmit = async (
+    quizName: string,
+    scoreKey: any[],
+    timeScoreKey: any[],
+    merkScoreKey: any[]
+  ) => {
     setSubmitting(true);
     setError(null);
 
@@ -23,6 +28,8 @@ export default function NewQuizPage() {
         body: JSON.stringify({
           name: quizName,
           scoreKey: scoreKey,
+          timeScoreKey: timeScoreKey,
+          merkScoreKey: merkScoreKey,
         }),
       });
 

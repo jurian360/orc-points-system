@@ -56,12 +56,29 @@ export async function PUT(request: NextRequest,
       falseAnswers: row.falseAnswers || [],
       maxPenalty: typeof row.maxPenalty === 'number' ? row.maxPenalty : 0
     }));
-    
+
+    // Time-based (IPT/WPT/+/-) and Merk reference rows (UI only for now)
+    const processedTimeScoreKey = (body.timeScoreKey || []).map((row: any) => ({
+      rowNumber: row.rowNumber,
+      ipt: row.ipt || '',
+      wpt: row.wpt || '',
+      plusMinus: row.plusMinus || '',
+      maxPenalty: typeof row.maxPenalty === 'number' ? row.maxPenalty : 0
+    }));
+
+    const processedMerkScoreKey = (body.merkScoreKey || []).map((row: any) => ({
+      rowNumber: row.rowNumber,
+      merk: row.merk || '',
+      maxPenalty: typeof row.maxPenalty === 'number' ? row.maxPenalty : 0
+    }));
+
     const updatedQuiz = await Quiz.findByIdAndUpdate(
       id,
-      { 
+      {
         name: body.name,
-        scoreKey: processedScoreKey
+        scoreKey: processedScoreKey,
+        timeScoreKey: processedTimeScoreKey,
+        merkScoreKey: processedMerkScoreKey
       },
       { new: true, runValidators: true }
     );
