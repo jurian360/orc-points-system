@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-interface Quiz {
+interface Stage {
   _id: string;
   name: string;
 }
@@ -25,10 +25,10 @@ interface MerkRow {
   strafp: string;
 }
 
-interface ParticipantFormProps {
-  onSubmit: (participantData: {
+interface AnswerSheetFormProps {
+  onSubmit: (answerSheet: {
     eq: number;
-    quizId: string;
+    stageId: string;
     answers: { rowNumber: number; selectedAnswers: string[]; strafp: number }[];
     timePenalties: {
       rowNumber: number;
@@ -39,7 +39,7 @@ interface ParticipantFormProps {
     }[];
     merkScores: { rowNumber: number; merk: string; strafp: number }[];
   }) => void;
-  quizzes: Quiz[];
+  stages: Stage[];
 }
 
 // Layout constants matching the SARK controlekaart
@@ -53,9 +53,9 @@ const toNumber = (value: string): number => {
   return isNaN(n) ? 0 : n;
 };
 
-const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) => {
+const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) => {
   const [eq, setEq] = useState<number | ''>('');
-  const [quizId, setQuizId] = useState('');
+  const [stageId, setStageId] = useState('');
 
   const [answers, setAnswers] = useState<AnswerRow[]>(
     Array.from({ length: ANSWER_ROWS }, (_, index) => ({
@@ -83,12 +83,12 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
     }))
   );
 
-  // Set the first quiz as selected by default when quizzes are loaded
+  // Select the first stage by default once stages are loaded.
   useEffect(() => {
-    if (quizzes.length > 0 && !quizId) {
-      setQuizId(quizzes[0]._id);
+    if (stages.length > 0 && !stageId) {
+      setStageId(stages[0]._id);
     }
-  }, [quizzes, quizId]);
+  }, [stages, stageId]);
 
   const handleAnswerChange = (rowIndex: number, colIndex: number, value: string) => {
     setAnswers((prev) => {
@@ -143,9 +143,9 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
       return;
     }
 
-    // Validate quiz selection
-    if (!quizId) {
-      alert('Please select a quiz');
+    // Validate stage selection
+    if (!stageId) {
+      alert('Please select a stage');
       return;
     }
 
@@ -171,7 +171,7 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
 
     onSubmit({
       eq: Number(eq),
-      quizId,
+      stageId,
       answers: processedAnswers,
       timePenalties: processedTimePenalties,
       merkScores: processedMerkScores,
@@ -254,20 +254,20 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
           />
         </div>
         <div className="sm:w-72">
-          <label htmlFor="quizId" className="block text-sm font-semibold mb-1 text-gray-800">
-            Select Quiz (Controlekaart)
+          <label htmlFor="stageId" className="block text-sm font-semibold mb-1 text-gray-800">
+            Select Stage (Controlekaart)
           </label>
           <select
-            id="quizId"
+            id="stageId"
             className="w-full p-2 border-2 border-gray-300 rounded-lg shadow-sm text-base focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700"
-            value={quizId}
-            onChange={(e) => setQuizId(e.target.value)}
+            value={stageId}
+            onChange={(e) => setStageId(e.target.value)}
             required
           >
-            <option value="">Select a quiz</option>
-            {quizzes.map((quiz) => (
-              <option key={quiz._id} value={quiz._id}>
-                {quiz.name}
+            <option value="">Select a stage</option>
+            {stages.map((stage) => (
+              <option key={stage._id} value={stage._id}>
+                {stage.name}
               </option>
             ))}
           </select>
@@ -470,7 +470,7 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
             type="submit"
             className="mt-3 w-full px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold text-base shadow-lg transition duration-150"
           >
-            Submit Answers
+            Submit Answer Sheet
           </button>
         </div>
       </div>
@@ -478,4 +478,4 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
   );
 };
 
-export default ParticipantForm;
+export default AnswerSheetForm;

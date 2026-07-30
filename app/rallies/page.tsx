@@ -3,57 +3,54 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-interface Quiz {
+interface Rally {
   _id: string;
   name: string;
   createdAt: string;
 }
 
-export default function QuizzesPage() {
-  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+export default function RalliesPage() {
+  const [rallies, setRallies] = useState<Rally[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchQuizzes = async () => {
+    const fetchRallies = async () => {
       try {
-        const response = await fetch('/api/quizzes');
-        
+        const response = await fetch('/api/rallies');
         if (!response.ok) {
-          throw new Error('Failed to fetch quizzes');
+          throw new Error('Failed to fetch rallies');
         }
-        
         const data = await response.json();
-        setQuizzes(data);
+        setRallies(data);
       } catch (err) {
-        setError('Failed to load quizzes. Please try again later.');
+        setError('Failed to load rallies. Please try again later.');
         console.error(err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchQuizzes();
+    fetchRallies();
   }, []);
 
-  const handleDeleteQuiz = async (quizId: string) => {
-    if (!window.confirm('Are you sure you want to delete this quiz? This action cannot be undone.')) {
+  const handleDeleteRally = async (rallyId: string) => {
+    if (
+      !window.confirm(
+        'Are you sure you want to delete this rally? All of its stages and answer sheets will also be deleted. This action cannot be undone.'
+      )
+    ) {
       return;
     }
 
     try {
-      const response = await fetch(`/api/quizzes/${quizId}`, {
-        method: 'DELETE',
-      });
-
+      const response = await fetch(`/api/rallies/${rallyId}`, { method: 'DELETE' });
       if (!response.ok) {
-        throw new Error('Failed to delete quiz');
+        throw new Error('Failed to delete rally');
       }
-
-      // Remove the deleted quiz from the state
-      setQuizzes(quizzes.filter(quiz => quiz._id !== quizId));
+      setRallies(rallies.filter((rally) => rally._id !== rallyId));
     } catch (err) {
-      alert('Failed to delete quiz. Please try again.');
+      alert('Failed to delete rally. Please try again.');
       console.error(err);
     }
   };
@@ -72,32 +69,32 @@ export default function QuizzesPage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">Quiz Management</h1>
-          <Link 
-            href="/quizzes/new" 
+          <h1 className="text-3xl font-bold text-gray-800">Rally Management</h1>
+          <Link
+            href="/rallies/new"
             className="px-5 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-lg font-medium shadow-md transition duration-150"
           >
-            Create New Quiz
+            Create New Rally
           </Link>
         </div>
 
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
           {loading ? (
             <div className="p-8 text-center">
-              <p className="text-lg text-gray-600">Loading quizzes...</p>
+              <p className="text-lg text-gray-600">Loading rallies...</p>
             </div>
           ) : error ? (
             <div className="p-8 text-center">
               <p className="text-lg text-red-600 font-medium">{error}</p>
             </div>
-          ) : quizzes.length === 0 ? (
+          ) : rallies.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-lg text-gray-600 mb-4">No quizzes found. Create your first quiz to get started.</p>
-              <Link 
-                href="/quizzes/new" 
+              <p className="text-lg text-gray-600 mb-4">No rallies found. Create your first rally to get started.</p>
+              <Link
+                href="/rallies/new"
                 className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block"
               >
-                Create New Quiz
+                Create New Rally
               </Link>
             </div>
           ) : (
@@ -105,7 +102,7 @@ export default function QuizzesPage() {
               <thead className="bg-gray-100">
                 <tr>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                    Quiz Name
+                    Rally Name
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     Created At
@@ -116,30 +113,24 @@ export default function QuizzesPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {quizzes.map((quiz) => (
-                  <tr key={quiz._id} className="hover:bg-gray-50">
+                {rallies.map((rally) => (
+                  <tr key={rally._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-lg font-medium text-gray-900">{quiz.name}</div>
+                      <div className="text-lg font-medium text-gray-900">{rally.name}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-base text-gray-600">{formatDate(quiz.createdAt)}</div>
+                      <div className="text-base text-gray-600">{formatDate(rally.createdAt)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <div className="flex justify-end space-x-4">
                         <Link
-                          href={`/quizzes/${quiz._id}`}
+                          href={`/rallies/${rally._id}`}
                           className="text-blue-600 hover:text-blue-900 font-medium text-base"
                         >
-                          View
-                        </Link>
-                        <Link
-                          href={`/quizzes/${quiz._id}/edit`}
-                          className="text-indigo-600 hover:text-indigo-900 font-medium text-base"
-                        >
-                          Edit
+                          Open
                         </Link>
                         <button
-                          onClick={() => handleDeleteQuiz(quiz._id)}
+                          onClick={() => handleDeleteRally(rally._id)}
                           className="text-red-600 hover:text-red-900 font-medium text-base"
                         >
                           Delete

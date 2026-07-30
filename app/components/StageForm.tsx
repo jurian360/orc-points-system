@@ -21,9 +21,9 @@ interface MerkScoreKeyRow {
   maxPenalty?: number;
 }
 
-interface ScoreKeyFormProps {
+interface StageFormProps {
   onSubmit: (
-    quizName: string,
+    stageName: string,
     scoreKey: ScoreKeyRow[],
     timeScoreKey: TimeScoreKeyRow[],
     merkScoreKey: MerkScoreKeyRow[]
@@ -43,12 +43,12 @@ const LETTER_COLUMNS = 4;
 const TIME_ROWS = 10; // IPT / WPT / +/- / strafp
 const MERK_ROWS = 6; // Merk (officials)
 
-const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
+const StageForm: React.FC<StageFormProps> = ({
   onSubmit,
   initialData,
   isEditing = false,
 }) => {
-  const [quizName, setQuizName] = useState(initialData?.name || '');
+  const [stageName, setStageName] = useState(initialData?.name || '');
 
   const [scoreKey, setScoreKey] = useState<ScoreKeyRow[]>(() => {
     if (initialData?.scoreKey?.length) {
@@ -173,8 +173,8 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!quizName.trim()) {
-      alert('Please enter a quiz name');
+    if (!stageName.trim()) {
+      alert('Please enter a stage name');
       return;
     }
 
@@ -199,7 +199,7 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
       maxPenalty: row.maxPenalty || 0,
     }));
 
-    onSubmit(quizName, processedScoreKey, processedTimeScoreKey, processedMerkScoreKey);
+    onSubmit(stageName, processedScoreKey, processedTimeScoreKey, processedMerkScoreKey);
   };
 
   // Render one ORC score-key row (letters correct/false + max penalty), used in both columns
@@ -272,21 +272,21 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
   return (
     <form onSubmit={handleSubmit} className="w-full mx-auto p-6">
       <div className="mb-8">
-        <label htmlFor="quizName" className="block text-lg font-medium mb-2 text-gray-800">
-          Quiz Name
+        <label htmlFor="stageName" className="block text-lg font-medium mb-2 text-gray-800">
+          Stage Name
         </label>
         <input
           type="text"
-          id="quizName"
+          id="stageName"
           className="w-full p-3 border border-gray-300 rounded-md shadow-sm text-lg text-gray-800"
-          value={quizName}
-          onChange={(e) => setQuizName(e.target.value)}
-          placeholder="Enter quiz name"
+          value={stageName}
+          onChange={(e) => setStageName(e.target.value)}
+          placeholder="e.g. Stage 1 — Coastal leg"
           required
         />
       </div>
 
-      {/* Score key laid out as 4 main columns, like the SARK controlekaart:
+      {/* Answer key laid out as 4 main columns, like the SARK controlekaart:
           ORC's 1-15 | ORC's 16-30 | For Official Use Only (time) | Merk + totals */}
       <div className="mb-4">
         <p className="text-base text-gray-700">
@@ -488,11 +488,11 @@ const ScoreKeyForm: React.FC<ScoreKeyFormProps> = ({
           type="submit"
           className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-lg shadow-md transition duration-150"
         >
-          {isEditing ? 'Update Score Key' : 'Save Score Key'}
+          {isEditing ? 'Update Stage' : 'Save Stage'}
         </button>
       </div>
     </form>
   );
 };
 
-export default ScoreKeyForm;
+export default StageForm;

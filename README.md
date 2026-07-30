@@ -1,5 +1,21 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Data model
+
+The system is organised around rallies:
+
+- **Rally** — the top-level event. An admin creates a rally first.
+- **Stage** — a rally has multiple stages. Each stage holds an answer key
+  (the score key used to grade submissions).
+- **Answer sheet** — a participant's submission for a single stage. A
+  participant (identified by their EQ number) can have multiple answer sheets
+  per rally — one per stage.
+
+Each answer sheet is scored against its stage's answer key (30 penalty points
+per wrong or missing answer, capped per row by the row's max penalty). The
+**rally winner** is the participant with the **lowest total penalty** summed
+across all of their answer sheets.
+
 ## Getting Started
 
 First, run the development server:

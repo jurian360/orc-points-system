@@ -1,17 +1,26 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import ScoreKeyForm from '../../components/ScoreKeyForm';
+import StageForm from '../../../../components/StageForm';
 
-export default function NewQuizPage() {
+export default function NewStagePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
+  const [rallyId, setRallyId] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const getParams = async () => {
+      const resolved = await params;
+      setRallyId(resolved.id);
+    };
+    getParams();
+  }, [params]);
+
   const handleSubmit = async (
-    quizName: string,
+    stageName: string,
     scoreKey: any[],
     timeScoreKey: any[],
     merkScoreKey: any[]
@@ -20,29 +29,26 @@ export default function NewQuizPage() {
     setError(null);
 
     try {
-      const response = await fetch('/api/quizzes', {
+      const response = await fetch('/api/stages', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: quizName,
-          scoreKey: scoreKey,
-          timeScoreKey: timeScoreKey,
-          merkScoreKey: merkScoreKey,
+          rallyId,
+          name: stageName,
+          scoreKey,
+          timeScoreKey,
+          merkScoreKey,
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create quiz');
+        throw new Error('Failed to create stage');
       }
 
-      // Navigate back to the quizzes list page
-      router.push('/quizzes');
+      router.push(`/rallies/${rallyId}`);
     } catch (err) {
-      setError('Failed to create quiz. Please try again.');
+      setError('Failed to create stage. Please try again.');
       console.error(err);
-    } finally {
       setSubmitting(false);
     }
   };
@@ -51,10 +57,8 @@ export default function NewQuizPage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-[1700px] mx-auto p-4">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">Create New Quiz</h1>
-          <p className="text-gray-600 mt-2">
-            Enter the quiz name and score key for a new quiz.
-          </p>
+          <h1 className="text-2xl font-bold">Add Stage</h1>
+          <p className="text-gray-600 mt-2">Enter the stage name and its answer key.</p>
         </div>
 
         {error && (
@@ -64,12 +68,12 @@ export default function NewQuizPage() {
         )}
 
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <ScoreKeyForm onSubmit={handleSubmit} />
+          <StageForm onSubmit={handleSubmit} />
         </div>
 
         <div className="mt-6">
-          <Link href="/quizzes" className="text-blue-600 hover:underline">
-            &larr; Back to Quizzes
+          <Link href={`/rallies/${rallyId}`} className="text-blue-600 hover:underline">
+            &larr; Back to Rally
           </Link>
         </div>
       </div>
@@ -77,7 +81,7 @@ export default function NewQuizPage() {
       {submitting && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
           <div className="bg-white p-4 rounded-lg">
-            <p className="text-lg">Creating quiz...</p>
+            <p className="text-lg">Creating stage...</p>
           </div>
         </div>
       )}
