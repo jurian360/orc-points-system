@@ -159,32 +159,32 @@ export default function ParticipantsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 py-12">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">Participant Answers</h1>
-          <p className="text-gray-700 text-xl">
+    <div className="min-h-screen bg-gray-100 py-4">
+      <div className="max-w-[1700px] mx-auto px-6">
+        <div className="mb-4">
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">Participant Answers</h1>
+          <p className="text-gray-700 text-base">
             Enter and manage participant answers for quizzes.
           </p>
         </div>
 
         {error && (
-          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 px-8 py-5 rounded-lg mb-8 text-lg font-medium shadow-md">
+          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 px-6 py-3 rounded-lg mb-4 text-base font-medium shadow-md">
             <p>{error}</p>
           </div>
         )}
 
         {success && (
-          <div className="bg-green-100 border-l-4 border-green-500 text-green-800 px-8 py-5 rounded-lg mb-8 text-lg font-medium shadow-md">
+          <div className="bg-green-100 border-l-4 border-green-500 text-green-800 px-6 py-3 rounded-lg mb-4 text-base font-medium shadow-md">
             <p>{success}</p>
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-xl overflow-hidden mb-12">
-          <div className="p-8 border-b-2 border-gray-200">
-            <h2 className="text-3xl font-bold mb-4 text-gray-800">Enter New Participant Answers</h2>
+        <div className="bg-white rounded-xl shadow-xl overflow-hidden mb-6">
+          <div className="px-6 py-3 border-b-2 border-gray-200">
+            <h2 className="text-lg font-bold text-gray-800">Enter New Participant Answers</h2>
           </div>
-          <div className="p-8">
+          <div className="p-4">
             {quizzes.length === 0 ? (
               <div className="text-center p-12 bg-gray-50 rounded-lg border-2 border-gray-200">
                 <p className="mb-6 text-xl text-gray-700">No quizzes available. Create a quiz first.</p>
@@ -204,16 +204,16 @@ export default function ParticipantsPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-xl overflow-hidden mb-12">
-          <div className="p-8 border-b-2 border-gray-200">
+        <div className="bg-white rounded-xl shadow-xl overflow-hidden mb-6">
+          <div className="px-6 py-3 border-b-2 border-gray-200">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-              <h2 className="text-3xl font-bold text-gray-800">Submitted Answers</h2>
+              <h2 className="text-lg font-bold text-gray-800">Submitted Answers</h2>
               {quizzes.length > 0 && (
                 <div className="flex items-center">
-                  <label htmlFor="quizFilter" className="mr-4 text-xl text-gray-700 font-medium">Filter by Quiz:</label>
+                  <label htmlFor="quizFilter" className="mr-3 text-base text-gray-700 font-medium">Filter by Quiz:</label>
                   <select
                     id="quizFilter"
-                    className="border-2 border-gray-300 rounded-lg p-3 text-lg shadow-sm bg-white min-w-[200px] font-medium"
+                    className="border-2 border-gray-300 rounded-lg p-2 text-base shadow-sm bg-white min-w-[200px] font-medium"
                     value={selectedQuizId}
                     onChange={handleQuizChange}
                   >
@@ -227,8 +227,8 @@ export default function ParticipantsPage() {
               )}
             </div>
           </div>
-          
-          <div className="p-8">
+
+          <div className="p-4">
             {loading ? (
               <div className="text-center p-12">
                 <div className="animate-pulse flex justify-center">

@@ -178,17 +178,17 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
     });
   };
 
-  // Render one ORC answer row (letters + strafp)
+  // Render one ORC answer row (letters + strafp) — compact so the whole card fits on screen
   const renderAnswerRow = (row: AnswerRow, rowIndex: number) => (
     <tr key={row.rowNumber} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-      <td className="py-1.5 px-2 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center w-10">
+      <td className="py-0.5 px-1 border-b border-r border-gray-300 font-bold text-sm text-gray-800 text-center w-7">
         {row.rowNumber}
       </td>
       {Array.from({ length: LETTER_COLUMNS }).map((_, colIndex) => (
-        <td key={colIndex} className="py-1.5 px-1 border-b border-r border-gray-300 text-center">
+        <td key={colIndex} className="py-0.5 px-0.5 border-b border-r border-gray-300 text-center">
           <input
             type="text"
-            className="w-11 h-11 p-0 border border-gray-400 rounded text-center text-2xl font-bold uppercase focus:border-green-500 focus:ring-1 focus:ring-green-200 text-gray-700"
+            className="w-9 h-8 p-0 border border-gray-400 rounded text-center text-lg font-bold uppercase focus:border-green-500 focus:ring-1 focus:ring-green-200 text-gray-700"
             maxLength={1}
             value={row.selectedAnswers[colIndex] || ''}
             onChange={(e) => handleAnswerChange(rowIndex, colIndex, e.target.value)}
@@ -196,11 +196,11 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
           />
         </td>
       ))}
-      <td className="py-1.5 px-1 border-b border-gray-300 text-center">
+      <td className="py-0.5 px-0.5 border-b border-gray-300 text-center">
         <input
           type="number"
           min={0}
-          className="w-16 h-11 p-1 border border-gray-400 rounded text-center text-base font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
+          className="w-12 h-8 p-0.5 border border-gray-400 rounded text-center text-sm font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
           value={row.strafp}
           onChange={(e) => handleAnswerStrafpChange(rowIndex, e.target.value)}
           aria-label={`Strafpunten for row ${row.rowNumber}`}
@@ -217,16 +217,16 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
   const answerHeader = (
     <thead>
       <tr className="bg-green-100">
-        <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-bold text-gray-800 w-10">
+        <th className="py-1 px-1 border-b border-r border-gray-300 text-[10px] font-bold text-gray-800 w-7">
           NR
         </th>
         <th
           colSpan={LETTER_COLUMNS}
-          className="py-2 px-2 border-b border-r border-gray-300 text-xs font-bold text-gray-800"
+          className="py-1 px-1 border-b border-r border-gray-300 text-[10px] font-bold text-gray-800"
         >
           LETTERS
         </th>
-        <th className="py-2 px-2 border-b border-gray-300 text-xs font-bold text-gray-800">
+        <th className="py-1 px-1 border-b border-gray-300 text-[10px] font-bold text-gray-800">
           STRAFP.
         </th>
       </tr>
@@ -234,11 +234,11 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
   );
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-7xl mx-auto">
-      {/* Header — controlekaart style */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-        <div>
-          <label htmlFor="eq" className="block text-xl font-semibold mb-3 text-gray-800">
+    <form onSubmit={handleSubmit} className="w-full mx-auto">
+      {/* Header — controlekaart style (compact, single row) */}
+      <div className="flex flex-col sm:flex-row sm:items-end gap-4 mb-4">
+        <div className="sm:w-48">
+          <label htmlFor="eq" className="block text-sm font-semibold mb-1 text-gray-800">
             EQ. No. — Participant ID (1-100)
           </label>
           <input
@@ -246,20 +246,20 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
             id="eq"
             min={1}
             max={100}
-            className="w-full p-4 border-2 border-gray-300 rounded-lg shadow-sm text-xl focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700"
+            className="w-full p-2 border-2 border-gray-300 rounded-lg shadow-sm text-base focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700"
             value={eq}
             onChange={(e) => setEq(e.target.value === '' ? '' : Number(e.target.value))}
             placeholder="Enter ID (1-100)"
             required
           />
         </div>
-        <div>
-          <label htmlFor="quizId" className="block text-xl font-semibold mb-3 text-gray-800">
+        <div className="sm:w-72">
+          <label htmlFor="quizId" className="block text-sm font-semibold mb-1 text-gray-800">
             Select Quiz (Controlekaart)
           </label>
           <select
             id="quizId"
-            className="w-full p-4 border-2 border-gray-300 rounded-lg shadow-sm text-xl focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700"
+            className="w-full p-2 border-2 border-gray-300 rounded-lg shadow-sm text-base focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700"
             value={quizId}
             onChange={(e) => setQuizId(e.target.value)}
             required
@@ -272,57 +272,60 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
             ))}
           </select>
         </div>
-      </div>
-
-      {/* ORC's answers — 30 rows, split into two columns of 15 */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold mb-2 text-gray-800">ORC&apos;s — Answers</h2>
-        <p className="mb-4 text-base text-gray-700">
-          Enter single letter answers (A, B, C, …) for each applicable column. 30 rows total.
+        <p className="text-sm text-gray-600 sm:ml-auto sm:pb-2">
+          Enter single-letter answers per column, plus strafpunten per row.
         </p>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {[leftRows, rightRows].map((rows, colGroup) => (
-            <div
-              key={colGroup}
-              className="border-2 border-gray-300 rounded-lg shadow-md overflow-x-auto"
-            >
-              <table className="min-w-full border-collapse">
-                {answerHeader}
-                <tbody>
-                  {rows.map((row) => renderAnswerRow(row, row.rowNumber - 1))}
-                </tbody>
-              </table>
-            </div>
-          ))}
-        </div>
       </div>
 
-      {/* Official use + Merk + Totals */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* For official use only — IPT / WPT / +/- / STRAFP */}
+      {/* Score card laid out as 4 main columns, like the SARK controlekaart:
+          ORC's 1-15 | ORC's 16-30 | For Official Use Only (time) | Merk + totals */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-4 items-start">
+        {/* Column 1 — ORC's rows 1-15 */}
         <div>
-          <h2 className="text-2xl font-bold mb-2 text-gray-800">For Official Use Only</h2>
-          <p className="mb-4 text-base text-gray-700">
-            Time-based penalty points (IPT / WPT / +/-). 10 rows.
-          </p>
+          <h2 className="text-sm font-bold mb-1 text-gray-800">ORC&apos;s (1&ndash;15)</h2>
+          <div className="border-2 border-gray-300 rounded-lg shadow-md overflow-x-auto">
+            <table className="min-w-full border-collapse">
+              {answerHeader}
+              <tbody>
+                {leftRows.map((row) => renderAnswerRow(row, row.rowNumber - 1))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Column 2 — ORC's rows 16-30 */}
+        <div>
+          <h2 className="text-sm font-bold mb-1 text-gray-800">ORC&apos;s (16&ndash;30)</h2>
+          <div className="border-2 border-gray-300 rounded-lg shadow-md overflow-x-auto">
+            <table className="min-w-full border-collapse">
+              {answerHeader}
+              <tbody>
+                {rightRows.map((row) => renderAnswerRow(row, row.rowNumber - 1))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Column 3 — For official use only (IPT / WPT / +/- / STRAFP) */}
+        <div>
+          <h2 className="text-sm font-bold mb-1 text-gray-800">For Official Use Only</h2>
           <div className="border-2 border-gray-300 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full border-collapse">
               <thead>
                 <tr className="bg-yellow-100">
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-bold text-gray-800 w-10">
+                  <th className="py-1 px-1 border-b border-r border-gray-300 text-[10px] font-bold text-gray-800 w-7">
                     NR
                   </th>
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-bold text-gray-800">
+                  <th className="py-1 px-1 border-b border-r border-gray-300 text-[10px] font-bold text-gray-800">
                     IPT 0
                   </th>
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-bold text-gray-800">
+                  <th className="py-1 px-1 border-b border-r border-gray-300 text-[10px] font-bold text-gray-800">
                     WPT
                   </th>
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-bold text-gray-800">
+                  <th className="py-1 px-1 border-b border-r border-gray-300 text-[10px] font-bold text-gray-800">
                     +/-
                   </th>
-                  <th className="py-2 px-2 border-b border-gray-300 text-xs font-bold text-gray-800">
+                  <th className="py-1 px-1 border-b border-gray-300 text-[10px] font-bold text-gray-800">
                     STRAFP.
                   </th>
                 </tr>
@@ -333,28 +336,28 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
                     key={row.rowNumber}
                     className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                   >
-                    <td className="py-1.5 px-2 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center">
+                    <td className="py-0.5 px-1 border-b border-r border-gray-300 font-bold text-sm text-gray-800 text-center">
                       {row.rowNumber}
                     </td>
                     {(['ipt', 'wpt', 'plusMinus'] as const).map((field) => (
                       <td
                         key={field}
-                        className="py-1.5 px-1 border-b border-r border-gray-300 text-center"
+                        className="py-0.5 px-0.5 border-b border-r border-gray-300 text-center"
                       >
                         <input
                           type="text"
-                          className="w-20 h-10 p-1 border border-gray-400 rounded text-center text-base focus:border-yellow-500 focus:ring-1 focus:ring-yellow-200 text-gray-700"
+                          className="w-14 h-8 p-0.5 border border-gray-400 rounded text-center text-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-200 text-gray-700"
                           value={row[field]}
                           onChange={(e) => handleTimeChange(rowIndex, field, e.target.value)}
                           aria-label={`${field} for time row ${row.rowNumber}`}
                         />
                       </td>
                     ))}
-                    <td className="py-1.5 px-1 border-b border-gray-300 text-center">
+                    <td className="py-0.5 px-0.5 border-b border-gray-300 text-center">
                       <input
                         type="number"
                         min={0}
-                        className="w-16 h-10 p-1 border border-gray-400 rounded text-center text-base font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
+                        className="w-12 h-8 p-0.5 border border-gray-400 rounded text-center text-sm font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
                         value={row.strafp}
                         onChange={(e) => handleTimeChange(rowIndex, 'strafp', e.target.value)}
                         aria-label={`Strafpunten for time row ${row.rowNumber}`}
@@ -367,23 +370,20 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
           </div>
         </div>
 
-        {/* Merk (officials) + Totaal Strafpunten */}
+        {/* Column 4 — Merk (officials) + Totaal Strafpunten */}
         <div>
-          <h2 className="text-2xl font-bold mb-2 text-gray-800">Merk</h2>
-          <p className="mb-4 text-base text-gray-700">
-            Additional scoring by officials. 6 rows.
-          </p>
+          <h2 className="text-sm font-bold mb-1 text-gray-800">Merk</h2>
           <div className="border-2 border-gray-300 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full border-collapse">
               <thead>
                 <tr className="bg-orange-100">
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-bold text-gray-800 w-10">
+                  <th className="py-1 px-1 border-b border-r border-gray-300 text-[10px] font-bold text-gray-800 w-7">
                     NR
                   </th>
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-bold text-gray-800">
+                  <th className="py-1 px-1 border-b border-r border-gray-300 text-[10px] font-bold text-gray-800">
                     MERK
                   </th>
-                  <th className="py-2 px-2 border-b border-gray-300 text-xs font-bold text-gray-800">
+                  <th className="py-1 px-1 border-b border-gray-300 text-[10px] font-bold text-gray-800">
                     STRAFP.
                   </th>
                 </tr>
@@ -394,23 +394,23 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
                     key={row.rowNumber}
                     className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                   >
-                    <td className="py-1.5 px-2 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center">
+                    <td className="py-0.5 px-1 border-b border-r border-gray-300 font-bold text-sm text-gray-800 text-center">
                       {row.rowNumber}
                     </td>
-                    <td className="py-1.5 px-1 border-b border-r border-gray-300 text-center">
+                    <td className="py-0.5 px-0.5 border-b border-r border-gray-300 text-center">
                       <input
                         type="text"
-                        className="w-full min-w-[8rem] h-10 p-1 border border-gray-400 rounded text-base focus:border-orange-500 focus:ring-1 focus:ring-orange-200 text-gray-700"
+                        className="w-full min-w-[6rem] h-8 p-1 border border-gray-400 rounded text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-200 text-gray-700"
                         value={row.merk}
                         onChange={(e) => handleMerkChange(rowIndex, 'merk', e.target.value)}
                         aria-label={`Merk for row ${row.rowNumber}`}
                       />
                     </td>
-                    <td className="py-1.5 px-1 border-b border-gray-300 text-center">
+                    <td className="py-0.5 px-0.5 border-b border-gray-300 text-center">
                       <input
                         type="number"
                         min={0}
-                        className="w-16 h-10 p-1 border border-gray-400 rounded text-center text-base font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
+                        className="w-12 h-8 p-0.5 border border-gray-400 rounded text-center text-sm font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
                         value={row.strafp}
                         onChange={(e) => handleMerkChange(rowIndex, 'strafp', e.target.value)}
                         aria-label={`Strafpunten for merk row ${row.rowNumber}`}
@@ -423,57 +423,56 @@ const ParticipantForm: React.FC<ParticipantFormProps> = ({ onSubmit, quizzes }) 
           </div>
 
           {/* Totaal Strafpunten overview */}
-          <div className="mt-6 border-2 border-gray-800 rounded-lg overflow-hidden shadow-md">
-            <div className="bg-gray-800 text-white py-2 px-4 text-center font-bold text-lg tracking-wide">
+          <div className="mt-3 border-2 border-gray-800 rounded-lg overflow-hidden shadow-md">
+            <div className="bg-gray-800 text-white py-1 px-3 text-center font-bold text-sm tracking-wide">
               TOTAAL STRAFPUNTEN
             </div>
             <table className="min-w-full border-collapse">
               <tbody>
                 <tr>
-                  <td className="py-2 px-4 border-b border-r border-gray-300 font-semibold text-gray-800">
+                  <td className="py-1 px-3 border-b border-r border-gray-300 font-semibold text-sm text-gray-800">
                     ORC&apos;s
                   </td>
-                  <td className="py-2 px-4 border-b border-gray-300 text-right font-bold text-xl text-gray-900 w-24">
+                  <td className="py-1 px-3 border-b border-gray-300 text-right font-bold text-lg text-gray-900 w-20">
                     {orcTotal}
                   </td>
                 </tr>
                 <tr>
-                  <td className="py-2 px-4 border-b border-r border-gray-300 font-semibold text-gray-800">
+                  <td className="py-1 px-3 border-b border-r border-gray-300 font-semibold text-sm text-gray-800">
                     Tijd
                   </td>
-                  <td className="py-2 px-4 border-b border-gray-300 text-right font-bold text-xl text-gray-900">
+                  <td className="py-1 px-3 border-b border-gray-300 text-right font-bold text-lg text-gray-900">
                     {tijdTotal}
                   </td>
                 </tr>
                 <tr>
-                  <td className="py-2 px-4 border-b border-r border-gray-300 font-semibold text-gray-800">
+                  <td className="py-1 px-3 border-b border-r border-gray-300 font-semibold text-sm text-gray-800">
                     Diversen
                   </td>
-                  <td className="py-2 px-4 border-b border-gray-300 text-right font-bold text-xl text-gray-900">
+                  <td className="py-1 px-3 border-b border-gray-300 text-right font-bold text-lg text-gray-900">
                     {diversenTotal}
                   </td>
                 </tr>
                 <tr className="bg-gray-100">
-                  <td className="py-3 px-4 border-r border-gray-300 font-bold text-lg text-gray-900">
+                  <td className="py-1.5 px-3 border-r border-gray-300 font-bold text-base text-gray-900">
                     Totaal
                   </td>
-                  <td className="py-3 px-4 text-right font-extrabold text-2xl text-red-600">
+                  <td className="py-1.5 px-3 text-right font-extrabold text-xl text-red-600">
                     {grandTotal}
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
-        </div>
-      </div>
 
-      <div className="text-right mt-8">
-        <button
-          type="submit"
-          className="px-8 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold text-xl shadow-lg transition duration-150"
-        >
-          Submit Answers
-        </button>
+          {/* Submit lives under the totals so the whole card fits without scrolling */}
+          <button
+            type="submit"
+            className="mt-3 w-full px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold text-base shadow-lg transition duration-150"
+          >
+            Submit Answers
+          </button>
+        </div>
       </div>
     </form>
   );
