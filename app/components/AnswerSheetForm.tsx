@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface Stage {
   _id: string;
@@ -48,6 +48,20 @@ const LETTER_COLUMNS = 4;
 const TIME_ROWS = 10; // IPT / WPT / +/- / strafp
 const MERK_ROWS = 6; // Merk (officials)
 
+const ORC_HALF = Math.ceil(ANSWER_ROWS / 2); // rows per ORC column
+
+// Grid identifiers + dimensions used for keyboard navigation between cells.
+// Each visible table is its own grid so arrow keys stay within the column the
+// user is looking at. Columns include the trailing strafpunten field.
+type GridName = 'orc-left' | 'orc-right' | 'time' | 'merk';
+
+const GRID_DIMS: Record<GridName, { rows: number; cols: number }> = {
+  'orc-left': { rows: ORC_HALF, cols: LETTER_COLUMNS + 1 },
+  'orc-right': { rows: ANSWER_ROWS - ORC_HALF, cols: LETTER_COLUMNS + 1 },
+  time: { rows: TIME_ROWS, cols: 4 }, // ipt, wpt, +/-, strafp
+  merk: { rows: MERK_ROWS, cols: 2 }, // merk, strafp
+};
+
 const toNumber = (value: string): number => {
   const n = parseInt(value, 10);
   return isNaN(n) ? 0 : n;
@@ -56,6 +70,82 @@ const toNumber = (value: string): number => {
 const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) => {
   const [eq, setEq] = useState<number | ''>('');
   const [stageId, setStageId] = useState('');
+
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Move focus to a specific cell, identified by grid + row + column, and
+  // select its contents so a new value overwrites the old one.
+  const focusCell = (grid: GridName, row: number, col: number) => {
+    const dims = GRID_DIMS[grid];
+    if (row < 0 || row >= dims.rows || col < 0 || col >= dims.cols) return false;
+    const el = formRef.current?.querySelector<HTMLInputElement>(
+      `input[data-grid="${grid}"][data-row="${row}"][data-col="${col}"]`
+    );
+    if (!el) return false;
+    el.focus();
+    el.select();
+    return true;
+  };
+
+  // Spreadsheet-style keyboard navigation shared by every cell.
+  const handleCellKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const el = e.currentTarget;
+    const grid = el.dataset.grid as GridName | undefined;
+    const row = Number(el.dataset.row);
+    const col = Number(el.dataset.col);
+    if (!grid || !GRID_DIMS[grid] || Number.isNaN(row) || Number.isNaN(col)) return;
+
+    // selectionStart is null for number inputs; treat those as always at an edge
+    // so the arrow keys move between cells instead of nudging the number.
+    const caret = el.selectionStart;
+    const atStart = caret === null || (caret === 0 && el.selectionEnd === 0);
+    const atEnd =
+      caret === null || (caret === el.value.length && el.selectionEnd === el.value.length);
+
+    switch (e.key) {
+      case 'ArrowRight':
+        if (atEnd) {
+          e.preventDefault();
+          focusCell(grid, row, col + 1);
+        }
+        break;
+      case 'ArrowLeft':
+        if (atStart) {
+          e.preventDefault();
+          focusCell(grid, row, col - 1);
+        }
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        focusCell(grid, row - 1, col);
+        break;
+      case 'ArrowDown':
+      case 'Enter':
+        e.preventDefault();
+        focusCell(grid, row + 1, col);
+        break;
+      case 'Tab': {
+        // Tab / Shift+Tab move down / up a row; at the grid edge let the browser
+        // move focus out of the grid as usual.
+        const nextRow = e.shiftKey ? row - 1 : row + 1;
+        if (nextRow >= 0 && nextRow < GRID_DIMS[grid].rows) {
+          e.preventDefault();
+          focusCell(grid, nextRow, col);
+        }
+        break;
+      }
+    }
+  };
+
+  // After a letter is typed in an ORC answer cell, jump to the next letter
+  // column (wrapping to the first column of the next row) for fast entry.
+  const advanceAfterLetter = (grid: GridName, localRow: number, colIndex: number) => {
+    if (colIndex < LETTER_COLUMNS - 1) {
+      focusCell(grid, localRow, colIndex + 1);
+    } else {
+      focusCell(grid, localRow + 1, 0);
+    }
+  };
 
   const [answers, setAnswers] = useState<AnswerRow[]>(
     Array.from({ length: ANSWER_ROWS }, (_, index) => ({
@@ -178,8 +268,15 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
     });
   };
 
-  // Render one ORC answer row (letters + strafp) — compact so the whole card fits on screen
-  const renderAnswerRow = (row: AnswerRow, rowIndex: number) => (
+  // Render one ORC answer row (letters + strafp) — compact so the whole card fits on screen.
+  // `grid`/`localRow` position the row for keyboard navigation; `rowIndex` is the
+  // absolute index into the answers state array used when updating values.
+  const renderAnswerRow = (
+    row: AnswerRow,
+    rowIndex: number,
+    grid: GridName,
+    localRow: number
+  ) => (
     <tr key={row.rowNumber} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
       <td className="py-0.5 px-1 border-b border-r border-gray-300 font-bold text-sm text-gray-800 text-center w-7">
         {row.rowNumber}
@@ -191,7 +288,14 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
             className="w-9 h-8 p-0 border border-gray-400 rounded text-center text-lg font-bold uppercase focus:border-green-500 focus:ring-1 focus:ring-green-200 text-gray-700"
             maxLength={1}
             value={row.selectedAnswers[colIndex] || ''}
-            onChange={(e) => handleAnswerChange(rowIndex, colIndex, e.target.value)}
+            data-grid={grid}
+            data-row={localRow}
+            data-col={colIndex}
+            onKeyDown={handleCellKeyDown}
+            onChange={(e) => {
+              handleAnswerChange(rowIndex, colIndex, e.target.value);
+              if (e.target.value) advanceAfterLetter(grid, localRow, colIndex);
+            }}
             aria-label={`Answer for row ${row.rowNumber}, letter ${colIndex + 1}`}
           />
         </td>
@@ -202,6 +306,10 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
           min={0}
           className="w-12 h-8 p-0.5 border border-gray-400 rounded text-center text-sm font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
           value={row.strafp}
+          data-grid={grid}
+          data-row={localRow}
+          data-col={LETTER_COLUMNS}
+          onKeyDown={handleCellKeyDown}
           onChange={(e) => handleAnswerStrafpChange(rowIndex, e.target.value)}
           aria-label={`Strafpunten for row ${row.rowNumber}`}
         />
@@ -210,7 +318,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
   );
 
   // ORC section is split into two columns of 15 rows, like the paper card
-  const half = Math.ceil(ANSWER_ROWS / 2);
+  const half = ORC_HALF;
   const leftRows = answers.slice(0, half);
   const rightRows = answers.slice(half);
 
@@ -234,7 +342,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
   );
 
   return (
-    <form onSubmit={handleSubmit} className="w-full mx-auto">
+    <form ref={formRef} onSubmit={handleSubmit} className="w-full mx-auto">
       {/* Header — controlekaart style (compact, single row) */}
       <div className="flex flex-col sm:flex-row sm:items-end gap-4 mb-4">
         <div className="sm:w-48">
@@ -287,7 +395,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
             <table className="min-w-full border-collapse">
               {answerHeader}
               <tbody>
-                {leftRows.map((row) => renderAnswerRow(row, row.rowNumber - 1))}
+                {leftRows.map((row, i) => renderAnswerRow(row, row.rowNumber - 1, 'orc-left', i))}
               </tbody>
             </table>
           </div>
@@ -300,7 +408,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
             <table className="min-w-full border-collapse">
               {answerHeader}
               <tbody>
-                {rightRows.map((row) => renderAnswerRow(row, row.rowNumber - 1))}
+                {rightRows.map((row, i) => renderAnswerRow(row, row.rowNumber - 1, 'orc-right', i))}
               </tbody>
             </table>
           </div>
@@ -339,7 +447,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
                     <td className="py-0.5 px-1 border-b border-r border-gray-300 font-bold text-sm text-gray-800 text-center">
                       {row.rowNumber}
                     </td>
-                    {(['ipt', 'wpt', 'plusMinus'] as const).map((field) => (
+                    {(['ipt', 'wpt', 'plusMinus'] as const).map((field, fieldIndex) => (
                       <td
                         key={field}
                         className="py-0.5 px-0.5 border-b border-r border-gray-300 text-center"
@@ -348,6 +456,10 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
                           type="text"
                           className="w-14 h-8 p-0.5 border border-gray-400 rounded text-center text-sm focus:border-yellow-500 focus:ring-1 focus:ring-yellow-200 text-gray-700"
                           value={row[field]}
+                          data-grid="time"
+                          data-row={rowIndex}
+                          data-col={fieldIndex}
+                          onKeyDown={handleCellKeyDown}
                           onChange={(e) => handleTimeChange(rowIndex, field, e.target.value)}
                           aria-label={`${field} for time row ${row.rowNumber}`}
                         />
@@ -359,6 +471,10 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
                         min={0}
                         className="w-12 h-8 p-0.5 border border-gray-400 rounded text-center text-sm font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
                         value={row.strafp}
+                        data-grid="time"
+                        data-row={rowIndex}
+                        data-col={3}
+                        onKeyDown={handleCellKeyDown}
                         onChange={(e) => handleTimeChange(rowIndex, 'strafp', e.target.value)}
                         aria-label={`Strafpunten for time row ${row.rowNumber}`}
                       />
@@ -402,6 +518,10 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
                         type="text"
                         className="w-full min-w-[6rem] h-8 p-1 border border-gray-400 rounded text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-200 text-gray-700"
                         value={row.merk}
+                        data-grid="merk"
+                        data-row={rowIndex}
+                        data-col={0}
+                        onKeyDown={handleCellKeyDown}
                         onChange={(e) => handleMerkChange(rowIndex, 'merk', e.target.value)}
                         aria-label={`Merk for row ${row.rowNumber}`}
                       />
@@ -412,6 +532,10 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
                         min={0}
                         className="w-12 h-8 p-0.5 border border-gray-400 rounded text-center text-sm font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
                         value={row.strafp}
+                        data-grid="merk"
+                        data-row={rowIndex}
+                        data-col={1}
+                        onKeyDown={handleCellKeyDown}
                         onChange={(e) => handleMerkChange(rowIndex, 'strafp', e.target.value)}
                         aria-label={`Strafpunten for merk row ${row.rowNumber}`}
                       />
