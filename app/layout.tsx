@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "ORC Points System",
-  description: "Manage quiz answers and scoring",
+  description: "Manage rallies, stages, and answer sheet scoring",
 };
 
 export default function RootLayout({

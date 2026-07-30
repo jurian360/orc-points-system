@@ -26,22 +26,10 @@ const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
                 Home
               </Link>
               <Link
-                href="/quizzes"
+                href="/rallies"
                 className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
               >
-                Quizzes
-              </Link>
-              <Link
-                href="/participants"
-                className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
-              >
-                Participants
-              </Link>
-              <Link
-                href="/participant-answers"
-                className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
-              >
-                Participant Scoring
+                Rallies
               </Link>
             </div>
           </div>

@@ -1,9 +1,37 @@
-// Update the models/index.ts file
+// Data models for the ORC rally points system.
+//
+// Structure:
+//   Rally  -> the top-level event an admin creates first
+//   Stage  -> a rally has many stages; each stage holds an answer key
+//   AnswerSheet -> a participant's filled-in sheet for a single stage.
+//                  A participant (eq) can have many answer sheets per rally
+//                  (one per stage). The rally winner is decided by the sum of
+//                  the penalty points of all of a participant's answer sheets.
 
 import mongoose from 'mongoose';
 
-// Define the schema for a quiz
-const QuizSchema = new mongoose.Schema({
+// A rally is the top-level event. Stages and answer sheets hang off of it.
+const RallySchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+// A stage belongs to a rally and carries the answer key (score key) used to
+// score the participant answer sheets submitted for that stage.
+const StageSchema = new mongoose.Schema({
+  rallyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Rally',
+    required: true,
+    index: true,
+  },
   name: {
     type: String,
     required: true,
@@ -26,7 +54,6 @@ const QuizSchema = new mongoose.Schema({
     } // Maximum penalty points for the row
   }],
   // Time-based scoring reference (IPT / WPT / +/-), 10 rows.
-  // UI only for now; scoring logic to be added later.
   timeScoreKey: [{
     rowNumber: Number,
     ipt: String,
@@ -48,18 +75,25 @@ const QuizSchema = new mongoose.Schema({
   }],
 });
 
-// Define the schema for participant answers
-const ParticipantAnswerSchema = new mongoose.Schema({
+// An answer sheet is a participant's submission for one stage of a rally.
+const AnswerSheetSchema = new mongoose.Schema({
   eq: {
     type: Number,
     required: true,
     min: 1,
     max: 100,
   },
-  quizId: {
+  rallyId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Quiz',
+    ref: 'Rally',
     required: true,
+    index: true,
+  },
+  stageId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Stage',
+    required: true,
+    index: true,
   },
   answers: [{
     rowNumber: Number,
@@ -70,7 +104,6 @@ const ParticipantAnswerSchema = new mongoose.Schema({
     } // ORC penalty points for the row
   }],
   // Time-based penalty entry (IPT / WPT / +/- / strafpunten), 10 rows.
-  // UI only for now; scoring logic to be added later.
   timePenalties: [{
     rowNumber: Number,
     ipt: String,
@@ -94,13 +127,20 @@ const ParticipantAnswerSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-  penalties: {
+  // Total penalty points for this answer sheet, auto-computed from the stage's
+  // answer key at submission time. Summed across a participant's sheets to rank
+  // the rally standings.
+  totalPenalty: {
     type: Number,
     default: 0
-  } // Total penalty points for this participant
+  }
 });
 
+// A participant fills in at most one sheet per stage.
+AnswerSheetSchema.index({ stageId: 1, eq: 1 }, { unique: true });
+
 // Create models if they don't already exist
-export const Quiz = mongoose.models.Quiz || mongoose.model('Quiz', QuizSchema);
-export const ParticipantAnswer = mongoose.models.ParticipantAnswer || 
-  mongoose.model('ParticipantAnswer', ParticipantAnswerSchema);
+export const Rally = mongoose.models.Rally || mongoose.model('Rally', RallySchema);
+export const Stage = mongoose.models.Stage || mongoose.model('Stage', StageSchema);
+export const AnswerSheet = mongoose.models.AnswerSheet ||
+  mongoose.model('AnswerSheet', AnswerSheetSchema);
