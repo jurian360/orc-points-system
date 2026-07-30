@@ -116,6 +116,91 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
 
   const totalPenalties = calculateTotalPenalty(stage.scoreKey, sheet.answers);
 
+  // Split the ORC answer rows into two columns (e.g. 1-15 / 16-30) so the view
+  // mirrors the two ORC's columns on the physical SARK controlekaart and can be
+  // compared to it directly.
+  const sortedRows = [...stage.scoreKey].sort((a, b) => a.rowNumber - b.rowNumber);
+  const half = Math.ceil(sortedRows.length / 2);
+  const leftRows = sortedRows.slice(0, half);
+  const rightRows = sortedRows.slice(half);
+
+  const columnRange = (rows: ScoreKeyRow[]): string =>
+    rows.length > 0 ? `${rows[0].rowNumber}–${rows[rows.length - 1].rowNumber}` : '';
+
+  const answerHeader = (
+    <thead>
+      <tr className="bg-purple-100">
+        <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800 w-10">NR</th>
+        <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800">Col 1</th>
+        <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800">Col 2</th>
+        <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800">Col 3</th>
+        <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800">Col 4</th>
+        <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800">Strafp.</th>
+      </tr>
+    </thead>
+  );
+
+  const renderAnswerRow = (row: ScoreKeyRow) => {
+    const participantRow = findParticipantAnswer(row.rowNumber);
+    const rowPenalties = calculateRowPenalty(row, participantRow);
+
+    return (
+      <tr key={row.rowNumber} className={row.rowNumber % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+        <td className="py-1.5 px-2 border-2 border-gray-300 font-bold text-base text-gray-800 text-center">
+          {row.rowNumber}
+        </td>
+        {[0, 1, 2, 3].map((colIndex) => {
+          const answer = participantRow?.selectedAnswers[colIndex] || '';
+          const isCorrect = isAnswerCorrect(row.rowNumber, colIndex, answer);
+          const isFalse = isAnswerFalse(row.rowNumber, colIndex, answer);
+
+          let cellClass = 'bg-gray-100 text-gray-400';
+          let borderClass = 'border-gray-300';
+
+          if (answer) {
+            if (isCorrect) {
+              cellClass = 'bg-green-100 text-green-800';
+              borderClass = 'border-green-400';
+            } else if (isFalse) {
+              cellClass = 'bg-red-100 text-red-800';
+              borderClass = 'border-red-400';
+            } else {
+              cellClass = 'bg-yellow-100 text-yellow-800';
+              borderClass = 'border-yellow-400';
+            }
+          }
+
+          return (
+            <td key={colIndex} className="py-1.5 px-1 border-2 border-gray-300 text-center">
+              {answer ? (
+                <div
+                  className={`w-10 h-10 mx-auto flex items-center justify-center rounded-lg shadow-sm border-2 ${cellClass} ${borderClass}`}
+                >
+                  <span className="text-xl font-bold">{answer}</span>
+                </div>
+              ) : (
+                <div className="w-10 h-10 mx-auto flex items-center justify-center bg-gray-100 rounded-lg shadow-sm border-2 border-gray-300">
+                  <span className="text-lg text-gray-400">-</span>
+                </div>
+              )}
+            </td>
+          );
+        })}
+        <td className="py-1.5 px-1 border-2 border-gray-300 text-center">
+          {rowPenalties > 0 ? (
+            <div className="px-2 py-1 bg-red-100 text-red-800 rounded-md shadow-sm border border-red-300 font-bold text-sm text-center">
+              {rowPenalties}
+            </div>
+          ) : (
+            <div className="px-2 py-1 bg-green-100 text-green-800 rounded-md shadow-sm border border-green-300 font-bold text-sm text-center">
+              0
+            </div>
+          )}
+        </td>
+      </tr>
+    );
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">Answer Sheet Scoring</h1>
@@ -128,79 +213,34 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
           <p className="text-xl font-semibold mb-6 text-red-600">
             Total Penalties: {totalPenalties} points
           </p>
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse">
-              <thead>
-                <tr className="bg-purple-100">
-                  <th className="py-4 px-6 border-2 border-gray-300 text-left font-bold text-xl text-gray-800">Row</th>
-                  <th className="py-4 px-6 border-2 border-gray-300 text-left font-bold text-xl text-gray-800">Column 1</th>
-                  <th className="py-4 px-6 border-2 border-gray-300 text-left font-bold text-xl text-gray-800">Column 2</th>
-                  <th className="py-4 px-6 border-2 border-gray-300 text-left font-bold text-xl text-gray-800">Column 3</th>
-                  <th className="py-4 px-6 border-2 border-gray-300 text-left font-bold text-xl text-gray-800">Column 4</th>
-                  <th className="py-4 px-6 border-2 border-gray-300 text-left font-bold text-xl text-gray-800">Penalties</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stage.scoreKey.map((row) => {
-                  const participantRow = findParticipantAnswer(row.rowNumber);
-                  const rowPenalties = calculateRowPenalty(row, participantRow);
 
-                  return (
-                    <tr key={row.rowNumber} className={row.rowNumber % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                      <td className="py-4 px-6 border-2 border-gray-300 font-bold text-xl text-gray-800">{row.rowNumber}</td>
-                      {[0, 1, 2, 3].map((colIndex) => {
-                        const answer = participantRow?.selectedAnswers[colIndex] || '';
-                        const isCorrect = isAnswerCorrect(row.rowNumber, colIndex, answer);
-                        const isFalse = isAnswerFalse(row.rowNumber, colIndex, answer);
+          {/* Answers laid out as two ORC's columns, like the physical controlekaart */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            {/* Column 1 — ORC's (first half of rows) */}
+            <div>
+              <h3 className="text-sm font-bold mb-1 text-gray-800">
+                ORC&apos;s ({columnRange(leftRows)})
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full border-collapse">
+                  {answerHeader}
+                  <tbody>{leftRows.map((row) => renderAnswerRow(row))}</tbody>
+                </table>
+              </div>
+            </div>
 
-                        let cellClass = 'bg-gray-100 text-gray-400';
-                        let borderClass = 'border-gray-300';
-
-                        if (answer) {
-                          if (isCorrect) {
-                            cellClass = 'bg-green-100 text-green-800';
-                            borderClass = 'border-green-400';
-                          } else if (isFalse) {
-                            cellClass = 'bg-red-100 text-red-800';
-                            borderClass = 'border-red-400';
-                          } else {
-                            cellClass = 'bg-yellow-100 text-yellow-800';
-                            borderClass = 'border-yellow-400';
-                          }
-                        }
-
-                        return (
-                          <td key={colIndex} className="py-4 px-6 border-2 border-gray-300">
-                            {answer ? (
-                              <div
-                                className={`w-16 h-16 flex items-center justify-center rounded-lg shadow-md border-2 ${cellClass} ${borderClass}`}
-                              >
-                                <span className="text-3xl font-bold">{answer}</span>
-                              </div>
-                            ) : (
-                              <div className="w-16 h-16 flex items-center justify-center bg-gray-100 rounded-lg shadow-md border-2 border-gray-300">
-                                <span className="text-2xl text-gray-400">-</span>
-                              </div>
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td className="py-4 px-6 border-2 border-gray-300">
-                        {rowPenalties > 0 ? (
-                          <div className="px-4 py-2 bg-red-100 text-red-800 rounded-lg shadow-sm border border-red-300 font-bold text-xl text-center">
-                            {rowPenalties} {rowPenalties === 1 ? 'point' : 'points'}
-                          </div>
-                        ) : (
-                          <div className="px-4 py-2 bg-green-100 text-green-800 rounded-lg shadow-sm border border-green-300 font-bold text-xl text-center">
-                            0 points
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            {/* Column 2 — ORC's (second half of rows) */}
+            <div>
+              <h3 className="text-sm font-bold mb-1 text-gray-800">
+                ORC&apos;s ({columnRange(rightRows)})
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full border-collapse">
+                  {answerHeader}
+                  <tbody>{rightRows.map((row) => renderAnswerRow(row))}</tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
         <div className="p-4 bg-gray-50 border-t border-gray-200">
