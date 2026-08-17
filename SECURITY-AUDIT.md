@@ -4,9 +4,15 @@
 **Reviewed:** `middleware.ts`, `next.config.ts`, `app/api/**`, `app/lib/**`, `app/models/**`, all client components and pages, `Dockerfile`, `.env.local`, `COOLIFY.md`
 **Date:** 2026-08-17
 
+**Status:** All findings below have been remediated in code on this branch, except
+three operator actions that cannot be done from the repository — see
+[Remediation status](#remediation-status). Each finding keeps its original
+description; the fix that shipped is recorded at the end.
+
 > **Note on secrets in this document.** Live credentials and the application password are
-> deliberately redacted here. Both are currently in cleartext in the repository — see
-> CRITICAL-2 and CRITICAL-3 for exact locations.
+> deliberately redacted here. They have since been removed from the working tree, but both
+> remain in git history and must be treated as compromised until rotated — see CRITICAL-2 and
+> CRITICAL-3.
 
 ---
 
@@ -774,11 +780,18 @@ secrets, only pure scoring arithmetic, so sharing it is correct.
 **Exploit Scenario:**
 A developer adds `import { AnswerSheet } from '@/app/models'` to a client component to reuse
 an interface. The bundler follows the import into `mongoose` and, transitively, into
-`app/lib/mongodb.ts`, which evaluates `process.env.MONGODB_URI` at module scope. Next.js
-inlines statically-analyzable `process.env` references at build time; the connection string —
-credentials included — can then be served inside a JavaScript chunk to every visitor, before
-authentication. Without the guard nothing fails and nothing warns; the leak is discovered only
-by reading the built bundle.
+`app/lib/mongodb.ts`, pulling server-side database code into the client graph.
+
+To be precise about the limits here: Next.js only inlines `NEXT_PUBLIC_*` variables into
+client bundles — a bare `process.env.MONGODB_URI` evaluates to `undefined` client-side, so the
+connection string itself is not what leaks. What does reach the browser is the server module's
+own source: its query logic, schema shape, and any literal fallback baked into it. The old
+`|| 'mongodb://localhost:27017/orc-points-system'` default (LOW-3) is exactly such a literal.
+
+The stronger argument for the guard is the silence of the failure. Without it, nothing errors
+and nothing warns — the app builds, ships, and only a reading of the output bundle reveals that
+server code crossed the boundary. `server-only` converts that into a build failure at the
+moment the bad import is written.
 
 **Remediation:**
 
@@ -1164,3 +1177,99 @@ Categories reviewed where no vulnerability was found, and the specific protectio
 
 Steps 1–3 are the difference between "publicly writable database" and "an internal tool with a
 shared password." Steps 4 onward are the difference between that and a defensible deployment.
+
+
+---
+
+## Remediation status
+
+Applied on branch `claude/nextjs-security-audit-gfojkw`. Verified against a running production
+build (`next start`) with `curl` and a real Chromium session; see *Verification* below.
+
+| # | Finding | Status | Where |
+| --- | --- | --- | --- |
+| CRITICAL-1 | Forgeable session token | **Fixed** | `app/lib/session.ts`, `middleware.ts`, `app/api/auth/check/route.ts` |
+| CRITICAL-2 | Committed DB credentials | **Partly fixed** — code done, **rotation is yours** | `.gitignore`, `.env.example`, `COOLIFY.md` |
+| CRITICAL-3 | Hardcoded app password | **Partly fixed** — code done, **rotation is yours** | `app/api/auth/login/route.ts`, `scripts/hash-password.mjs` |
+| HIGH-1 | No rate limiting | **Fixed** | `app/lib/rate-limit.ts`, login route, `middleware.ts` |
+| HIGH-2 | No server-side session expiry | **Fixed** | `app/lib/session.ts` |
+| HIGH-3 | Insecure cookie configuration | **Fixed** | `app/api/auth/login/route.ts`, `middleware.ts` |
+| MEDIUM-1 | Missing security headers | **Fixed, with one deviation** | `next.config.ts` |
+| MEDIUM-2 | NoSQL operator injection | **Fixed** | `app/lib/validation.ts`, `app/lib/mongodb.ts` |
+| MEDIUM-3 | Missing `server-only` guards | **Fixed** | `app/lib/*`, `app/models/index.ts`, all route handlers |
+| MEDIUM-4 | Unbounded request bodies | **Fixed** | `app/lib/body.ts`, `app/lib/validation.ts` |
+| MEDIUM-5 | Middleware matcher gap | **Fixed** | `middleware.ts`, `app/login/page.tsx`, `app/ClientLayout.tsx` |
+| LOW-1 | Non-constant-time comparison | **Fixed** | `app/api/auth/login/route.ts` |
+| LOW-2 | Error message reflection | **Fixed** | `app/error.tsx` |
+| LOW-3 | Silent database fallback | **Fixed** | `app/lib/mongodb.ts`, `app/lib/env.ts` |
+
+### Deviation from the proposed remediation: CSP without a nonce
+
+MEDIUM-1 proposed a nonce-based `script-src`. It was implemented, tested in a browser, and
+**reverted** — it broke the application outright.
+
+A per-request nonce only works for dynamically rendered pages. Next.js prerenders `/`,
+`/login`, `/rallies`, and `/rallies/new` at build time, so their HTML cannot carry a nonce
+that matches a header minted per request. Chromium refused every inline script and every
+chunk, React never hydrated, and the login form was inert.
+
+The shipped policy uses `script-src 'self' 'unsafe-inline'` and keeps every other directive
+strict — `frame-ancestors 'none'`, `form-action 'self'`, `base-uri 'self'`, `object-src
+'none'`, `default-src 'self'`, `connect-src 'self'`. Those are the directives carrying the real
+weight for this app, which has no HTML-injection sink. Restoring the nonce requires
+`export const dynamic = 'force-dynamic'` on the root layout, trading away static rendering;
+the reasoning is recorded in a comment in `next.config.ts`.
+
+### Still required from an operator
+
+Three things cannot be fixed from the repository:
+
+1. **Rotate the MongoDB password.** The committed credential is compromised. Removing the file
+   does not un-leak it.
+2. **Purge `.env.local` from git history**, coordinating with everyone holding a clone:
+   `git filter-repo --path .env.local --invert-paths` then a force-with-lease push.
+3. **Set the three new environment variables** in Coolify before deploying — `MONGODB_URI`,
+   `SESSION_SECRET`, `APP_PASSWORD_HASH`. The app builds without them but fails fast with a
+   clear error on the first request if any is missing. Use `scripts/generate-secret.mjs` and
+   `scripts/hash-password.mjs`. Choose a **new** application password; the old one is public to
+   everyone with repo access.
+
+### Verification
+
+Run against a production build with a valid session and, separately, with forged ones:
+
+- The published exploit cookie `MS1hdXRoZW50aWNhdGVk` now returns **401** on every endpoint,
+  including `DELETE /api/rallies/[id]`, and `/api/auth/check` reports `authenticated: false`.
+- Tampered signature, truncated token, and garbage token: **401**.
+- A correctly HMAC-signed but 25-hour-old token: **401** (expiry is enforced server-side, not
+  by cookie `maxAge`). A future-dated token is also rejected.
+- Unauthenticated `GET /rallies` **307**s to `/login`; unauthenticated API calls return **401**.
+- Login sets `Secure; HttpOnly; SameSite=lax`.
+- Login rate limit: attempts 1–5 return 401, attempt 6 returns **429** with `Retry-After: 900`.
+  The correct password from the throttled IP still returns 429; a different IP is unaffected.
+- Global API limit: 135 requests from one IP → 120 served, 15 rejected with **429**.
+- Cross-origin `POST` (including the `text/plain` CSRF trick that bypasses preflight):
+  **403**. Same-origin and proxy-style (`X-Forwarded-Host` + `https` Origin) requests pass.
+- `eq: {"$gt": 0}`, `eq: "5"`, `eq: 999`, `name: {"$ne": null}`, a JSON array body, and
+  malformed JSON all return **400**. `?eq=abc` returns 400 instead of the previous 500.
+- A 400 KB body returns **413**.
+- Browser (Chromium): unauthenticated → `/login` → login → `/` → client-side nav → logout →
+  session cookie cleared → revisiting `/rallies` bounces to `/login`. **Zero CSP violations.**
+- The exact payloads `StageForm` and `AnswerSheetForm` submit (30 answer rows, 10 time rows,
+  6 merk rows, 4 columns) round-trip through validation byte-identical, so legitimate
+  submissions are unaffected.
+
+`tsc --noEmit`, `eslint`, and `next build` all pass. The build succeeds with **no** environment
+variables present, matching how the Dockerfile builds the image.
+
+### Behavior changes worth knowing
+
+- The login screen moved from a conditional render on every route to its own `/login` route.
+  `ClientLayout` no longer gates content — middleware does.
+- `eq` must now be an integer. A decimal such as `5.5` was previously stored; it now returns
+  400.
+- Stage and rally names are capped at 200 characters; answer-key text fields at 64.
+- If a session expires while a page is open, in-flight API calls return 401 and the page shows
+  its error state. The next navigation redirects to `/login`. Auto-redirecting on a 401 from a
+  background fetch was not added — it would touch every page's fetch logic and is outside the
+  security scope.

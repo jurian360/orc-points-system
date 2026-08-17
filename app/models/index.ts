@@ -8,6 +8,8 @@
 //                  (one per stage). The rally winner is decided by the sum of
 //                  the penalty points of all of a participant's answer sheets.
 
+import 'server-only';
+
 import mongoose from 'mongoose';
 
 // A rally is the top-level event. Stages and answer sheets hang off of it.
@@ -16,6 +18,7 @@ const RallySchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
+    maxlength: 200,
   },
   createdAt: {
     type: Date,
@@ -36,6 +39,7 @@ const StageSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
+    maxlength: 200,
   },
   createdAt: {
     type: Date,

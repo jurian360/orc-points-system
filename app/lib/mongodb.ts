@@ -1,6 +1,12 @@
-import mongoose from 'mongoose';
+import 'server-only';
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/orc-points-system';
+import mongoose from 'mongoose';
+import { requireEnv } from './env';
+
+// Reject query objects containing operators ($gt, $ne, ...) where a plain value
+// is expected. The route handlers validate their inputs explicitly; this is the
+// backstop for anything that slips through.
+mongoose.set('sanitizeFilter', true);
 
 // Global mongoose object
 declare global {
@@ -28,7 +34,13 @@ async function dbConnect() {
       bufferCommands: false,
     };
 
-    cached!.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
+    // Read the URI here rather than at module scope: `next build` runs without
+    // secrets present (see the Dockerfile), so a module-scope throw would break
+    // the build. This still fails fast — on the first request that needs the
+    // database — instead of silently falling back to a local instance.
+    const uri = requireEnv('MONGODB_URI');
+
+    cached!.promise = mongoose.connect(uri, opts).then((mongoose) => {
       return mongoose.connection;
     });
   }

@@ -22,9 +22,19 @@ export default function Error({
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Something went wrong!
           </h2>
+          {/*
+            Deliberately generic. Rendering error.message can surface internal
+            paths, driver errors, or library internals; the digest is enough to
+            correlate a user report with the server log.
+          */}
           <p className="mt-2 text-center text-sm text-gray-600">
-            {error.message || "An unexpected error occurred."}
+            An unexpected error occurred. Please try again.
           </p>
+          {error.digest && (
+            <p className="mt-1 text-center text-xs text-gray-400">
+              Reference: {error.digest}
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-center justify-center space-y-4">
           <button

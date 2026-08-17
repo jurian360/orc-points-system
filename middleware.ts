@@ -1,39 +1,102 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { SESSION_COOKIE, verifySessionToken } from './app/lib/session';
+import { clientIp, rateLimit } from './app/lib/rate-limit';
 
-export function middleware(request: NextRequest) {
-  // Get the session cookie
-  const session = request.cookies.get('session');
-  
-  // Check if the request is for an API route
-  if (request.nextUrl.pathname.startsWith('/api/')) {
-    // Allow auth-related API routes
-    if (request.nextUrl.pathname.startsWith('/api/auth/')) {
-      return NextResponse.next();
+// Paths reachable without a session. Everything else the matcher covers
+// requires a valid, signed, unexpired session cookie.
+const PUBLIC_PATHS = ['/login'];
+const PUBLIC_API_PREFIX = '/api/auth/';
+
+const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+// Coarse per-IP ceiling across the whole API, on top of the stricter
+// per-endpoint limit on login.
+const API_RATE_LIMIT = 120;
+const API_RATE_WINDOW_MS = 60 * 1000;
+
+// Same-origin check for mutating requests.
+//
+// Compares the Origin header against the *forwarded host* rather than against
+// request.nextUrl.origin. Behind Coolify's TLS-terminating proxy the app sees
+// an internal http:// origin while the browser sends the public https:// one,
+// so comparing full origins would reject every legitimate mutation.
+//
+// Trusting x-forwarded-host is safe for this purpose: a browser cannot set it
+// cross-origin, and an attacker who can set arbitrary headers could simply omit
+// Origin instead — this check only ever defends against browser-driven CSRF.
+function isSameOrigin(request: NextRequest): boolean {
+  const origin = request.headers.get('origin');
+
+  // Non-browser clients (curl, server-to-server) send no Origin at all. The
+  // session cookie is still required, so this is not a bypass.
+  if (!origin) return true;
+
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    return false;
+  }
+
+  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  return Boolean(host) && originHost === host;
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const isApi = pathname.startsWith('/api/');
+
+  // CSRF defense in depth. The session cookie is SameSite=Lax, which already
+  // blocks cross-site form posts, but `request.json()` parses any content type,
+  // so a Lax-exempt request should still be refused.
+  if (UNSAFE_METHODS.has(request.method) && !isSameOrigin(request)) {
+    return NextResponse.json({ error: 'Cross-origin request blocked' }, { status: 403 });
+  }
+
+  if (isApi) {
+    const { ok, retryAfter } = rateLimit(
+      `api:${clientIp(request)}`,
+      API_RATE_LIMIT,
+      API_RATE_WINDOW_MS
+    );
+
+    if (!ok) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+      );
     }
-    
-    // For other API routes, check authentication
-    if (!session || !session.value) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    
-    // Validate session token format
-    try {
-      const decoded = Buffer.from(session.value, 'base64').toString();
-      if (!decoded.includes('-authenticated')) {
-        return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+  }
+
+  const isPublic = pathname.startsWith(PUBLIC_API_PREFIX) || PUBLIC_PATHS.includes(pathname);
+
+  if (!isPublic) {
+    const authenticated = await verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value);
+
+    if (!authenticated) {
+      if (isApi) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
-    } catch (error) {
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+
+      // Page request: send the visitor to the login screen. Pages are protected
+      // here, at the edge, not only by the client-side gate in ClientLayout —
+      // otherwise a Server Component added later would render real data to
+      // anonymous visitors.
+      return NextResponse.redirect(new URL('/login', request.url));
     }
   }
 
   return NextResponse.next();
 }
 
-// Configure the middleware to run on specific paths
 export const config = {
   matcher: [
-    '/api/:path*', // Match all API routes
+    /*
+     * Everything except Next.js internals and static assets. Auth API routes
+     * and /login are allow-listed inside the middleware above rather than here,
+     * so this exclusion list stays limited to things that are never protected.
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };

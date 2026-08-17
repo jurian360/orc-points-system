@@ -21,7 +21,11 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
     try {
       const success = await onLogin(password);
       if (success) {
-        router.push('/');
+        setPassword('');
+        // replace() keeps /login out of the history stack; refresh() re-runs
+        // middleware so the new session cookie is picked up immediately.
+        router.replace('/');
+        router.refresh();
       } else {
         setError('Invalid password. Please try again.');
       }
