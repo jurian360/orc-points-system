@@ -55,15 +55,15 @@ const formatDate = (dateString: string) =>
     minute: '2-digit',
   });
 
-// A row is only worth showing when the officials actually filled something in.
-const hasTimeEntry = (row: TimePenaltyRow) =>
-  Boolean(row.ipt || row.wpt || row.plusMinus) || (row.strafp || 0) > 0;
-
-const hasMerkEntry = (row: MerkScoreRow) => Boolean(row.merk) || (row.strafp || 0) > 0;
+const sumStrafp = (rows: { strafp?: number }[]) =>
+  rows.reduce((total, row) => total + (row.strafp || 0), 0);
 
 // Everything one participant submitted for a rally: their answers for every
-// stage, stage by stage, scored against each stage's answer key. Stages the
-// participant has no sheet for are listed as missing so the gaps are visible.
+// stage, stage by stage, scored against each stage's answer key. Each stage is
+// laid out as the four columns of the SARK controlekaart — ORC's 1-15, ORC's
+// 16-30, the officials' time column and Merk + totals — so it reads like the
+// paper card the answers were copied from. Stages the participant has no sheet
+// for are listed as missing so the gaps are visible.
 const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId, eq }) => {
   const [rally, setRally] = useState<Rally | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -104,7 +104,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="animate-spin h-12 w-12 border-4 border-blue-600 border-t-transparent rounded-full"></div>
         <p className="ml-4 text-lg font-medium">Loading participant...</p>
       </div>
@@ -113,7 +113,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
 
   if (error || !rally) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 text-lg font-semibold mb-4">{error || 'Rally not found'}</p>
           <Link href={`/rallies/${rallyId}`} className="text-blue-600 hover:underline text-lg">
@@ -133,27 +133,42 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   const sheetsByStage = new Map(sheets.map((sheet) => [sheet.stageId, sheet]));
   const entries = stages.map((stage) => {
     const sheet = sheetsByStage.get(stage._id);
+    const timeRows = sheet?.timePenalties || [];
+    const merkRows = sheet?.merkScores || [];
+
     return {
       stage,
       sheet,
-      penalty: sheet ? calculateTotalPenalty(stage.scoreKey, sheet.answers) : 0,
+      timeRows,
+      merkRows,
+      orcPenalty: sheet ? calculateTotalPenalty(stage.scoreKey, sheet.answers) : 0,
+      tijdTotal: sumStrafp(timeRows),
+      diversenTotal: sumStrafp(merkRows),
     };
   });
-  const scoredTotal = entries.reduce((total, entry) => total + entry.penalty, 0);
+
+  const orcTotal = entries.reduce((total, entry) => total + entry.orcPenalty, 0);
+  const officialsTotal = entries.reduce(
+    (total, entry) => total + entry.tijdTotal + entry.diversenTotal,
+    0
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Participant {eq}</h1>
-          <p className="text-gray-600 mt-1 text-lg">
-            Answers submitted for {rally.name}
+    <div className="min-h-screen bg-gray-100 py-4">
+      <div className="max-w-[1700px] mx-auto p-4">
+        <div className="mb-4">
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">
+            Participant {eq} — {rally.name}
+          </h1>
+          <p className="text-gray-700 text-base">
+            Every answer this participant submitted, stage by stage, scored against each stage&apos;s
+            answer key.
           </p>
         </div>
 
         {/* Summary */}
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
-          <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-gray-200">
+        <div className="bg-white rounded-xl shadow-xl overflow-hidden mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-gray-200">
             <div className="p-6">
               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
                 Participant (EQ)
@@ -171,29 +186,37 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
             </div>
             <div className="p-6">
               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                Total Penalty
+                ORC Penalty
               </p>
-              <p className="text-3xl font-bold text-red-600 mt-1">{scoredTotal}</p>
+              <p className="text-3xl font-bold text-red-600 mt-1">{orcTotal}</p>
+              <p className="text-sm text-gray-600 mt-1">Counts for the standings</p>
+            </div>
+            <div className="p-6">
+              <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+                Tijd + Diversen
+              </p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">{officialsTotal}</p>
+              <p className="text-sm text-gray-600 mt-1">Recorded by the officials</p>
             </div>
           </div>
         </div>
 
         {stages.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-            <p className="text-lg text-gray-600">
+          <div className="bg-white rounded-xl shadow-xl p-12 text-center">
+            <p className="text-xl text-gray-700">
               This rally has no stages yet, so there is nothing for this participant to submit.
             </p>
           </div>
         ) : (
-          entries.map(({ stage, sheet, penalty }) => {
+          entries.map(({ stage, sheet, timeRows, merkRows, orcPenalty, tijdTotal, diversenTotal }) => {
             if (!sheet) {
               return (
                 <div
                   key={stage._id}
-                  className="bg-white rounded-lg shadow-lg border-2 border-dashed border-gray-300 p-6 mb-6"
+                  className="bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-300 p-6 mb-6"
                 >
-                  <h2 className="text-2xl font-semibold text-gray-800">{stage.name}</h2>
-                  <p className="text-lg text-gray-600 mt-2">
+                  <h2 className="text-lg font-bold text-gray-800">{stage.name}</h2>
+                  <p className="text-base text-gray-700 mt-1">
                     No answer sheet submitted for this stage.
                   </p>
                   <Link
@@ -206,24 +229,21 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
               );
             }
 
-            const timeRows = (sheet.timePenalties || []).filter(hasTimeEntry);
-            const merkRows = (sheet.merkScores || []).filter(hasMerkEntry);
-
             return (
               <div
                 key={stage._id}
                 className="bg-white rounded-xl shadow-xl overflow-hidden border-2 border-gray-200 mb-6"
               >
-                <div className="px-6 py-4 border-b-2 border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                <div className="px-6 py-3 border-b-2 border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                   <div>
-                    <h2 className="text-2xl font-semibold text-gray-800">{stage.name}</h2>
-                    <p className="text-base text-gray-600 mt-1">
+                    <h2 className="text-lg font-bold text-gray-800">{stage.name}</h2>
+                    <p className="text-sm text-gray-600">
                       Submitted: {formatDate(sheet.submittedAt)}
                     </p>
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="text-lg font-bold text-red-600">
-                      {penalty} penalty points
+                      {orcPenalty} penalty points
                     </span>
                     <Link
                       href={`/rallies/${rallyId}/answer-sheets/${sheet._id}`}
@@ -234,99 +254,135 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                   </div>
                 </div>
 
-                <div className="p-6">
+                {/* Same 4 columns as the controlekaart:
+                    ORC's 1-15 | ORC's 16-30 | For Official Use Only (time) | Merk + totals */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start p-4">
                   <OrcAnswerGrid scoreKey={stage.scoreKey} answers={sheet.answers} />
 
-                  {(timeRows.length > 0 || merkRows.length > 0) && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start mt-6">
-                      {timeRows.length > 0 && (
-                        <div>
-                          <h3 className="text-sm font-bold mb-1 text-gray-800">
-                            For Official Use Only (time)
-                          </h3>
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full border-collapse">
-                              <thead>
-                                <tr className="bg-yellow-100">
-                                  <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800 w-10">NR</th>
-                                  <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800">IPT 0</th>
-                                  <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800">WPT</th>
-                                  <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800">+/-</th>
-                                  <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800">Strafp.</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {timeRows.map((row) => (
-                                  <tr
-                                    key={row.rowNumber}
-                                    className={row.rowNumber % 2 === 0 ? 'bg-gray-50' : 'bg-white'}
-                                  >
-                                    <td className="py-1.5 px-2 border-2 border-gray-300 font-bold text-base text-gray-800 text-center">
-                                      {row.rowNumber}
-                                    </td>
-                                    <td className="py-1.5 px-2 border-2 border-gray-300 text-center text-base text-gray-800">
-                                      {row.ipt || '-'}
-                                    </td>
-                                    <td className="py-1.5 px-2 border-2 border-gray-300 text-center text-base text-gray-800">
-                                      {row.wpt || '-'}
-                                    </td>
-                                    <td className="py-1.5 px-2 border-2 border-gray-300 text-center text-base text-gray-800">
-                                      {row.plusMinus || '-'}
-                                    </td>
-                                    <td className="py-1.5 px-2 border-2 border-gray-300 text-center text-base font-bold text-gray-900">
-                                      {row.strafp || 0}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
+                  {/* Column 3 — For official use only (IPT / WPT / +/- / STRAFP) */}
+                  <div>
+                    <h3 className="text-sm font-bold mb-1 text-gray-800">For Official Use Only</h3>
+                    {timeRows.length === 0 ? (
+                      <p className="text-base text-gray-600">No time entries on this sheet.</p>
+                    ) : (
+                      <div className="border-2 border-gray-300 rounded-lg shadow-md overflow-x-auto">
+                        <table className="min-w-full border-collapse">
+                          <thead>
+                            <tr className="bg-yellow-100">
+                              <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800 w-10">NR</th>
+                              <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800">IPT 0</th>
+                              <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800">WPT</th>
+                              <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800">+/-</th>
+                              <th className="py-2 px-1 border-b border-gray-300 text-center font-bold text-sm text-gray-800">Strafp.</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {timeRows.map((row, index) => (
+                              <tr key={row.rowNumber} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className="py-1.5 px-1 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center">
+                                  {row.rowNumber}
+                                </td>
+                                <td className="py-1.5 px-1 border-b border-r border-gray-300 text-center text-base text-gray-800">
+                                  {row.ipt || '-'}
+                                </td>
+                                <td className="py-1.5 px-1 border-b border-r border-gray-300 text-center text-base text-gray-800">
+                                  {row.wpt || '-'}
+                                </td>
+                                <td className="py-1.5 px-1 border-b border-r border-gray-300 text-center text-base text-gray-800">
+                                  {row.plusMinus || '-'}
+                                </td>
+                                <td className="py-1.5 px-1 border-b border-gray-300 text-center text-base font-bold text-gray-900">
+                                  {row.strafp || 0}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
 
-                      {merkRows.length > 0 && (
-                        <div>
-                          <h3 className="text-sm font-bold mb-1 text-gray-800">Merk</h3>
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full border-collapse">
-                              <thead>
-                                <tr className="bg-orange-100">
-                                  <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800 w-10">NR</th>
-                                  <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800">Merk</th>
-                                  <th className="py-2 px-2 border-2 border-gray-300 text-center font-bold text-sm text-gray-800">Strafp.</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {merkRows.map((row) => (
-                                  <tr
-                                    key={row.rowNumber}
-                                    className={row.rowNumber % 2 === 0 ? 'bg-gray-50' : 'bg-white'}
-                                  >
-                                    <td className="py-1.5 px-2 border-2 border-gray-300 font-bold text-base text-gray-800 text-center">
-                                      {row.rowNumber}
-                                    </td>
-                                    <td className="py-1.5 px-2 border-2 border-gray-300 text-base text-gray-800">
-                                      {row.merk || '-'}
-                                    </td>
-                                    <td className="py-1.5 px-2 border-2 border-gray-300 text-center text-base font-bold text-gray-900">
-                                      {row.strafp || 0}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
+                  {/* Column 4 — Merk (officials) + Totaal Strafpunten */}
+                  <div>
+                    <h3 className="text-sm font-bold mb-1 text-gray-800">Merk</h3>
+                    {merkRows.length === 0 ? (
+                      <p className="text-base text-gray-600">No merk entries on this sheet.</p>
+                    ) : (
+                      <div className="border-2 border-gray-300 rounded-lg shadow-md overflow-x-auto">
+                        <table className="min-w-full border-collapse">
+                          <thead>
+                            <tr className="bg-orange-100">
+                              <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800 w-10">NR</th>
+                              <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800">Merk</th>
+                              <th className="py-2 px-1 border-b border-gray-300 text-center font-bold text-sm text-gray-800">Strafp.</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {merkRows.map((row, index) => (
+                              <tr key={row.rowNumber} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className="py-1.5 px-1 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center">
+                                  {row.rowNumber}
+                                </td>
+                                <td className="py-1.5 px-2 border-b border-r border-gray-300 text-base text-gray-800">
+                                  {row.merk || '-'}
+                                </td>
+                                <td className="py-1.5 px-1 border-b border-gray-300 text-center text-base font-bold text-gray-900">
+                                  {row.strafp || 0}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Totaal Strafpunten overview, like the paper card */}
+                    <div className="mt-3 border-2 border-gray-800 rounded-lg overflow-hidden shadow-md">
+                      <div className="bg-gray-800 text-white py-1 px-3 text-center font-bold text-sm tracking-wide">
+                        TOTAAL STRAFPUNTEN
+                      </div>
+                      <table className="min-w-full border-collapse">
+                        <tbody>
+                          <tr>
+                            <td className="py-1 px-3 border-b border-r border-gray-300 font-semibold text-sm text-gray-800">
+                              ORC&apos;s
+                            </td>
+                            <td className="py-1 px-3 border-b border-gray-300 text-right font-bold text-lg text-gray-900 w-20">
+                              {orcPenalty}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-1 px-3 border-b border-r border-gray-300 font-semibold text-sm text-gray-800">
+                              Tijd
+                            </td>
+                            <td className="py-1 px-3 border-b border-gray-300 text-right font-bold text-lg text-gray-900">
+                              {tijdTotal}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-1 px-3 border-b border-r border-gray-300 font-semibold text-sm text-gray-800">
+                              Diversen
+                            </td>
+                            <td className="py-1 px-3 border-b border-gray-300 text-right font-bold text-lg text-gray-900">
+                              {diversenTotal}
+                            </td>
+                          </tr>
+                          <tr className="bg-gray-100">
+                            <td className="py-1.5 px-3 border-r border-gray-300 font-bold text-base text-gray-900">
+                              Totaal
+                            </td>
+                            <td className="py-1.5 px-3 text-right font-extrabold text-xl text-red-600">
+                              {orcPenalty + tijdTotal + diversenTotal}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
-                  )}
 
-                  {(timeRows.length > 0 || merkRows.length > 0) && (
-                    <p className="text-sm text-gray-600 mt-3">
-                      Time and merk strafpunten are recorded by the officials; the standings are
-                      scored from the ORC answers above.
+                    <p className="text-sm text-gray-600 mt-2">
+                      The standings are scored from the ORC&apos;s total.
                     </p>
-                  )}
+                  </div>
                 </div>
               </div>
             );
@@ -336,13 +392,13 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
         <div className="mt-8 flex flex-wrap gap-6">
           <Link
             href={`/rallies/${rallyId}`}
-            className="text-blue-600 hover:underline text-lg font-medium"
+            className="inline-flex items-center px-5 py-3 bg-gray-100 text-gray-800 hover:bg-gray-200 rounded-lg text-lg font-medium transition-colors"
           >
             &larr; Back to Rally
           </Link>
           <Link
             href={`/rallies/${rallyId}/answer-sheets`}
-            className="text-blue-600 hover:underline text-lg font-medium"
+            className="inline-flex items-center px-5 py-3 bg-gray-100 text-gray-800 hover:bg-gray-200 rounded-lg text-lg font-medium transition-colors"
           >
             Answer Sheets &rarr;
           </Link>

@@ -33,7 +33,7 @@ export default function ParticipantAnswersPage({
 
   if (invalidEq) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 text-lg font-semibold mb-4">
             Invalid participant number. Participants are numbered 1 to 100.

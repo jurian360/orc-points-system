@@ -109,7 +109,9 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
           </p>
 
           {/* Answers laid out as two ORC's columns, like the physical controlekaart */}
-          <OrcAnswerGrid scoreKey={stage.scoreKey} answers={sheet.answers} />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            <OrcAnswerGrid scoreKey={stage.scoreKey} answers={sheet.answers} />
+          </div>
         </div>
         <div className="p-4 bg-gray-50 border-t border-gray-200">
           <div className="flex justify-between">

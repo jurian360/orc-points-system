@@ -7,12 +7,14 @@ interface OrcAnswerGridProps {
   answers: AnswerRow[];
 }
 
-// Renders a participant's ORC letter answers against a stage's answer key,
-// laid out as two ORC's columns (e.g. 1-15 / 16-30) so the view mirrors the
-// physical SARK controlekaart and can be compared to it directly.
+// Renders a participant's ORC letter answers against a stage's answer key as
+// the two ORC's columns of the physical SARK controlekaart (e.g. 1-15 / 16-30),
+// so the view can be compared to the paper card directly.
 //
-// Shared by the single-sheet scoring view and the participant overview, which
-// show the same grid for one sheet and for every stage of a rally.
+// The two columns are emitted as bare grid items rather than wrapped in their
+// own grid, so the caller decides the surrounding layout: the single-sheet
+// scoring view puts them side by side, while the participant overview places
+// them alongside the time and merk columns of the same card.
 const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
   const isAnswerCorrect = (row: ScoreKeyRow, colIndex: number, answer: string): boolean =>
     Boolean(answer) && row.answers[colIndex] === answer;
@@ -112,7 +114,7 @@ const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+    <>
       {/* Column 1 — ORC's (first half of rows) */}
       <div>
         <h3 className="text-sm font-bold mb-1 text-gray-800">
@@ -140,7 +142,7 @@ const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 
