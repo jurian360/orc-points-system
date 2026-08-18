@@ -25,12 +25,21 @@ const isDev = process.env.NODE_ENV !== "production";
 const contentSecurityPolicy = [
   "default-src 'self'",
   // React's dev build and fast-refresh need eval; production does not.
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  // 'wasm-unsafe-eval' is the narrow grant the controlekaart scanner needs:
+  // Tesseract.js compiles its WebAssembly core inside a worker, and with a
+  // restrictive script-src that is refused without it. It permits WebAssembly
+  // compilation only — not eval() or new Function().
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   // next/font/google self-hosts at build time, so no external font origin.
   "font-src 'self' data:",
   `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
+  // The OCR worker and its wasm core are self-hosted under /ocr (staged by
+  // scripts/setup-ocr-assets.mjs), and tesseract.js is configured with
+  // workerBlobURL:false, so 'self' is enough — no blob: worker is ever created.
+  "worker-src 'self'",
+  "child-src 'self'",
   "frame-ancestors 'none'",
   "form-action 'self'",
   "base-uri 'self'",
@@ -45,7 +54,10 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+    // camera=(self): the answer-sheet scanner captures the paper controlekaart
+    // in-page. Everything else stays denied, and cross-origin frames get
+    // nothing — the allow-list is this origin only.
+    value: "camera=(self), microphone=(), geolocation=(), interest-cohort=()",
   },
   {
     key: "Strict-Transport-Security",
@@ -62,7 +74,17 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
 
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      {
+        // The OCR runtime is ~10 MB of wasm and language model that only changes
+        // when tesseract.js is upgraded. Without this it revalidates on every
+        // scan, which is four round trips on rally-site mobile data. A day
+        // bounds how long a stale copy can survive an upgrade.
+        source: "/ocr/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=86400, must-revalidate" }],
+      },
+    ];
   },
 };
 

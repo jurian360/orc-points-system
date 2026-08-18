@@ -122,12 +122,35 @@ password you hashed in step 3.
 | `npm run build` | Production build (`output: "standalone"`)                |
 | `npm start`     | Serve a production build — run `npm run build` first     |
 | `npm run lint`  | ESLint                                                   |
+| `npm run setup:ocr` | Stage the scorecard-scanner OCR runtime into `public/ocr` |
+
+`setup:ocr` runs automatically before `dev` and `build`; you only need it by
+hand after clearing `public/ocr`.
 
 To test the production build locally, `npm run build && npm start`. The build
 itself needs no secrets — environment variables are read lazily, on the first
 request that needs them — but `npm start` does, so keep `.env.local` in place.
 
+## Scanning a paper controlekaart
+
+The answer-sheet form has a **Scan card with camera** button: photograph the
+card, drag the four corner handles onto its edges, and the ORC letters and the
+IPT / WPT / +/- times are read and pre-filled for review. Strafpunten and Merk
+are never filled in by the scanner, and every scanned value is editable before
+it reaches the form.
+
+It runs entirely in the browser — the photo never leaves the device — and needs
+a camera-capable browser on `localhost` or HTTPS. The first scan of a session
+downloads about 10 MB of OCR runtime and then caches it, so if you are on mobile
+data at an event, take one scan before you need it.
+
+Design notes, accuracy expectations and the server-side alternative are in
+[`docs/SCORECARD-OCR.md`](./docs/SCORECARD-OCR.md).
+
 ## Troubleshooting
+
+**`OCR runtime not found under /ocr`** — the scanner's assets were not staged.
+Run `npm run setup:ocr`.
 
 **`MONGODB_URI is not set ...`** — `.env.local` is missing, is not in the
 project root, or the dev server was started before the file existed. Restart

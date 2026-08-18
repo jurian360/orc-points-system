@@ -10,3 +10,5 @@ coverage
 out
 build
 *.tsbuildinfo
+# staged from node_modules by scripts/setup-ocr-assets.mjs during the build
+public/ocr

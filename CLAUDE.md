@@ -78,11 +78,13 @@ app/
   api/            route handlers (rallies, stages, answersheets, auth, standings)
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env, api-guard
+  lib/ocr/        browser-only controlekaart scanner (see docs/SCORECARD-OCR.md)
   models/         Mongoose schemas
   rallies/...     pages (rally dashboard, stages, answer sheets, participant view)
   types/          shared TS interfaces
 middleware.ts     auth + rate limit + CSRF at the edge
-scripts/          generate-secret.mjs, hash-password.mjs
+scripts/          generate-secret.mjs, hash-password.mjs, setup-ocr-assets.mjs
+public/ocr/       Tesseract runtime, staged from node_modules — gitignored
 ```
 
 ## Commands
@@ -93,6 +95,7 @@ npm run dev       # dev server, Turbopack, :3000
 npm run build     # production build (output: "standalone")
 npm start         # serve the build (needs .env.local)
 npm run lint      # ESLint — run before committing
+npm run setup:ocr # stage the OCR runtime into public/ocr (auto-runs pre dev/build)
 ```
 
 There is **no test suite**. Verify changes by running the app and, for scoring
@@ -157,3 +160,10 @@ Do not regress them.**
 - `COOLIFY.md` still mentions the pre-refactor `quizzes` /
   `participantanswers` collections; the live collections are `rallies`,
   `stages`, `answersheets`.
+- The camera scanner fills **only** ORC letters and IPT / WPT / +/-. Strafpunten
+  and Merk stay manual, and a blank scanned cell never clears a typed one.
+  Everything under `app/lib/ocr` runs in the browser: no `server-only`, no
+  `node:` builtins. `public/ocr/` is a build output — never commit it.
+- The scanner needed three header changes in `next.config.ts`
+  (`'wasm-unsafe-eval'`, `worker-src 'self'`, `camera=(self)`). They are as
+  narrow as the feature allows; `docs/SCORECARD-OCR.md` §4 explains each.

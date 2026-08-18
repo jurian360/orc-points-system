@@ -41,3 +41,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# OCR runtime staged out of node_modules by scripts/setup-ocr-assets.mjs
+/public/ocr/

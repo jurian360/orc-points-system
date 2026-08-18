@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/setup-ocr-assets.mjs",
     "dev": "next dev --turbopack",
+    "prebuild": "node scripts/setup-ocr-assets.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "setup:ocr": "node scripts/setup-ocr-assets.mjs"
   },
   "dependencies": {
     "mongodb": "^6.16.0",
@@ -14,11 +17,13 @@
     "next": "15.3.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@tesseract.js-data/eng": "^1.0.0",
     "@types/node": "20.17.32",
     "@types/react": "19.1.2",
     "@types/react-dom": "^19",

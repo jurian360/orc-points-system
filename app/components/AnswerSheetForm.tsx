@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ScorecardScanner from './ScorecardScanner';
+import type { ScannedSheet } from './ScorecardScanner';
 
 interface Stage {
   _id: string;
@@ -70,6 +72,7 @@ const toNumber = (value: string): number => {
 const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) => {
   const [eq, setEq] = useState<number | ''>('');
   const [stageId, setStageId] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -172,6 +175,38 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
       strafp: '',
     }))
   );
+
+  // Merge a scanned card into the grid.
+  //
+  // Only the ORC letters and the IPT / WPT / +/- times are touched: strafpunten
+  // and Merk are the officials' judgement and are never guessed from a photo.
+  // A blank scanned cell leaves whatever is already typed alone, so a partial
+  // scan can top up a half-filled sheet instead of wiping it.
+  const applyScan = (scan: ScannedSheet) => {
+    setAnswers((prev) =>
+      prev.map((row, rowIndex) => ({
+        ...row,
+        selectedAnswers: row.selectedAnswers.map(
+          (value, colIndex) => scan.orc[rowIndex]?.[colIndex] || value
+        ),
+      }))
+    );
+
+    setTimePenalties((prev) =>
+      prev.map((row, rowIndex) => {
+        const scanned = scan.time[rowIndex];
+        if (!scanned) return row;
+        return {
+          ...row,
+          ipt: scanned.ipt || row.ipt,
+          wpt: scanned.wpt || row.wpt,
+          plusMinus: scanned.plusMinus || row.plusMinus,
+        };
+      })
+    );
+
+    setScannerOpen(false);
+  };
 
   // Select the first stage by default once stages are loaded.
   useEffect(() => {
@@ -380,9 +415,18 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
             ))}
           </select>
         </div>
-        <p className="text-sm text-gray-600 sm:ml-auto sm:pb-2">
-          Enter single-letter answers per column, plus strafpunten per row.
-        </p>
+        <div className="sm:ml-auto sm:pb-1 flex flex-col sm:items-end gap-1">
+          <button
+            type="button"
+            onClick={() => setScannerOpen(true)}
+            className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold text-base shadow-md transition duration-150"
+          >
+            Scan card with camera
+          </button>
+          <p className="text-sm text-gray-600">
+            Fills the ORC letters and the times only — check every value before submitting.
+          </p>
+        </div>
       </div>
 
       {/* Score card laid out as 4 main columns, like the SARK controlekaart:
@@ -598,6 +642,14 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages }) =
           </button>
         </div>
       </div>
+
+      <ScorecardScanner
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onApply={applyScan}
+        selectedEq={eq}
+        selectedStageName={stages.find((stage) => stage._id === stageId)?.name}
+      />
     </form>
   );
 };
