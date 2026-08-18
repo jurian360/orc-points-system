@@ -217,7 +217,13 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
                     {sheets.map((sheet) => (
                       <tr key={sheet._id} className="hover:bg-gray-50">
                         <td className="px-8 py-5 whitespace-nowrap border-r-2 border-gray-200">
-                          <div className="text-2xl font-bold text-gray-900">{sheet.eq}</div>
+                          <Link
+                            href={`/rallies/${rallyId}/participants/${sheet.eq}`}
+                            className="text-2xl font-bold text-blue-600 hover:underline"
+                            title={`Show all answers submitted by participant ${sheet.eq}`}
+                          >
+                            {sheet.eq}
+                          </Link>
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap border-r-2 border-gray-200">
                           <div className="text-lg text-gray-700">{sheet.stageName}</div>
