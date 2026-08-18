@@ -1,38 +1,20 @@
+import 'server-only';
+
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
 import { Stage, AnswerSheet } from '../../../models';
 import { calculateTotalPenalty } from '../../../lib/scoring';
+import { readBody, requireSession } from '../../../lib/api-guard';
+import { parseName, processScoreKey } from '../../../lib/validation';
 import mongoose from 'mongoose';
-
-function processScoreKey(body: any) {
-  const scoreKey = (body.scoreKey || []).map((row: any) => ({
-    rowNumber: row.rowNumber,
-    answers: row.answers || [],
-    falseAnswers: row.falseAnswers || [],
-    maxPenalty: typeof row.maxPenalty === 'number' ? row.maxPenalty : 0,
-  }));
-
-  const timeScoreKey = (body.timeScoreKey || []).map((row: any) => ({
-    rowNumber: row.rowNumber,
-    ipt: row.ipt || '',
-    wpt: row.wpt || '',
-    plusMinus: row.plusMinus || '',
-    maxPenalty: typeof row.maxPenalty === 'number' ? row.maxPenalty : 0,
-  }));
-
-  const merkScoreKey = (body.merkScoreKey || []).map((row: any) => ({
-    rowNumber: row.rowNumber,
-    merk: row.merk || '',
-    maxPenalty: typeof row.maxPenalty === 'number' ? row.maxPenalty : 0,
-  }));
-
-  return { scoreKey, timeScoreKey, merkScoreKey };
-}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
+
   try {
     await dbConnect();
 
@@ -50,6 +32,7 @@ export async function GET(
 
     return NextResponse.json(stage);
   } catch (error) {
+    console.error('Failed to fetch stage:', error);
     return NextResponse.json({ error: 'Failed to fetch stage' }, { status: 500 });
   }
 }
@@ -58,30 +41,36 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
+
+  const parsed = await readBody(request);
+  if (!parsed.ok) return parsed.response;
+
+  const body = parsed.body;
+
+  const name = parseName(body.name);
+  if (!name) {
+    return NextResponse.json(
+      { error: 'Stage name is required (1-200 characters)' },
+      { status: 400 }
+    );
+  }
+
   try {
     await dbConnect();
 
     const { id } = await params;
-    const body = await request.json();
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid stage ID' }, { status: 400 });
-    }
-
-    if (!body.name || !body.name.trim()) {
-      return NextResponse.json({ error: 'Stage name is required' }, { status: 400 });
     }
 
     const { scoreKey, timeScoreKey, merkScoreKey } = processScoreKey(body);
 
     const updatedStage = await Stage.findByIdAndUpdate(
       id,
-      {
-        name: body.name.trim(),
-        scoreKey,
-        timeScoreKey,
-        merkScoreKey,
-      },
+      { name, scoreKey, timeScoreKey, merkScoreKey },
       { new: true, runValidators: true }
     );
 
@@ -90,16 +79,28 @@ export async function PUT(
     }
 
     // The answer key changed, so re-score every answer sheet for this stage.
-    const sheets = await AnswerSheet.find({ stageId: id });
-    await Promise.all(
-      sheets.map((sheet) => {
-        sheet.totalPenalty = calculateTotalPenalty(updatedStage.scoreKey, sheet.answers);
-        return sheet.save();
-      })
-    );
+    // One bulkWrite instead of a save() per sheet: the previous loop turned a
+    // single stage edit into N database round-trips.
+    const sheets = await AnswerSheet.find({ stageId: id }).select('_id answers');
+
+    if (sheets.length > 0) {
+      await AnswerSheet.bulkWrite(
+        sheets.map((sheet) => ({
+          updateOne: {
+            filter: { _id: sheet._id },
+            update: {
+              $set: {
+                totalPenalty: calculateTotalPenalty(updatedStage.scoreKey, sheet.answers),
+              },
+            },
+          },
+        }))
+      );
+    }
 
     return NextResponse.json(updatedStage);
   } catch (error) {
+    console.error('Failed to update stage:', error);
     return NextResponse.json({ error: 'Failed to update stage' }, { status: 500 });
   }
 }
@@ -108,6 +109,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
+
   try {
     await dbConnect();
 
@@ -128,6 +132,7 @@ export async function DELETE(
 
     return NextResponse.json({ message: 'Stage deleted successfully' });
   } catch (error) {
+    console.error('Failed to delete stage:', error);
     return NextResponse.json({ error: 'Failed to delete stage' }, { status: 500 });
   }
 }

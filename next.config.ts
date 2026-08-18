@@ -1,9 +1,69 @@
 import type { NextConfig } from "next";
 
+// Content-Security-Policy.
+//
+// script-src keeps 'unsafe-inline' rather than using a per-request nonce. A
+// nonce has to be minted in middleware and matched against the nonce Next.js
+// stamps onto its inline bootstrap — which only works for dynamically rendered
+// pages. Several pages here (/, /login, /rallies, /rallies/new) are statically
+// prerendered, so their HTML is generated at build time and cannot carry a
+// per-request nonce: the two never match, every script is refused, and the app
+// does not hydrate at all. (Verified in a browser — the login form went inert.)
+//
+// Forcing every page dynamic would make nonces work, at the cost of static
+// rendering and a trap where any future static page silently breaks. Given the
+// app has no HTML-injection sink — no dangerouslySetInnerHTML, no eval, no
+// dynamic script construction — the remaining directives carry the real weight
+// here: frame-ancestors stops clickjacking, form-action stops form hijacking,
+// base-uri stops <base> injection, and connect-src stops exfiltration.
+//
+// If a nonce is wanted later, the change is: add `export const dynamic =
+// 'force-dynamic'` to the root layout, then mint the nonce in middleware and
+// forward it on the request headers.
+const isDev = process.env.NODE_ENV !== "production";
+
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  // React's dev build and fast-refresh need eval; production does not.
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  // next/font/google self-hosts at build time, so no external font origin.
+  "font-src 'self' data:",
+  `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  ...(isDev ? [] : ["upgrade-insecure-requests"]),
+].join("; ");
+
+const securityHeaders = [
+  { key: "Content-Security-Policy", value: contentSecurityPolicy },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+  },
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=63072000; includeSubDomains; preload",
+  },
+];
+
 const nextConfig: NextConfig = {
   // Produce a self-contained build in .next/standalone so the Docker image
   // only needs the server bundle + node runtime (much smaller image).
   output: "standalone",
+
+  // Drop the `X-Powered-By: Next.js` version fingerprint.
+  poweredByHeader: false,
+
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
 };
 
 export default nextConfig;

@@ -1,70 +1,111 @@
+import 'server-only';
+
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../lib/mongodb';
 import { AnswerSheet, Stage } from '../../models';
 import { calculateTotalPenalty } from '../../lib/scoring';
+import { readBody, requireSession } from '../../lib/api-guard';
+import {
+  parseAnswerRows,
+  parseEq,
+  parseEqParam,
+  parseMerkScores,
+  parseTimePenalties,
+} from '../../lib/validation';
 import mongoose from 'mongoose';
 
 // GET /api/answersheets?stageId=... or ?rallyId=... (optionally &eq=...)
 // Returns answer sheets filtered by stage or rally.
 export async function GET(request: NextRequest) {
-  try {
-    await dbConnect();
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
 
-    const { searchParams } = new URL(request.url);
-    const stageId = searchParams.get('stageId');
-    const rallyId = searchParams.get('rallyId');
-    const eq = searchParams.get('eq');
+  // Validate before touching the database: invalid input should cost a 400,
+  // not a connection.
+  const { searchParams } = new URL(request.url);
+  const stageId = searchParams.get('stageId');
+  const rallyId = searchParams.get('rallyId');
+  const eqParam = searchParams.get('eq');
 
-    const query: Record<string, unknown> = {};
+  const query: Record<string, unknown> = {};
 
-    if (stageId) {
-      if (!mongoose.Types.ObjectId.isValid(stageId)) {
-        return NextResponse.json({ error: 'Invalid stageId' }, { status: 400 });
-      }
-      query.stageId = stageId;
-    } else if (rallyId) {
-      if (!mongoose.Types.ObjectId.isValid(rallyId)) {
-        return NextResponse.json({ error: 'Invalid rallyId' }, { status: 400 });
-      }
-      query.rallyId = rallyId;
-    } else {
+  if (stageId) {
+    if (!mongoose.Types.ObjectId.isValid(stageId)) {
+      return NextResponse.json({ error: 'Invalid stageId' }, { status: 400 });
+    }
+    query.stageId = stageId;
+  } else if (rallyId) {
+    if (!mongoose.Types.ObjectId.isValid(rallyId)) {
+      return NextResponse.json({ error: 'Invalid rallyId' }, { status: 400 });
+    }
+    query.rallyId = rallyId;
+  } else {
+    return NextResponse.json(
+      { error: 'A stageId or rallyId is required' },
+      { status: 400 }
+    );
+  }
+
+  if (eqParam !== null) {
+    // Previously `Number(eq)`, which produced NaN for junk input and
+    // surfaced a Mongoose CastError as a 500.
+    const eq = parseEqParam(eqParam);
+    if (eq === null) {
       return NextResponse.json(
-        { error: 'A stageId or rallyId is required' },
+        { error: 'eq must be an integer between 1 and 100' },
         { status: 400 }
       );
     }
+    query.eq = eq;
+  }
 
-    if (eq) {
-      query.eq = Number(eq);
-    }
+  try {
+    await dbConnect();
 
     const sheets = await AnswerSheet.find(query).sort({ submittedAt: -1 });
     return NextResponse.json(sheets);
   } catch (error) {
+    console.error('Failed to fetch answer sheets:', error);
     return NextResponse.json({ error: 'Failed to fetch answer sheets' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
 
+  const parsed = await readBody(request);
+  if (!parsed.ok) return parsed.response;
+
+  const body = parsed.body;
+
+  const stageId = body.stageId;
+  if (typeof stageId !== 'string' || !mongoose.Types.ObjectId.isValid(stageId)) {
+    return NextResponse.json({ error: 'Invalid stage ID' }, { status: 400 });
+  }
+
+  // Proving eq is a scalar integer is what closes the operator-injection hole
+  // in the duplicate check below — `{"$gt": 0}` previously reached the query.
+  const eq = parseEq(body.eq);
+  if (eq === null) {
+    return NextResponse.json(
+      { error: 'eq must be an integer between 1 and 100' },
+      { status: 400 }
+    );
+  }
+
+  const answers = parseAnswerRows(body.answers);
+
+  try {
     await dbConnect();
 
-    if (!mongoose.Types.ObjectId.isValid(body.stageId)) {
-      return NextResponse.json({ error: 'Invalid stage ID' }, { status: 400 });
-    }
-
-    const stage = await Stage.findById(body.stageId);
+    const stage = await Stage.findById(stageId);
     if (!stage) {
       return NextResponse.json({ error: 'Stage not found' }, { status: 404 });
     }
 
     // A participant may only submit one sheet per stage.
-    const existing = await AnswerSheet.findOne({
-      eq: body.eq,
-      stageId: body.stageId,
-    });
+    const existing = await AnswerSheet.findOne({ eq, stageId });
 
     if (existing) {
       return NextResponse.json(
@@ -73,23 +114,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const answers = body.answers || [];
-    const totalPenalty = calculateTotalPenalty(stage.scoreKey, answers);
-
     const answerSheet = new AnswerSheet({
-      eq: body.eq,
+      eq,
       rallyId: stage.rallyId,
-      stageId: body.stageId,
+      stageId,
       answers,
-      timePenalties: body.timePenalties || [],
-      merkScores: body.merkScores || [],
-      totalPenalty,
+      timePenalties: parseTimePenalties(body.timePenalties),
+      merkScores: parseMerkScores(body.merkScores),
+      totalPenalty: calculateTotalPenalty(stage.scoreKey, answers),
     });
 
     const savedSheet = await answerSheet.save();
 
     return NextResponse.json(savedSheet, { status: 201 });
   } catch (error) {
+    // The unique {stageId, eq} index is the authoritative guard against the
+    // check-then-insert race above.
+    if (error instanceof Error && 'code' in error && error.code === 11000) {
+      return NextResponse.json(
+        { error: 'This participant already has an answer sheet for this stage' },
+        { status: 409 }
+      );
+    }
+
+    console.error('Failed to save answer sheet:', error);
     return NextResponse.json({ error: 'Failed to save answer sheet' }, { status: 500 });
   }
 }

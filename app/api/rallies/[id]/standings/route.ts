@@ -1,6 +1,9 @@
+import 'server-only';
+
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/mongodb';
 import { Rally, Stage, AnswerSheet } from '../../../../models';
+import { requireSession } from '../../../../lib/api-guard';
 import mongoose from 'mongoose';
 
 // Returns the rally standings: one entry per participant (eq), with the total
@@ -10,6 +13,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
+
   try {
     await dbConnect();
 
@@ -50,6 +56,7 @@ export async function GET(
 
     return NextResponse.json({ totalStages, standings });
   } catch (error) {
+    console.error('Failed to compute standings:', error);
     return NextResponse.json({ error: 'Failed to compute standings' }, { status: 500 });
   }
 }

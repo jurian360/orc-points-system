@@ -1,12 +1,19 @@
+import 'server-only';
+
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
 import { Rally, Stage, AnswerSheet } from '../../../models';
+import { readBody, requireSession } from '../../../lib/api-guard';
+import { parseName } from '../../../lib/validation';
 import mongoose from 'mongoose';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
+
   try {
     await dbConnect();
 
@@ -24,6 +31,7 @@ export async function GET(
 
     return NextResponse.json(rally);
   } catch (error) {
+    console.error('Failed to fetch rally:', error);
     return NextResponse.json({ error: 'Failed to fetch rally' }, { status: 500 });
   }
 }
@@ -32,23 +40,32 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
+
+  const parsed = await readBody(request);
+  if (!parsed.ok) return parsed.response;
+
+  const name = parseName(parsed.body.name);
+  if (!name) {
+    return NextResponse.json(
+      { error: 'Rally name is required (1-200 characters)' },
+      { status: 400 }
+    );
+  }
+
   try {
     await dbConnect();
 
     const { id } = await params;
-    const body = await request.json();
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ error: 'Invalid rally ID' }, { status: 400 });
     }
 
-    if (!body.name || !body.name.trim()) {
-      return NextResponse.json({ error: 'Rally name is required' }, { status: 400 });
-    }
-
     const updatedRally = await Rally.findByIdAndUpdate(
       id,
-      { name: body.name.trim() },
+      { name },
       { new: true, runValidators: true }
     );
 
@@ -58,6 +75,7 @@ export async function PUT(
 
     return NextResponse.json(updatedRally);
   } catch (error) {
+    console.error('Failed to update rally:', error);
     return NextResponse.json({ error: 'Failed to update rally' }, { status: 500 });
   }
 }
@@ -66,6 +84,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = await requireSession();
+  if (unauthorized) return unauthorized;
+
   try {
     await dbConnect();
 
@@ -89,6 +110,7 @@ export async function DELETE(
 
     return NextResponse.json({ message: 'Rally deleted successfully' });
   } catch (error) {
+    console.error('Failed to delete rally:', error);
     return NextResponse.json({ error: 'Failed to delete rally' }, { status: 500 });
   }
 }

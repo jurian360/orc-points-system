@@ -2,14 +2,12 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { AuthProvider, useAuth } from './components/AuthContext';
-import LoginForm from './components/LoginForm';
 
-interface NavigationProps {
-  onLogout: () => void;
-}
+const Navigation: React.FC = () => {
+  const { logout } = useAuth();
 
-const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
   return (
     <nav className="bg-blue-600 shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -35,7 +33,7 @@ const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
           </div>
           <div>
             <button
-              onClick={onLogout}
+              onClick={logout}
               className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
             >
               Logout
@@ -47,33 +45,23 @@ const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
   );
 };
 
-const AuthenticatedApp: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, login, logout, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin h-12 w-12 border-4 border-blue-600 border-t-transparent rounded-full"></div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <LoginForm onLogin={login} />;
-  }
-
-  return (
-    <>
-      <Navigation onLogout={logout} />
-      <main>{children}</main>
-    </>
-  );
-};
-
+// The login screen is its own route (/login) rather than a conditional render
+// over every page, so middleware has somewhere to redirect unauthenticated
+// visitors to. Everything else renders behind the nav; middleware has already
+// verified the session by the time this runs.
 const ClientLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const pathname = usePathname();
+
   return (
     <AuthProvider>
-      <AuthenticatedApp>{children}</AuthenticatedApp>
+      {pathname === '/login' ? (
+        <main>{children}</main>
+      ) : (
+        <>
+          <Navigation />
+          <main>{children}</main>
+        </>
+      )}
     </AuthProvider>
   );
 };
