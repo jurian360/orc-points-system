@@ -1,4 +1,11 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ORC Points System
+
+A Next.js 15 (App Router) app for scoring rally events, storing its data in
+MongoDB via Mongoose.
+
+This README covers **running the app locally against a hosted MongoDB**
+(MongoDB Atlas or any other online instance). For production deployment, see
+[`COOLIFY.md`](./COOLIFY.md).
 
 ## Data model
 
@@ -16,37 +23,139 @@ per wrong or missing answer, capped per row by the row's max penalty). The
 **rally winner** is the participant with the **lowest total penalty** summed
 across all of their answer sheets.
 
-## Getting Started
+## Requirements
 
-First, run the development server:
+- **Node.js 22** or newer (the production image is built on `node:22-alpine`)
+- **npm** (a `package-lock.json` is committed — use `npm ci` for a clean install)
+- A **MongoDB connection string** you can reach from your machine
+
+## 1. Install dependencies
+
+```bash
+git clone https://github.com/jurian360/orc-points-system.git
+cd orc-points-system
+npm ci
+```
+
+## 2. Set up the online MongoDB
+
+You do **not** need to create collections by hand — Mongoose creates
+`rallies`, `stages` and `answersheets` automatically on first write. You only
+need a database and a user that can write to it.
+
+Using **MongoDB Atlas**:
+
+1. Create a free cluster (Atlas → *Build a Database* → M0).
+2. Atlas → *Database Access* → *Add New Database User*. Give it the
+   **`readWrite`** role on the `orc-points-system` database only — do not use
+   an `atlasAdmin`/root user for the app.
+3. Atlas → *Network Access* → *Add IP Address* → **Add Current IP Address**, so
+   your machine may connect. (`0.0.0.0/0` opens the database to the whole
+   internet — avoid it.)
+4. Atlas → *Database* → *Connect* → *Drivers* → copy the connection string.
+
+Add the database name to the string, between the host and the `?`:
+
+```
+mongodb+srv://USER:PASSWORD@cluster0.abcde.mongodb.net/orc-points-system?retryWrites=true&w=majority
+```
+
+> Without the `/orc-points-system` part, MongoDB writes to the default `test`
+> database. It works, but naming the database keeps local and production data
+> predictable.
+
+If your password contains `@`, `:`, `/` or `#`, percent-encode it
+(`@` → `%40`, `:` → `%3A`, `/` → `%2F`, `#` → `%23`).
+
+Any other hosted MongoDB works the same way — use its own `mongodb://` or
+`mongodb+srv://` URI.
+
+## 3. Create `.env.local`
+
+The app reads three required variables. Copy the template:
+
+```bash
+cp .env.example .env.local
+```
+
+Then generate the two secrets:
+
+```bash
+node scripts/generate-secret.mjs            # prints SESSION_SECRET=...
+node scripts/hash-password.mjs 'your-password'   # prints APP_PASSWORD_HASH=...
+```
+
+`hash-password.mjs` requires at least 12 characters. The plaintext password is
+never stored — only its scrypt hash goes into the environment. The password you
+pass here is the one you will type on the app's login screen.
+
+Fill in `.env.local` so it looks like this:
+
+```bash
+MONGODB_URI=mongodb+srv://USER:PASSWORD@cluster0.abcde.mongodb.net/orc-points-system?retryWrites=true&w=majority
+SESSION_SECRET=<output of generate-secret.mjs, at least 32 chars>
+APP_PASSWORD_HASH=<saltHex>:<hashHex>
+```
+
+`.env.local` is git-ignored (see `.gitignore`) — keep it that way; it holds a
+live database credential.
+
+## 4. Run the dev server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open **[http://localhost:3000](http://localhost:3000)** and log in with the
+password you hashed in step 3.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+> Use `localhost` (or `127.0.0.1`), not your machine's LAN IP. The session
+> cookie is always set with `Secure`, and browsers only accept a `Secure`
+> cookie over HTTPS or from localhost — over `http://192.168.x.x` the login
+> will appear to succeed but no session will be stored.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Available scripts
 
-## Learn More
+| Command         | What it does                                             |
+| --------------- | -------------------------------------------------------- |
+| `npm run dev`   | Dev server with Turbopack and fast refresh on port 3000  |
+| `npm run build` | Production build (`output: "standalone"`)                |
+| `npm start`     | Serve a production build — run `npm run build` first     |
+| `npm run lint`  | ESLint                                                   |
 
-To learn more about Next.js, take a look at the following resources:
+To test the production build locally, `npm run build && npm start`. The build
+itself needs no secrets — environment variables are read lazily, on the first
+request that needs them — but `npm start` does, so keep `.env.local` in place.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Troubleshooting
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**`MONGODB_URI is not set ...`** — `.env.local` is missing, is not in the
+project root, or the dev server was started before the file existed. Restart
+`npm run dev` after creating or editing it.
 
-## Deploy on Vercel
+**`SESSION_SECRET must be at least 32 characters long`** — regenerate it with
+`node scripts/generate-secret.mjs` and paste the full value.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Login returns "Server error"** — `APP_PASSWORD_HASH` is missing or not in
+`<saltHex>:<hashHex>` form. Re-run `node scripts/hash-password.mjs '...'` and
+copy the whole line's value.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Login returns "Too many attempts"** — five failed logins per IP per 15
+minutes. Wait it out, or restart the dev server (the rate-limiter is in-memory).
+
+**Connection times out / `ETIMEDOUT` / `ServerSelectionError`** — your IP is
+not on the Atlas *Network Access* allowlist, or the URI's host or credentials
+are wrong. Verify the string with `mongosh "<your MONGODB_URI>"`.
+
+**`bad auth : Authentication failed`** — wrong user/password, or a special
+character in the password that needs percent-encoding.
+
+**Log in succeeds but you are bounced back to `/login`** — you are browsing via
+a LAN IP; switch to `http://localhost:3000` (see the note in step 4).
+
+## Learn more
+
+- [Next.js documentation](https://nextjs.org/docs)
+- [Mongoose documentation](https://mongoosejs.com/docs/)
+- [`COOLIFY.md`](./COOLIFY.md) — production deployment
+- [`SECURITY-AUDIT.md`](./SECURITY-AUDIT.md) — security review notes
