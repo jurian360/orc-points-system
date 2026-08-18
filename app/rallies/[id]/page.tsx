@@ -241,6 +241,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     Total Penalty
                   </th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    Answers
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -256,7 +259,12 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-lg font-medium text-gray-900">{entry.eq}</span>
+                      <Link
+                        href={`/rallies/${rally._id}/participants/${entry.eq}`}
+                        className="text-lg font-medium text-blue-600 hover:underline"
+                      >
+                        {entry.eq}
+                      </Link>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-base text-gray-600">
@@ -266,6 +274,14 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <span className="text-lg font-bold text-red-600">{entry.totalPenalty}</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <Link
+                        href={`/rallies/${rally._id}/participants/${entry.eq}`}
+                        className="text-blue-600 hover:text-blue-900 font-medium text-base"
+                      >
+                        View Answers
+                      </Link>
                     </td>
                   </tr>
                 ))}
