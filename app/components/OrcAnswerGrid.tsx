@@ -12,9 +12,8 @@ interface OrcAnswerGridProps {
 // so the view can be compared to the paper card directly.
 //
 // The two columns are emitted as bare grid items rather than wrapped in their
-// own grid, so the caller decides the surrounding layout: the single-sheet
-// scoring view puts them side by side, while the participant overview places
-// them alongside the time and merk columns of the same card.
+// own grid, so the caller decides the surrounding layout — ControlekaartCard
+// places them alongside the time and merk columns of the same card.
 const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
   const isAnswerCorrect = (row: ScoreKeyRow, colIndex: number, answer: string): boolean =>
     Boolean(answer) && row.answers[colIndex] === answer;

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
-import OrcAnswerGrid from './OrcAnswerGrid';
+import ControlekaartCard from './ControlekaartCard';
+import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
 
 interface Stage {
   _id: string;
@@ -17,6 +18,8 @@ interface AnswerSheet {
   rallyId: string;
   stageId: string;
   answers: AnswerRow[];
+  timePenalties?: TimePenaltyRow[];
+  merkScores?: MerkScoreRow[];
   totalPenalty: number;
   submittedAt: string;
 }
@@ -58,9 +61,18 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
     fetchData();
   }, [sheetId]);
 
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-12">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="animate-spin h-12 w-12 border-4 border-blue-600 border-t-transparent rounded-full"></div>
         <p className="ml-4 text-lg font-medium">Loading...</p>
       </div>
@@ -69,17 +81,19 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
 
   if (error || !stage || !sheet) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md">
-          <p>{error || 'No data available for this answer sheet.'}</p>
-        </div>
-        <div className="mt-6">
-          <Link
-            href={`/rallies/${rallyId}/answer-sheets`}
-            className="text-blue-600 hover:underline font-medium"
-          >
-            &larr; Back to Answer Sheets
-          </Link>
+      <div className="min-h-screen bg-gray-100 py-4">
+        <div className="max-w-[1700px] mx-auto p-4">
+          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md">
+            <p>{error || 'No data available for this answer sheet.'}</p>
+          </div>
+          <div className="mt-6">
+            <Link
+              href={`/rallies/${rallyId}/answer-sheets`}
+              className="text-blue-600 hover:underline font-medium"
+            >
+              &larr; Back to Answer Sheets
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -88,46 +102,55 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
   const totalPenalties = calculateTotalPenalty(stage.scoreKey, sheet.answers);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">Answer Sheet Scoring</h1>
-
-      <div className="bg-white rounded-xl shadow-xl overflow-hidden border-2 border-gray-200">
-        <div className="p-8">
-          <h2 className="text-3xl font-bold mb-2 text-gray-800">
-            Participant {sheet.eq}&apos;s Answers for {stage.name}
-          </h2>
-          <p className="text-xl font-semibold mb-2 text-red-600">
-            Total Penalties: {totalPenalties} points
+    <div className="min-h-screen bg-gray-100 py-4">
+      <div className="max-w-[1700px] mx-auto p-4">
+        <div className="mb-4">
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">
+            Participant {sheet.eq}&apos;s Answers — {stage.name}
+          </h1>
+          <p className="text-gray-700 text-base">
+            Scored against the stage answer key. Submitted: {formatDate(sheet.submittedAt)}
           </p>
-          <p className="mb-6">
-            <Link
-              href={`/rallies/${rallyId}/participants/${sheet.eq}`}
-              className="text-blue-600 hover:underline font-medium"
-            >
-              See all answers submitted by participant {sheet.eq} &rarr;
-            </Link>
-          </p>
-
-          {/* Answers laid out as two ORC's columns, like the physical controlekaart */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            <OrcAnswerGrid scoreKey={stage.scoreKey} answers={sheet.answers} />
-          </div>
         </div>
-        <div className="p-4 bg-gray-50 border-t border-gray-200">
-          <div className="flex justify-between">
-            <Link
-              href={`/rallies/${rallyId}/answer-sheets`}
-              className="text-blue-600 hover:text-blue-800 font-medium"
-            >
-              &larr; Back to Answer Sheets
-            </Link>
-            <Link
-              href={`/rallies/${rallyId}`}
-              className="text-blue-600 hover:text-blue-800 font-medium"
-            >
-              Rally Overview &rarr;
-            </Link>
+
+        <div className="bg-white rounded-xl shadow-xl overflow-hidden border-2 border-gray-200 mb-6">
+          <div className="px-6 py-3 border-b-2 border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+            <h2 className="text-lg font-bold text-gray-800">Answer Sheet Scoring</h2>
+            <div className="flex items-center gap-4">
+              <span className="text-lg font-bold text-red-600">
+                {totalPenalties} penalty points
+              </span>
+              <Link
+                href={`/rallies/${rallyId}/participants/${sheet.eq}`}
+                className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-medium text-base transition-colors"
+              >
+                All Answers of Participant {sheet.eq}
+              </Link>
+            </div>
           </div>
+
+          {/* Same 4 columns as the entry form and the participant view */}
+          <ControlekaartCard
+            scoreKey={stage.scoreKey}
+            answers={sheet.answers}
+            timePenalties={sheet.timePenalties}
+            merkScores={sheet.merkScores}
+          />
+        </div>
+
+        <div className="mt-8 flex flex-wrap gap-6">
+          <Link
+            href={`/rallies/${rallyId}/answer-sheets`}
+            className="inline-flex items-center px-5 py-3 bg-gray-100 text-gray-800 hover:bg-gray-200 rounded-lg text-lg font-medium transition-colors"
+          >
+            &larr; Back to Answer Sheets
+          </Link>
+          <Link
+            href={`/rallies/${rallyId}`}
+            className="inline-flex items-center px-5 py-3 bg-gray-100 text-gray-800 hover:bg-gray-200 rounded-lg text-lg font-medium transition-colors"
+          >
+            Rally Overview &rarr;
+          </Link>
         </div>
       </div>
     </div>
