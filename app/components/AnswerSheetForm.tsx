@@ -43,6 +43,16 @@ interface MerkRow {
   strafp: string;
 }
 
+// An existing sheet being corrected. Rows are keyed by their row number, so a
+// stored sheet with fewer rows than the card still fills the right ones.
+export interface AnswerSheetInitialData {
+  eq: number;
+  stageId: string;
+  answers?: { rowNumber: number; selectedAnswers?: string[]; strafp?: number }[];
+  timePenalties?: { rowNumber: number; wpt?: string }[];
+  merkScores?: { rowNumber: number; merk?: string; strafp?: number }[];
+}
+
 interface AnswerSheetFormProps {
   onSubmit: (answerSheet: {
     eq: number;
@@ -61,6 +71,11 @@ interface AnswerSheetFormProps {
   // Every sheet already entered for this rally; used to carry the participant's
   // time delta into the stage being typed.
   sheets?: ExistingSheet[];
+  // Set when an already submitted sheet is being corrected: the card starts
+  // filled in and the stage it belongs to is fixed (a sheet is identified by
+  // {stage, eq}, so moving it to another stage is a delete plus a new sheet).
+  initialData?: AnswerSheetInitialData;
+  isEditing?: boolean;
 }
 
 // Layout constants matching the SARK controlekaart
@@ -88,9 +103,30 @@ const toNumber = (value: string): number => {
   return isNaN(n) ? 0 : n;
 };
 
-const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages, sheets = [] }) => {
-  const [eq, setEq] = useState<number | ''>('');
-  const [stageId, setStageId] = useState('');
+// Fill a fixed-size grid of `rows` rows from whatever the stored sheet has, by
+// row number, leaving the rest blank.
+const fillRows = <T,>(
+  count: number,
+  blank: (rowNumber: number) => T,
+  stored: { rowNumber: number }[] | undefined,
+  merge: (row: T, storedRow: any) => T
+): T[] =>
+  Array.from({ length: count }, (_, index) => {
+    const rowNumber = index + 1;
+    const row = blank(rowNumber);
+    const storedRow = stored?.find((candidate) => candidate.rowNumber === rowNumber);
+    return storedRow ? merge(row, storedRow) : row;
+  });
+
+const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
+  onSubmit,
+  stages,
+  sheets = [],
+  initialData,
+  isEditing = false,
+}) => {
+  const [eq, setEq] = useState<number | ''>(initialData?.eq ?? '');
+  const [stageId, setStageId] = useState(initialData?.stageId || '');
 
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -177,27 +213,46 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages, she
     }
   };
 
-  const [answers, setAnswers] = useState<AnswerRow[]>(
-    Array.from({ length: ANSWER_ROWS }, (_, index) => ({
-      rowNumber: index + 1,
-      selectedAnswers: Array(LETTER_COLUMNS).fill(''),
-      strafp: '',
-    }))
+  const [answers, setAnswers] = useState<AnswerRow[]>(() =>
+    fillRows<AnswerRow>(
+      ANSWER_ROWS,
+      (rowNumber) => ({
+        rowNumber,
+        selectedAnswers: Array(LETTER_COLUMNS).fill(''),
+        strafp: '',
+      }),
+      initialData?.answers,
+      (row, stored) => ({
+        ...row,
+        selectedAnswers: Array.from(
+          { length: LETTER_COLUMNS },
+          (_, colIndex) => stored.selectedAnswers?.[colIndex] || ''
+        ),
+        strafp: stored.strafp ? String(stored.strafp) : '',
+      })
+    )
   );
 
-  const [timePenalties, setTimePenalties] = useState<TimePenaltyRow[]>(
-    Array.from({ length: TIME_ROWS }, (_, index) => ({
-      rowNumber: index + 1,
-      wpt: '',
-    }))
+  const [timePenalties, setTimePenalties] = useState<TimePenaltyRow[]>(() =>
+    fillRows<TimePenaltyRow>(
+      TIME_ROWS,
+      (rowNumber) => ({ rowNumber, wpt: '' }),
+      initialData?.timePenalties,
+      (row, stored) => ({ ...row, wpt: stored.wpt || '' })
+    )
   );
 
-  const [merkScores, setMerkScores] = useState<MerkRow[]>(
-    Array.from({ length: MERK_ROWS }, (_, index) => ({
-      rowNumber: index + 1,
-      merk: '',
-      strafp: '',
-    }))
+  const [merkScores, setMerkScores] = useState<MerkRow[]>(() =>
+    fillRows<MerkRow>(
+      MERK_ROWS,
+      (rowNumber) => ({ rowNumber, merk: '', strafp: '' }),
+      initialData?.merkScores,
+      (row, stored) => ({
+        ...row,
+        merk: stored.merk || '',
+        strafp: stored.strafp ? String(stored.strafp) : '',
+      })
+    )
   );
 
   // Select the first stage by default once stages are loaded.
@@ -444,9 +499,10 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages, she
           </label>
           <select
             id="stageId"
-            className="w-full p-2 border-2 border-gray-300 rounded-lg shadow-sm text-base focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700"
+            className="w-full p-2 border-2 border-gray-300 rounded-lg shadow-sm text-base focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700 disabled:bg-gray-100"
             value={stageId}
             onChange={(e) => setStageId(e.target.value)}
+            disabled={isEditing}
             required
           >
             <option value="">Select a stage</option>
@@ -458,7 +514,9 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages, she
           </select>
         </div>
         <p className="text-sm text-gray-600 sm:ml-auto sm:pb-2">
-          Enter single-letter answers per column, plus strafpunten per row.
+          {isEditing
+            ? 'Correct the card and save. The stage of a submitted sheet cannot be changed — delete it and enter a new one instead.'
+            : 'Enter single-letter answers per column, plus strafpunten per row.'}
         </p>
       </div>
 
@@ -705,9 +763,11 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages, she
           {/* Submit lives under the totals so the whole card fits without scrolling */}
           <button
             type="submit"
-            className="mt-3 w-full px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold text-base shadow-lg transition duration-150"
+            className={`mt-3 w-full px-6 py-2.5 text-white rounded-lg font-bold text-base shadow-lg transition duration-150 ${
+              isEditing ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-green-600 hover:bg-green-700'
+            }`}
           >
-            Submit Answer Sheet
+            {isEditing ? 'Save Changes' : 'Submit Answer Sheet'}
           </button>
         </div>
       </div>

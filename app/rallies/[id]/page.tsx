@@ -91,6 +91,28 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
     }
   };
 
+  // A participant is not a record of its own — they are their answer sheets, so
+  // removing them from the rally means deleting every sheet they have in it.
+  const handleDeleteParticipant = async (eq: number) => {
+    if (
+      !window.confirm(
+        `Delete participant ${eq} from this rally? Every answer sheet they submitted for it will be deleted. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const response = await fetch(`/api/rallies/${rallyId}/participants/${eq}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete participant');
+      loadData();
+    } catch (err) {
+      alert('Failed to delete participant. Please try again.');
+      console.error(err);
+    }
+  };
+
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -248,7 +270,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                     Total Penalty
                   </th>
                   <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                    Answers
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -301,12 +323,20 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                       <span className="text-lg font-bold text-red-600">{entry.totalPenalty}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <Link
-                        href={`/rallies/${rally._id}/participants/${entry.eq}`}
-                        className="text-blue-600 hover:text-blue-900 font-medium text-base"
-                      >
-                        View Answers
-                      </Link>
+                      <div className="flex justify-end space-x-4">
+                        <Link
+                          href={`/rallies/${rally._id}/participants/${entry.eq}`}
+                          className="text-blue-600 hover:text-blue-900 font-medium text-base"
+                        >
+                          View Answers
+                        </Link>
+                        <button
+                          onClick={() => handleDeleteParticipant(entry.eq)}
+                          className="text-red-600 hover:text-red-900 font-medium text-base"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

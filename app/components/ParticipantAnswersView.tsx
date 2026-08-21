@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
@@ -51,11 +52,13 @@ const formatDate = (dateString: string) =>
 // paper card the answers were copied from. Stages the participant has no sheet
 // for are listed as missing so the gaps are visible.
 const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId, eq }) => {
+  const router = useRouter();
   const [rally, setRally] = useState<Rally | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
   const [sheets, setSheets] = useState<AnswerSheet[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<boolean>(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -88,6 +91,53 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
     loadData();
   }, [loadData]);
 
+  // One stage of this participant. Their delta chains through the rally, so the
+  // whole page is reloaded: the time penalties of their later stages move too.
+  const handleDeleteSheet = async (sheetId: string, stageName: string) => {
+    if (
+      !window.confirm(
+        `Delete the answer sheet of participant ${eq} for ${stageName}? Their sheets for the other stages stay. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/answersheets/${sheetId}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete answer sheet');
+      await loadData();
+    } catch (err) {
+      setError('Failed to delete this answer sheet. Please try again.');
+      console.error(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // A participant is not a record of its own — they are their answer sheets, so
+  // removing them from the rally deletes every sheet they have in it.
+  const handleDeleteParticipant = async () => {
+    if (
+      !window.confirm(
+        `Delete participant ${eq} from this rally? All ${sheets.length} of their answer sheets will be deleted. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/rallies/${rallyId}/participants/${eq}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete participant');
+      router.push(`/rallies/${rallyId}`);
+    } catch (err) {
+      setError('Failed to delete this participant. Please try again.');
+      console.error(err);
+      setBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -97,7 +147,9 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
     );
   }
 
-  if (error || !rally) {
+  // Only a failed load takes over the page; an error from a delete is shown as a
+  // banner above the participant's sheets, which are still on screen.
+  if (!rally) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
@@ -141,15 +193,33 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   return (
     <div className="min-h-screen bg-gray-100 py-4">
       <div className="max-w-[1700px] mx-auto p-4">
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">
-            Participant {eq} — {rally.name}
-          </h1>
-          <p className="text-gray-700 text-base">
-            Every answer this participant submitted, stage by stage, scored against each stage&apos;s
-            answer key.
-          </p>
+        <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">
+              Participant {eq} — {rally.name}
+            </h1>
+            <p className="text-gray-700 text-base">
+              Every answer this participant submitted, stage by stage, scored against each
+              stage&apos;s answer key.
+            </p>
+          </div>
+          {sheets.length > 0 && (
+            <button
+              onClick={handleDeleteParticipant}
+              disabled={busy}
+              className="px-5 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-base shadow-md transition-colors disabled:opacity-60"
+              title={`Delete every answer sheet of participant ${eq} in this rally`}
+            >
+              Delete Participant {eq}
+            </button>
+          )}
         </div>
+
+        {error && (
+          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 px-6 py-3 rounded-lg mb-4 text-base font-medium shadow-md">
+            <p>{error}</p>
+          </div>
+        )}
 
         {/* Summary */}
         <div className="bg-white rounded-xl shadow-xl overflow-hidden mb-6">
@@ -234,7 +304,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                       Submitted: {formatDate(sheet.submittedAt)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-wrap items-center gap-4">
                     <span className="text-lg font-bold text-red-600">
                       {orcPenalty + stageTijdTotal} penalty points
                       <span className="ml-2 text-sm font-semibold text-gray-600">
@@ -247,6 +317,19 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                     >
                       View Score
                     </Link>
+                    <Link
+                      href={`/rallies/${rallyId}/answer-sheets/${sheet._id}/edit`}
+                      className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-base transition-colors"
+                    >
+                      Edit Answers
+                    </Link>
+                    <button
+                      onClick={() => handleDeleteSheet(sheet._id, stage.name)}
+                      disabled={busy}
+                      className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-base transition-colors disabled:opacity-60"
+                    >
+                      Delete Sheet
+                    </button>
                   </div>
                 </div>
 

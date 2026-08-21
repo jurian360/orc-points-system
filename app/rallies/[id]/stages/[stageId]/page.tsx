@@ -2,18 +2,19 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import StageKeyCard from '../../../../components/StageKeyCard';
+import type { StageMerkKeyRow, StageScoreKeyRow } from '../../../../components/StageKeyCard';
+import type { StageTimeConfig, TimeKeyRow } from '../../../../lib/timeScoring';
 
 interface Stage {
   _id: string;
   rallyId: string;
   name: string;
   createdAt: string;
-  scoreKey: {
-    rowNumber: number;
-    answers: string[];
-    falseAnswers?: { column: number; value: string }[];
-    maxPenalty?: number;
-  }[];
+  scoreKey: StageScoreKeyRow[];
+  timeScoreKey?: TimeKeyRow[];
+  merkScoreKey?: StageMerkKeyRow[];
+  timeConfig?: Partial<StageTimeConfig>;
 }
 
 export default function ViewStagePage({
@@ -24,6 +25,10 @@ export default function ViewStagePage({
   const [rallyId, setRallyId] = useState<string>('');
   const [stageId, setStageId] = useState<string>('');
   const [stage, setStage] = useState<Stage | null>(null);
+  // Whether this is the last stage of the rally decides what its finish row
+  // does — a penalty plus the break, or a disqualification — and so the maximum
+  // the stage can hand out.
+  const [isFinalStage, setIsFinalStage] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,13 +42,22 @@ export default function ViewStagePage({
   }, [params]);
 
   useEffect(() => {
-    if (!stageId) return;
+    if (!stageId || !rallyId) return;
 
     const fetchStage = async () => {
       try {
-        const response = await fetch(`/api/stages/${stageId}`);
-        if (!response.ok) throw new Error('Failed to fetch stage');
-        setStage(await response.json());
+        const [stageRes, stagesRes] = await Promise.all([
+          fetch(`/api/stages/${stageId}`),
+          fetch(`/api/stages?rallyId=${rallyId}`),
+        ]);
+        if (!stageRes.ok) throw new Error('Failed to fetch stage');
+        setStage(await stageRes.json());
+
+        if (stagesRes.ok) {
+          // Stages are returned in running order (creation order).
+          const stages: { _id: string }[] = await stagesRes.json();
+          setIsFinalStage(stages.length === 0 || stages[stages.length - 1]._id === stageId);
+        }
       } catch (err) {
         setError('Failed to load stage. Please try again later.');
         console.error(err);
@@ -53,7 +67,7 @@ export default function ViewStagePage({
     };
 
     fetchStage();
-  }, [stageId]);
+  }, [stageId, rallyId]);
 
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('en-US', {
@@ -66,7 +80,7 @@ export default function ViewStagePage({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <p className="text-lg font-semibold">Loading stage...</p>
       </div>
     );
@@ -74,7 +88,7 @@ export default function ViewStagePage({
 
   if (error || !stage) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 text-lg font-semibold mb-4">{error || 'Stage not found'}</p>
           <Link href={`/rallies/${rallyId}`} className="text-blue-600 hover:underline text-lg">
@@ -86,84 +100,50 @@ export default function ViewStagePage({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">{stage.name}</h1>
-          <p className="text-gray-600 mt-2 text-lg">Created: {formatDate(stage.createdAt)}</p>
+    <div className="min-h-screen bg-gray-100 py-4">
+      <div className="max-w-[1700px] mx-auto p-4">
+        <div className="mb-4">
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">{stage.name}</h1>
+          <p className="text-gray-700 text-base">
+            Answer key of this stage, laid out as the controlekaart. Created:{' '}
+            {formatDate(stage.createdAt)}
+            {isFinalStage ? ' — last stage of the rally.' : ''}
+          </p>
         </div>
 
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-6">
-          <div className="p-6">
-            <h2 className="text-2xl font-semibold mb-4 text-gray-800">Answer Key</h2>
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse">
-                <thead>
-                  <tr className="bg-blue-50">
-                    <th className="py-3 px-6 border border-gray-300 text-left text-base font-semibold text-gray-800">Row</th>
-                    <th className="py-3 px-6 border border-gray-300 text-left text-base font-semibold text-gray-800">Correct Answers</th>
-                    <th className="py-3 px-6 border border-gray-300 text-left text-base font-semibold text-gray-800">False Answers</th>
-                    <th className="py-3 px-6 border border-gray-300 text-left text-base font-semibold text-gray-800">Max Penalty</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stage.scoreKey.map((row) => (
-                    <tr key={row.rowNumber} className={row.rowNumber % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                      <td className="py-3 px-6 border border-gray-300 text-gray-800 font-medium text-lg">{row.rowNumber}</td>
-                      <td className="py-3 px-6 border border-gray-300">
-                        {row.answers.length > 0 ? (
-                          <div className="flex space-x-3">
-                            {row.answers.map((answer, index) => (
-                              <div
-                                key={index}
-                                className="w-10 h-10 flex items-center justify-center bg-green-100 rounded-md shadow-sm border border-green-200"
-                              >
-                                <span className="text-xl font-bold text-green-800">{answer}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-gray-600 text-base font-medium">No answers</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-6 border border-gray-300">
-                        {row.falseAnswers && row.falseAnswers.length > 0 ? (
-                          <div className="flex space-x-3">
-                            {row.falseAnswers.map((fa, index) => (
-                              <div key={index} className="flex items-center">
-                                <span className="text-sm text-gray-600 mr-1">Col {fa.column + 1}:</span>
-                                <div className="w-10 h-10 flex items-center justify-center bg-red-100 rounded-md shadow-sm border border-red-200">
-                                  <span className="text-xl font-bold text-red-800">{fa.value}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-gray-600 text-base font-medium">No false answers</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-6 border border-gray-300">
-                        <div className="w-12 h-10 flex items-center justify-center bg-blue-100 rounded-md shadow-sm border border-blue-200">
-                          <span className="text-xl font-bold text-blue-800">{row.maxPenalty || 0}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <div className="bg-white rounded-xl shadow-xl overflow-hidden border-2 border-gray-200 mb-6">
+          <div className="px-6 py-3 border-b-2 border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+            <h2 className="text-lg font-bold text-gray-800">Answer Key</h2>
+            <Link
+              href={`/rallies/${rallyId}/stages/${stage._id}/edit`}
+              className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-base transition-colors"
+            >
+              Edit Stage
+            </Link>
           </div>
+
+          {/* Same 4 columns as the stage form and the scored sheets */}
+          <StageKeyCard
+            scoreKey={stage.scoreKey}
+            timeScoreKey={stage.timeScoreKey}
+            merkScoreKey={stage.merkScoreKey}
+            timeConfig={stage.timeConfig}
+            isFinalStage={isFinalStage}
+          />
         </div>
 
-        <div className="flex space-x-4">
-          <Link href={`/rallies/${rallyId}`} className="text-blue-600 hover:underline text-lg font-medium">
+        <div className="mt-8 flex flex-wrap gap-6">
+          <Link
+            href={`/rallies/${rallyId}`}
+            className="inline-flex items-center px-5 py-3 bg-gray-100 text-gray-800 hover:bg-gray-200 rounded-lg text-lg font-medium transition-colors"
+          >
             &larr; Back to Rally
           </Link>
           <Link
-            href={`/rallies/${rallyId}/stages/${stage._id}/edit`}
-            className="text-indigo-600 hover:underline text-lg font-medium"
+            href={`/rallies/${rallyId}/answer-sheets`}
+            className="inline-flex items-center px-5 py-3 bg-gray-100 text-gray-800 hover:bg-gray-200 rounded-lg text-lg font-medium transition-colors"
           >
-            Edit Stage
+            Answer Sheets &rarr;
           </Link>
         </div>
       </div>
