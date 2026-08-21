@@ -1,4 +1,6 @@
-// Shared penalty scoring logic for answer sheets.
+// Shared ORC (letter answers) penalty scoring logic for answer sheets. The time
+// (IPT / WPT) part of a sheet is scored in app/lib/timeScoring.ts; a sheet's
+// stored `totalPenalty` is the sum of the two.
 //
 // A sheet is scored by comparing its selected letter answers against the
 // stage's answer key (scoreKey). Each wrong, missing, or duplicated correct

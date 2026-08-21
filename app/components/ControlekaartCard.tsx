@@ -1,6 +1,7 @@
 import React from 'react';
 import { calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
+import { timeRowLabel } from '../lib/timeScoring';
 import OrcAnswerGrid from './OrcAnswerGrid';
 
 export interface TimePenaltyRow {
@@ -9,6 +10,7 @@ export interface TimePenaltyRow {
   wpt?: string;
   plusMinus?: string;
   strafp?: number;
+  outOfWindow?: boolean;
 }
 
 export interface MerkScoreRow {
@@ -25,6 +27,7 @@ interface ControlekaartCardProps {
   answers: AnswerRow[];
   timePenalties?: TimePenaltyRow[];
   merkScores?: MerkScoreRow[];
+  disqualified?: boolean;
 }
 
 // One submitted answer sheet laid out as the four columns of the SARK
@@ -39,6 +42,7 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
   answers,
   timePenalties,
   merkScores,
+  disqualified = false,
 }) => {
   const timeRows = timePenalties || [];
   const merkRows = merkScores || [];
@@ -57,7 +61,7 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
 
       {/* Column 3 — For official use only (IPT / WPT / +/- / STRAFP) */}
       <div>
-        <h3 className="text-sm font-bold mb-1 text-gray-800">For Official Use Only</h3>
+        <h3 className="text-sm font-bold mb-1 text-gray-800">Tijd</h3>
         {timeRows.length === 0 ? (
           <p className="text-base text-gray-600">No time entries on this sheet.</p>
         ) : (
@@ -66,7 +70,8 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
               <thead>
                 <tr className="bg-yellow-100">
                   <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800 w-10">NR</th>
-                  <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800">IPT 0</th>
+                  <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800">Controle</th>
+                  <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800">IPT</th>
                   <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800">WPT</th>
                   <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800">+/-</th>
                   <th className="py-2 px-1 border-b border-gray-300 text-center font-bold text-sm text-gray-800">Strafp.</th>
@@ -74,9 +79,17 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
               </thead>
               <tbody>
                 {timeRows.map((row, index) => (
-                  <tr key={row.rowNumber} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <tr
+                    key={row.rowNumber}
+                    className={
+                      row.outOfWindow ? 'bg-red-50' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                    }
+                  >
                     <td className="py-1.5 px-1 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center">
                       {row.rowNumber}
+                    </td>
+                    <td className="py-1.5 px-1 border-b border-r border-gray-300 text-sm font-semibold text-gray-700">
+                      {timeRowLabel(row.rowNumber)}
                     </td>
                     <td className="py-1.5 px-1 border-b border-r border-gray-300 text-center text-base text-gray-800">
                       {row.ipt || '-'}
@@ -87,7 +100,11 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                     <td className="py-1.5 px-1 border-b border-r border-gray-300 text-center text-base text-gray-800">
                       {row.plusMinus || '-'}
                     </td>
-                    <td className="py-1.5 px-1 border-b border-gray-300 text-center text-base font-bold text-gray-900">
+                    <td
+                      className={`py-1.5 px-1 border-b border-gray-300 text-center text-base font-bold ${
+                        row.outOfWindow ? 'text-red-700' : 'text-gray-900'
+                      }`}
+                    >
                       {row.strafp || 0}
                     </td>
                   </tr>
@@ -95,6 +112,11 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
               </tbody>
             </table>
           </div>
+        )}
+        {disqualified && (
+          <p className="mt-2 px-2 py-1 rounded bg-red-100 text-red-800 text-sm font-bold">
+            Disqualified — outside the finish window of the last stage.
+          </p>
         )}
       </div>
 
@@ -176,7 +198,8 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
         </div>
 
         <p className="text-sm text-gray-600 mt-2">
-          The standings are scored from the ORC&apos;s total.
+          The standings are scored from ORC&apos;s + Tijd ({orcPenalty + tijdTotal}). Diversen is
+          recorded by the officials and does not count towards the standings.
         </p>
       </div>
     </div>

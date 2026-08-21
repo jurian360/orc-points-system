@@ -1,3 +1,5 @@
+import type { StageTimeConfig } from '../lib/timeScoring';
+
 // Rally types
 export interface Rally {
   _id: string;
@@ -14,6 +16,7 @@ export interface Stage {
   scoreKey: ScoreKeyRow[];
   timeScoreKey?: TimeScoreKeyRow[];
   merkScoreKey?: MerkScoreKeyRow[];
+  timeConfig?: StageTimeConfig;
 }
 
 export interface ScoreKeyRow {
@@ -23,7 +26,8 @@ export interface ScoreKeyRow {
   maxPenalty?: number;
 }
 
-// Time-based scoring reference row (IPT / WPT / +/-).
+// Time key row of a stage. `ipt` is the ideal passage time of participant 0;
+// every other participant's ideal time is that plus their eq in minutes.
 export interface TimeScoreKeyRow {
   rowNumber: number;
   ipt: string;
@@ -49,6 +53,10 @@ export interface AnswerSheet {
   timePenalties?: TimePenaltyRow[];
   merkScores?: MerkScoreRow[];
   totalPenalty: number;
+  timePenalty?: number;
+  disqualified?: boolean;
+  startDelta?: number;
+  endDelta?: number;
   submittedAt: string;
 }
 
@@ -58,13 +66,15 @@ export interface AnswerSheetRow {
   strafp?: number;
 }
 
-// Time-based penalty entry row (IPT / WPT / +/- / strafpunten).
+// Time row of a sheet. Officials type the `wpt`; the rest is computed from the
+// stage's time key (see app/lib/timeScoring.ts).
 export interface TimePenaltyRow {
   rowNumber: number;
   ipt: string;
   wpt: string;
   plusMinus: string;
   strafp: number;
+  outOfWindow?: boolean;
 }
 
 // "Merk" scoring row filled in by officials.
@@ -78,7 +88,9 @@ export interface MerkScoreRow {
 export interface StandingsEntry {
   eq: number;
   totalPenalty: number;
+  timePenalty: number;
   sheetsSubmitted: number;
+  disqualified: boolean;
   rank: number;
 }
 
@@ -92,6 +104,7 @@ export interface StageFormData {
   scoreKey: ScoreKeyRow[];
   timeScoreKey?: TimeScoreKeyRow[];
   merkScoreKey?: MerkScoreKeyRow[];
+  timeConfig?: StageTimeConfig;
 }
 
 export interface AnswerSheetFormData {

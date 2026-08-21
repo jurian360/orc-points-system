@@ -13,14 +13,29 @@ The system is organised around rallies:
 
 - **Rally** — the top-level event. An admin creates a rally first.
 - **Stage** — a rally has multiple stages. Each stage holds an answer key
-  (the score key used to grade submissions).
+  (the score key used to grade submissions) and its timetable: the ideal
+  passage times ("IPT") of participant 0 for the start, the secret time
+  controls (GTC's) the stage uses and the finish.
 - **Answer sheet** — a participant's submission for a single stage. A
   participant (identified by their EQ number) can have multiple answer sheets
   per rally — one per stage.
 
-Each answer sheet is scored against its stage's answer key (30 penalty points
-per wrong or missing answer, capped per row by the row's max penalty). The
-**rally winner** is the participant with the **lowest total penalty** summed
+Each answer sheet is scored on two things:
+
+- **Letters** — against the stage's answer key: 30 penalty points per wrong or
+  missing answer, capped per row by the row's max penalty.
+- **Time** — this is a time-speed-distance rally, so participants start one
+  minute apart: participant 12 passes every control 12 minutes after
+  participant 0. Officials type in the actual passage time ("WPT") of each
+  control and the app charges 1 penalty point per minute the participant's
+  delta moved since the previous control — they have to *hold* their delta, not
+  correct it. A control passed outside its window (by default 15 minutes early
+  or 30 late; 15/60 on a finish) costs a flat 60 points, plus the length of the
+  break when it is the finish of a stage that is followed by another one; past
+  the finish window of the **last** stage the participant is disqualified. The
+  windows, the maximum and the break are per-stage settings.
+
+The **rally winner** is the participant with the **lowest total penalty** summed
 across all of their answer sheets.
 
 ## Requirements

@@ -5,6 +5,7 @@ import dbConnect from '../../../lib/mongodb';
 import { AnswerSheet, Stage } from '../../../models';
 import { calculateTotalPenalty } from '../../../lib/scoring';
 import { readBody, requireSession } from '../../../lib/api-guard';
+import { rescoreParticipants } from '../../../lib/rescore';
 import {
   parseAnswerRows,
   parseEq,
@@ -83,19 +84,28 @@ export async function PUT(
     const stage = await Stage.findById(sheet.stageId);
     const answers = body.answers !== undefined ? parseAnswerRows(body.answers) : sheet.answers;
 
+    const previousEq = sheet.eq;
     if (eq !== null) sheet.eq = eq;
     sheet.answers = answers;
     if (body.timePenalties !== undefined) {
+      // Only the WPT survives the parse; the rescore below recomputes the rest.
       sheet.timePenalties = parseTimePenalties(body.timePenalties);
     }
     if (body.merkScores !== undefined) {
       sheet.merkScores = parseMerkScores(body.merkScores);
     }
+    // ORC's part only; rescoreParticipants adds the time part below.
     sheet.totalPenalty = calculateTotalPenalty(stage ? stage.scoreKey : [], answers);
 
     const updatedSheet = await sheet.save();
 
-    return NextResponse.json(updatedSheet);
+    // Renumbering a sheet moves it between two participants' time chains, so
+    // both have to be rebuilt.
+    await rescoreParticipants(sheet.rallyId, [previousEq, sheet.eq]);
+
+    const scoredSheet = await AnswerSheet.findById(updatedSheet._id);
+
+    return NextResponse.json(scoredSheet || updatedSheet);
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 11000) {
       return NextResponse.json(
@@ -130,6 +140,10 @@ export async function DELETE(
     if (!deletedSheet) {
       return NextResponse.json({ error: 'Answer sheet not found' }, { status: 404 });
     }
+
+    // The removed stage no longer contributes to this participant's delta, so
+    // the stages after it have to be re-scored.
+    await rescoreParticipants(deletedSheet.rallyId, [deletedSheet.eq]);
 
     return NextResponse.json({ message: 'Answer sheet deleted successfully' });
   } catch (error) {

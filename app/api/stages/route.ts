@@ -5,6 +5,7 @@ import dbConnect from '../../lib/mongodb';
 import { Stage, Rally } from '../../models';
 import { readBody, requireSession } from '../../lib/api-guard';
 import { parseName, processScoreKey } from '../../lib/validation';
+import { rescoreRally } from '../../lib/rescore';
 import mongoose from 'mongoose';
 
 export async function GET(request: NextRequest) {
@@ -21,7 +22,10 @@ export async function GET(request: NextRequest) {
   try {
     await dbConnect();
 
-    const stages = await Stage.find({ rallyId }).sort({ createdAt: 1 });
+    // Creation order is the running order of the rally, and the order the time
+    // delta is chained in (app/lib/rescore.ts sorts identically) — `_id` breaks
+    // the tie when two stages were created in the same millisecond.
+    const stages = await Stage.find({ rallyId }).sort({ createdAt: 1, _id: 1 });
     return NextResponse.json(stages);
   } catch (error) {
     console.error('Failed to fetch stages:', error);
@@ -59,10 +63,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Rally not found' }, { status: 404 });
     }
 
-    const { scoreKey, timeScoreKey, merkScoreKey } = processScoreKey(body);
+    const { scoreKey, timeScoreKey, merkScoreKey, timeConfig } = processScoreKey(body);
 
-    const stage = new Stage({ rallyId, name, scoreKey, timeScoreKey, merkScoreKey });
+    const stage = new Stage({ rallyId, name, scoreKey, timeScoreKey, merkScoreKey, timeConfig });
     const savedStage = await stage.save();
+
+    // The new stage is now the last one, so the finish of the stage that used to
+    // be last stops being a disqualification and becomes a penalty. Every
+    // participant's time chain has to be rebuilt.
+    await rescoreRally(rallyId);
 
     return NextResponse.json(savedStage, { status: 201 });
   } catch (error) {

@@ -3,9 +3,9 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
 import { Stage, AnswerSheet } from '../../../models';
-import { calculateTotalPenalty } from '../../../lib/scoring';
 import { readBody, requireSession } from '../../../lib/api-guard';
 import { parseName, processScoreKey } from '../../../lib/validation';
+import { rescoreRally } from '../../../lib/rescore';
 import mongoose from 'mongoose';
 
 export async function GET(
@@ -66,11 +66,11 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid stage ID' }, { status: 400 });
     }
 
-    const { scoreKey, timeScoreKey, merkScoreKey } = processScoreKey(body);
+    const { scoreKey, timeScoreKey, merkScoreKey, timeConfig } = processScoreKey(body);
 
     const updatedStage = await Stage.findByIdAndUpdate(
       id,
-      { name, scoreKey, timeScoreKey, merkScoreKey },
+      { name, scoreKey, timeScoreKey, merkScoreKey, timeConfig },
       { new: true, runValidators: true }
     );
 
@@ -78,25 +78,10 @@ export async function PUT(
       return NextResponse.json({ error: 'Stage not found' }, { status: 404 });
     }
 
-    // The answer key changed, so re-score every answer sheet for this stage.
-    // One bulkWrite instead of a save() per sheet: the previous loop turned a
-    // single stage edit into N database round-trips.
-    const sheets = await AnswerSheet.find({ stageId: id }).select('_id answers');
-
-    if (sheets.length > 0) {
-      await AnswerSheet.bulkWrite(
-        sheets.map((sheet) => ({
-          updateOne: {
-            filter: { _id: sheet._id },
-            update: {
-              $set: {
-                totalPenalty: calculateTotalPenalty(updatedStage.scoreKey, sheet.answers),
-              },
-            },
-          },
-        }))
-      );
-    }
+    // Both keys changed, so re-score the whole rally in one bulkWrite: the
+    // answer key only affects this stage's sheets, but the time key moves the
+    // delta every later stage of every participant starts from.
+    await rescoreRally(updatedStage.rallyId);
 
     return NextResponse.json(updatedStage);
   } catch (error) {
@@ -129,6 +114,10 @@ export async function DELETE(
 
     // Cascade: remove all answer sheets submitted for this stage.
     await AnswerSheet.deleteMany({ stageId: id });
+
+    // The rally is one stage shorter: the time chain, and which finish is the
+    // disqualifying one, both move.
+    await rescoreRally(deletedStage.rallyId);
 
     return NextResponse.json({ message: 'Stage deleted successfully' });
   } catch (error) {

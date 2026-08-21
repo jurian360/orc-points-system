@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { DEFAULT_TIME_CONFIG, type StageTimeConfig } from './timeScoring';
+
 // Input validation and normalization for the API routes.
 //
 // Two jobs here:
@@ -81,6 +83,35 @@ export interface NormalizedScoreKey {
     maxPenalty: number;
   }[];
   merkScoreKey: { rowNumber: number; merk: string; maxPenalty: number }[];
+  timeConfig: StageTimeConfig;
+}
+
+// Stage time settings. Every field is a bounded, non-negative whole number of
+// minutes (or penalty points); anything missing or unusable falls back to the
+// standard rally limit rather than to zero, which would silently turn the
+// windows off.
+const MAX_MINUTES = 1440; // a day
+const MAX_PENALTY = 100000;
+
+export function parseTimeConfig(value: unknown): StageTimeConfig {
+  const raw = (value ?? {}) as Record<string, unknown>;
+
+  const field = (key: keyof StageTimeConfig, max: number): number => {
+    const candidate = raw[key];
+    if (typeof candidate !== 'number' || !Number.isFinite(candidate)) {
+      return DEFAULT_TIME_CONFIG[key];
+    }
+    return Math.min(Math.max(Math.round(candidate), 0), max);
+  };
+
+  return {
+    breakMinutes: field('breakMinutes', MAX_MINUTES),
+    gtcEarlyWindow: field('gtcEarlyWindow', MAX_MINUTES),
+    gtcLateWindow: field('gtcLateWindow', MAX_MINUTES),
+    finishEarlyWindow: field('finishEarlyWindow', MAX_MINUTES),
+    finishLateWindow: field('finishLateWindow', MAX_MINUTES),
+    outOfWindowPenalty: field('outOfWindowPenalty', MAX_PENALTY),
+  };
 }
 
 // Shared by POST /api/stages and PUT /api/stages/[id] — these were previously
@@ -119,7 +150,7 @@ export function processScoreKey(body: Record<string, unknown>): NormalizedScoreK
     };
   });
 
-  return { scoreKey, timeScoreKey, merkScoreKey };
+  return { scoreKey, timeScoreKey, merkScoreKey, timeConfig: parseTimeConfig(body.timeConfig) };
 }
 
 // --- Answer sheets ---------------------------------------------------------
@@ -135,15 +166,20 @@ export function parseAnswerRows(value: unknown) {
   });
 }
 
+// Only the WPT is taken from the client: the ideal time, the +/- and the
+// penalty of a time row are derived from the stage's time key server-side (see
+// app/lib/rescore.ts), so accepting them here would let a sheet claim a total it
+// did not earn.
 export function parseTimePenalties(value: unknown) {
   return rows(value, MAX_TIME_ROWS).map((row) => {
     const r = (row ?? {}) as Record<string, unknown>;
     return {
       rowNumber: num(r.rowNumber),
-      ipt: str(r.ipt),
+      ipt: '',
       wpt: str(r.wpt),
-      plusMinus: str(r.plusMinus),
-      strafp: num(r.strafp),
+      plusMinus: '',
+      strafp: 0,
+      outOfWindow: false,
     };
   });
 }

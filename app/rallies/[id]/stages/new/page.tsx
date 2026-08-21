@@ -23,7 +23,8 @@ export default function NewStagePage({ params }: { params: Promise<{ id: string 
     stageName: string,
     scoreKey: any[],
     timeScoreKey: any[],
-    merkScoreKey: any[]
+    merkScoreKey: any[],
+    timeConfig: any
   ) => {
     setSubmitting(true);
     setError(null);
@@ -38,6 +39,7 @@ export default function NewStagePage({ params }: { params: Promise<{ id: string 
           scoreKey,
           timeScoreKey,
           merkScoreKey,
+          timeConfig,
         }),
       });
 

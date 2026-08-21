@@ -26,6 +26,14 @@ interface Stage {
     merk: string;
     maxPenalty?: number;
   }[];
+  timeConfig?: {
+    breakMinutes: number;
+    gtcEarlyWindow: number;
+    gtcLateWindow: number;
+    finishEarlyWindow: number;
+    finishLateWindow: number;
+    outOfWindowPenalty: number;
+  };
 }
 
 export default function EditStagePage({
@@ -37,6 +45,9 @@ export default function EditStagePage({
   const [rallyId, setRallyId] = useState<string>('');
   const [stageId, setStageId] = useState<string>('');
   const [stage, setStage] = useState<Stage | null>(null);
+  // Whether this is the last stage of the rally decides what its finish row
+  // does — a penalty plus the break, or a disqualification.
+  const [isFinalStage, setIsFinalStage] = useState(true);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,13 +62,22 @@ export default function EditStagePage({
   }, [params]);
 
   useEffect(() => {
-    if (!stageId) return;
+    if (!stageId || !rallyId) return;
 
     const fetchStage = async () => {
       try {
-        const response = await fetch(`/api/stages/${stageId}`);
-        if (!response.ok) throw new Error('Failed to fetch stage');
-        setStage(await response.json());
+        const [stageRes, stagesRes] = await Promise.all([
+          fetch(`/api/stages/${stageId}`),
+          fetch(`/api/stages?rallyId=${rallyId}`),
+        ]);
+        if (!stageRes.ok) throw new Error('Failed to fetch stage');
+        setStage(await stageRes.json());
+
+        if (stagesRes.ok) {
+          // Stages are returned in running order (creation order).
+          const stages: { _id: string }[] = await stagesRes.json();
+          setIsFinalStage(stages.length === 0 || stages[stages.length - 1]._id === stageId);
+        }
       } catch (err) {
         setError('Failed to load stage. Please try again later.');
         console.error(err);
@@ -67,13 +87,14 @@ export default function EditStagePage({
     };
 
     fetchStage();
-  }, [stageId]);
+  }, [stageId, rallyId]);
 
   const handleSubmit = async (
     stageName: string,
     scoreKey: any[],
     timeScoreKey: any[],
-    merkScoreKey: any[]
+    merkScoreKey: any[],
+    timeConfig: any
   ) => {
     setSubmitting(true);
     setError(null);
@@ -87,6 +108,7 @@ export default function EditStagePage({
           scoreKey,
           timeScoreKey,
           merkScoreKey,
+          timeConfig,
         }),
       });
 
@@ -136,7 +158,14 @@ export default function EditStagePage({
         )}
 
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          {stage && <StageForm onSubmit={handleSubmit} initialData={stage} isEditing={true} />}
+          {stage && (
+            <StageForm
+              onSubmit={handleSubmit}
+              initialData={stage}
+              isEditing={true}
+              isFinalStage={isFinalStage}
+            />
+          )}
         </div>
 
         <div className="mt-6">
