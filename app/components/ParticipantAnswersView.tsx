@@ -5,6 +5,9 @@ import { calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
 import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
+import ClassificationBadge from './ClassificationBadge';
+import ParticipantDetailsForm from './ParticipantDetailsForm';
+import { crewLabel, type ClassificationValue } from '../lib/participants';
 
 interface Rally {
   _id: string;
@@ -29,6 +32,14 @@ interface AnswerSheet {
   timePenalty?: number;
   disqualified?: boolean;
   submittedAt: string;
+}
+
+// The crew behind this EQ number, when somebody has recorded it.
+interface ParticipantDetails {
+  eq: number;
+  classification: ClassificationValue;
+  driverName: string;
+  navigatorName: string;
 }
 
 interface ParticipantAnswersViewProps {
@@ -56,6 +67,8 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   const [rally, setRally] = useState<Rally | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
   const [sheets, setSheets] = useState<AnswerSheet[]>([]);
+  const [details, setDetails] = useState<ParticipantDetails | null>(null);
+  const [editingDetails, setEditingDetails] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
@@ -65,10 +78,11 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
       setLoading(true);
       setError(null);
 
-      const [rallyRes, stagesRes, sheetsRes] = await Promise.all([
+      const [rallyRes, stagesRes, sheetsRes, detailsRes] = await Promise.all([
         fetch(`/api/rallies/${rallyId}`),
         fetch(`/api/stages?rallyId=${rallyId}`),
         fetch(`/api/answersheets?rallyId=${rallyId}&eq=${eq}`),
+        fetch(`/api/rallies/${rallyId}/participants/${eq}`),
       ]);
 
       if (!rallyRes.ok) throw new Error('Failed to fetch rally');
@@ -79,6 +93,10 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
 
       if (!sheetsRes.ok) throw new Error('Failed to fetch answer sheets');
       setSheets(await sheetsRes.json());
+
+      // A 404 here only means nobody has recorded who this EQ is yet — the
+      // participant is still whatever sheets they handed in.
+      setDetails(detailsRes.ok ? await detailsRes.json() : null);
     } catch (err) {
       setError('Failed to load this participant. Please try again later.');
       console.error(err);
@@ -114,12 +132,12 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
     }
   };
 
-  // A participant is not a record of its own — they are their answer sheets, so
-  // removing them from the rally deletes every sheet they have in it.
+  // Removing a participant from the rally deletes their details and every sheet
+  // they have in it.
   const handleDeleteParticipant = async () => {
     if (
       !window.confirm(
-        `Delete participant ${eq} from this rally? All ${sheets.length} of their answer sheets will be deleted. This cannot be undone.`
+        `Delete participant ${eq} from this rally? Their details and all ${sheets.length} of their answer sheets will be deleted. This cannot be undone.`
       )
     ) {
       return;
@@ -189,6 +207,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   const tijdTotal = entries.reduce((total, entry) => total + entry.tijdTotal, 0);
   const diversenTotal = entries.reduce((total, entry) => total + entry.diversenTotal, 0);
   const disqualified = sheets.some((sheet) => sheet.disqualified);
+  const crew = crewLabel(details);
 
   return (
     <div className="min-h-screen bg-gray-100 py-4">
@@ -196,24 +215,68 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
         <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 mb-1">
-              Participant {eq} — {rally.name}
+              Participant {eq}
+              {crew ? ` — ${crew}` : ''} — {rally.name}
             </h1>
+            <div className="flex flex-wrap items-center gap-3 mb-1">
+              <ClassificationBadge
+                classification={details?.classification}
+                fallback="No classification"
+              />
+              <span className="text-gray-700 text-base">
+                {details ? (
+                  <>
+                    Driver: {details.driverName || '—'} · Navigator:{' '}
+                    {details.navigatorName || '—'}
+                  </>
+                ) : (
+                  'No participant details recorded yet.'
+                )}
+              </span>
+            </div>
             <p className="text-gray-700 text-base">
               Every answer this participant submitted, stage by stage, scored against each
               stage&apos;s answer key.
             </p>
           </div>
-          {sheets.length > 0 && (
+          <div className="flex flex-wrap gap-3">
             <button
-              onClick={handleDeleteParticipant}
+              onClick={() => setEditingDetails((editing) => !editing)}
               disabled={busy}
-              className="px-5 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-base shadow-md transition-colors disabled:opacity-60"
-              title={`Delete every answer sheet of participant ${eq} in this rally`}
+              className="px-5 py-3 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-base shadow-md transition-colors disabled:opacity-60"
             >
-              Delete Participant {eq}
+              {editingDetails ? 'Close' : details ? 'Edit Details' : 'Add Details'}
             </button>
-          )}
+            {(sheets.length > 0 || details) && (
+              <button
+                onClick={handleDeleteParticipant}
+                disabled={busy}
+                className="px-5 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-base shadow-md transition-colors disabled:opacity-60"
+                title={`Delete the details and every answer sheet of participant ${eq} in this rally`}
+              >
+                Delete Participant {eq}
+              </button>
+            )}
+          </div>
         </div>
+
+        {editingDetails && (
+          <div className="bg-white rounded-xl shadow-xl p-4 mb-4">
+            <h2 className="text-base font-semibold text-gray-800 mb-3">
+              Classification and crew of participant {eq}
+            </h2>
+            <ParticipantDetailsForm
+              rallyId={rallyId}
+              lockedEq={eq}
+              initial={details || undefined}
+              onSaved={async () => {
+                setEditingDetails(false);
+                await loadData();
+              }}
+              onCancel={() => setEditingDetails(false)}
+            />
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-100 border-l-4 border-red-500 text-red-700 px-6 py-3 rounded-lg mb-4 text-base font-medium shadow-md">

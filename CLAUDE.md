@@ -28,6 +28,7 @@ in code and UI — do not "translate" them:
 | **Stage** | One leg of a rally. Holds the answer key used to grade sheets. |
 | **Answer sheet** | One participant's submission for **one** stage. |
 | **EQ** | Participant/equipe number, integer `1..100`. Identifies a competitor — there are no user accounts. |
+| **Classification** | The class a crew rides in: `B`, `A`, `H`, `I` or `T` (or empty while unknown). Recorded per participant, not used by the scoring. |
 | **Controlekaart** | The paper control card the whole UI is modelled on: 4 columns — ORC's 1–15 \| ORC's 16–30 \| For Official Use Only (time) \| Merk + TOTAAL STRAFPUNTEN. |
 | **ORC's** | The 30 lettered answer rows, up to 4 letters (columns) per row. |
 | **Strafp. / strafpunten** | Penalty points. |
@@ -41,7 +42,8 @@ in code and UI — do not "translate" them:
 
 ```
 Rally ──< Stage ──< AnswerSheet
-   └──────────────────┘  (AnswerSheet also stores rallyId for cheap standings)
+   ├──────────────────┘  (AnswerSheet also stores rallyId for cheap standings)
+   └──< Participant      (optional details of one EQ: class + crew names)
 ```
 
 - `Stage.scoreKey` — 30 rows: `{ rowNumber, answers[], falseAnswers[{column,value}], maxPenalty }`.
@@ -56,6 +58,17 @@ Rally ──< Stage ──< AnswerSheet
 - **Unique index `{ stageId, eq }`** — one sheet per participant per stage. The
   pre-insert `findOne` check is a nicety; the index is the real guard, and the
   `11000` duplicate-key error is mapped to a 409.
+- `Participant` — `{ rallyId, eq, classification, driverName, navigatorName }`, the
+  crew behind an EQ number of one rally. Optional and inert: nothing in the
+  scoring reads it, an EQ with sheets but no record is still scored, and a record
+  without sheets does not appear in the standings (it has nothing to rank).
+  **Unique index `{ rallyId, eq }`**; the `11000` duplicate-key error is mapped
+  to a 409, same as the sheets. `PUT /api/rallies/[id]/participants/[eq]` upserts
+  because a participant usually exists as sheets before anybody types their name;
+  `POST /api/rallies/[id]/participants` only creates, so a taken EQ warns instead
+  of overwriting another crew. Deleting a participant removes the record *and*
+  their sheets in that rally. `POST .../participants/import` writes a whole entry
+  list in one `bulkWrite` of upserts — see the import section below.
 - `totalPenalty` is **denormalised** on the sheet: the ORC's penalty plus the
   time penalty, computed server-side at write time. Standings read this field.
   Re-scoring goes through `app/lib/rescore.ts` (`rescoreRally` /
@@ -126,14 +139,40 @@ sheet re-scores that participant's whole rally (`rescoreParticipants`), and
 adding, editing or deleting a stage re-scores every participant (`rescoreRally`),
 since it also moves which stage is last.
 
+## Importing an entry list
+
+Officials do not type 50 crews by hand: `ParticipantsPanel` → *Import Entry List*
+reads the organisation's own spreadsheet.
+
+- **The file is parsed in the browser** (`app/lib/spreadsheet.ts`): an .xlsx is a
+  ZIP of XML, inflated with `DecompressionStream('deflate-raw')` and read with
+  `DOMParser`, so there is no parser dependency and no file-upload route. CSV is
+  supported as the way out of a workbook that cannot be read. Only the four
+  mapped values per crew are POSTed as ordinary JSON, which keeps the API behind
+  `readBody`'s 256 KB object-only guard — 56 crews is about 5 KB.
+- **Columns are guessed, not fixed** (`app/lib/participantImport.ts`): these
+  sheets are exported for the entry system (the reference file has 28 columns,
+  `Equipe` / `EqKlasse` / `bNaam` (driver, "bestuurder") / `nNaam` (navigator)),
+  so the header row and the four columns are detected by name and then shown in
+  selects the official can correct. Rows are validated for the preview with the
+  same rules the API applies, and the bad ones are listed with their line number
+  instead of being dropped silently.
+- **The import route re-validates everything** and is all-or-nothing: one bad row
+  rejects the request, because a half-imported entry list is worse than none.
+  Rows upsert on `{rallyId, eq}`, so re-importing a corrected sheet updates the
+  crews. Nothing is re-scored — a participant record carries no points.
+
 ## Layout
 
 ```
 app/
   api/            route handlers (rallies, stages, answersheets, auth, standings,
-                  rallies/[id]/participants/[eq] to drop a participant from a rally)
+                  rallies/[id]/participants to list/add the crews of a rally,
+                  .../[eq] to read, save or drop one, .../import for an entry list)
   components/     client components (forms, grids, card views, auth context)
-  lib/            scoring, mongodb, session, validation, body, rate-limit, env, api-guard
+  lib/            scoring, mongodb, session, validation, body, rate-limit, env,
+                  api-guard, participants (class letters, shared client + server),
+                  spreadsheet + participantImport (entry-list import, browser side)
   models/         Mongoose schemas
   rallies/...     pages (rally dashboard, stages, answer sheets, participant view)
   types/          shared TS interfaces
@@ -193,6 +232,10 @@ Do not regress them.**
   `app/lib/validation.ts` (which keep headroom above the form's counts).
 - Entry grids support arrow-key / auto-advance navigation via `data-grid`,
   `data-row`, `data-col` attributes — preserve them on any new input cell.
+- Participant details are edited through `ParticipantDetailsForm` — used by the
+  `ParticipantsPanel` on the rally dashboard (add / edit / delete) and by the
+  per-participant view — so the add and the edit path cannot drift apart.
+  `ClassificationBadge` renders the class letter everywhere it is shown.
 - `ControlekaartCard` is the shared read-only rendering of a scored sheet
   (single-sheet view and per-participant view). Prefer extending it over adding
   a parallel layout. `StageKeyCard` is its counterpart for a stage *key* — the

@@ -2,13 +2,18 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/mongodb';
-import { Rally, Stage, AnswerSheet } from '../../../../models';
+import { Rally, Stage, AnswerSheet, Participant } from '../../../../models';
 import { requireSession } from '../../../../lib/api-guard';
 import mongoose from 'mongoose';
 
 // Returns the rally standings: one entry per participant (eq), with the total
 // penalty summed across all of that participant's answer sheets in the rally.
 // Ranked ascending — the lowest total penalty is the winner.
+//
+// Each entry also carries the participant's class and crew names when they have
+// been recorded, so the table can show who an EQ is. Only participants with
+// sheets are ranked: a registered crew that has not handed in a card yet has no
+// score to rank, and would otherwise lead the standings on zero points.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,6 +37,12 @@ export async function GET(
 
     const totalStages = await Stage.countDocuments({ rallyId: id });
     const sheets = await AnswerSheet.find({ rallyId: id });
+    const participants = await Participant.find({ rallyId: id });
+
+    const detailsByEq = new Map<
+      number,
+      { classification?: string; driverName?: string; navigatorName?: string }
+    >(participants.map((participant) => [participant.eq, participant]));
 
     // Aggregate penalties per participant. `totalPenalty` on a sheet already
     // covers the ORC's and the time part; the time part is carried separately so
@@ -71,7 +82,16 @@ export async function GET(
           a.totalPenalty - b.totalPenalty ||
           a.eq - b.eq
       )
-      .map((entry, index) => ({ ...entry, rank: index + 1 }));
+      .map((entry, index) => {
+        const details = detailsByEq.get(entry.eq);
+        return {
+          ...entry,
+          classification: details?.classification || '',
+          driverName: details?.driverName || '',
+          navigatorName: details?.navigatorName || '',
+          rank: index + 1,
+        };
+      });
 
     return NextResponse.json({ totalStages, standings });
   } catch (error) {

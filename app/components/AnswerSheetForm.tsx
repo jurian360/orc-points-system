@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import ClassificationBadge from './ClassificationBadge';
+import { crewLabel, type ClassificationValue } from '../lib/participants';
 import {
   scoreRallyTimes,
   timeRowLabel,
@@ -22,6 +24,15 @@ interface ExistingSheet {
   eq: number;
   stageId: string;
   timePenalties?: { rowNumber: number; wpt?: string }[];
+}
+
+// The crew recorded for an EQ number of this rally, so the official typing a
+// card can see whose card they are typing.
+interface ParticipantDetails {
+  eq: number;
+  classification?: ClassificationValue;
+  driverName?: string;
+  navigatorName?: string;
 }
 
 interface AnswerRow {
@@ -71,6 +82,10 @@ interface AnswerSheetFormProps {
   // Every sheet already entered for this rally; used to carry the participant's
   // time delta into the stage being typed.
   sheets?: ExistingSheet[];
+  // The participants of this rally, if they have been recorded. Only used to
+  // show who the typed EQ number is — a card can be entered for an EQ that has
+  // no participant record.
+  participants?: ParticipantDetails[];
   // Set when an already submitted sheet is being corrected: the card starts
   // filled in and the stage it belongs to is fixed (a sheet is identified by
   // {stage, eq}, so moving it to another stage is a delete plus a new sheet).
@@ -122,11 +137,18 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
   onSubmit,
   stages,
   sheets = [],
+  participants = [],
   initialData,
   isEditing = false,
 }) => {
   const [eq, setEq] = useState<number | ''>(initialData?.eq ?? '');
   const [stageId, setStageId] = useState(initialData?.stageId || '');
+
+  // The recorded crew of the EQ being typed, when there is one.
+  const participantDetails = useMemo(
+    () => (eq === '' ? undefined : participants.find((p) => p.eq === Number(eq))),
+    [eq, participants]
+  );
 
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -513,6 +535,24 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
             ))}
           </select>
         </div>
+        {/* Who this EQ number is, so a mistyped number is caught before the
+            whole card has been entered. */}
+        <div className="sm:pb-2">
+          <span className="block text-sm font-semibold mb-1 text-gray-800">Participant</span>
+          {eq === '' ? (
+            <span className="text-sm text-gray-600">Enter an EQ. No.</span>
+          ) : (
+            <span className="flex flex-wrap items-center gap-2 text-base text-gray-800">
+              <ClassificationBadge classification={participantDetails?.classification} />
+              {participantDetails ? (
+                crewLabel(participantDetails) || <span className="text-gray-500">no names</span>
+              ) : (
+                <span className="text-gray-500">no details for EQ {eq}</span>
+              )}
+            </span>
+          )}
+        </div>
+
         <p className="text-sm text-gray-600 sm:ml-auto sm:pb-2">
           {isEditing
             ? 'Correct the card and save. The stage of a submitted sheet cannot be changed — delete it and enter a new one instead.'

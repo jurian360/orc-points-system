@@ -6,6 +6,7 @@ import Link from 'next/link';
 import AnswerSheetForm from '../../../../../components/AnswerSheetForm';
 import type { AnswerSheetInitialData } from '../../../../../components/AnswerSheetForm';
 import type { StageTimeConfig, TimeKeyRow } from '../../../../../lib/timeScoring';
+import type { ClassificationValue } from '../../../../../lib/participants';
 
 interface Stage {
   _id: string;
@@ -17,6 +18,14 @@ interface Stage {
 interface AnswerSheet extends AnswerSheetInitialData {
   _id: string;
   rallyId: string;
+}
+
+// Only used to label the EQ number on the card being corrected.
+interface Participant {
+  eq: number;
+  classification: ClassificationValue;
+  driverName: string;
+  navigatorName: string;
 }
 
 // Correcting an already submitted sheet. The card is the same one it was typed
@@ -33,6 +42,7 @@ export default function EditAnswerSheetPage({
   const [rallyName, setRallyName] = useState<string>('');
   const [stages, setStages] = useState<Stage[]>([]);
   const [sheets, setSheets] = useState<AnswerSheet[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [sheet, setSheet] = useState<AnswerSheet | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -51,11 +61,12 @@ export default function EditAnswerSheetPage({
     if (!rallyId || !sheetId) return;
     try {
       setLoading(true);
-      const [sheetRes, rallyRes, stagesRes, sheetsRes] = await Promise.all([
+      const [sheetRes, rallyRes, stagesRes, sheetsRes, participantsRes] = await Promise.all([
         fetch(`/api/answersheets/${sheetId}`),
         fetch(`/api/rallies/${rallyId}`),
         fetch(`/api/stages?rallyId=${rallyId}`),
         fetch(`/api/answersheets?rallyId=${rallyId}`),
+        fetch(`/api/rallies/${rallyId}/participants`),
       ]);
 
       if (!sheetRes.ok) throw new Error('Failed to fetch answer sheet');
@@ -74,6 +85,7 @@ export default function EditAnswerSheetPage({
       // The time penalty of a stage depends on the delta carried out of the
       // earlier ones, so the live preview needs the participant's other sheets.
       if (sheetsRes.ok) setSheets(await sheetsRes.json());
+      if (participantsRes.ok) setParticipants(await participantsRes.json());
     } catch (err) {
       setError('Failed to load this answer sheet. Please try again later.');
       console.error(err);
@@ -180,6 +192,7 @@ export default function EditAnswerSheetPage({
               onSubmit={handleSubmit}
               stages={stages}
               sheets={sheets}
+              participants={participants}
               initialData={{
                 eq: sheet.eq,
                 stageId: String(sheet.stageId),

@@ -1,4 +1,5 @@
 import type { StageTimeConfig } from '../lib/timeScoring';
+import type { ClassificationValue } from '../lib/participants';
 
 // Rally types
 export interface Rally {
@@ -41,6 +42,26 @@ export interface MerkScoreKeyRow {
   rowNumber: number;
   merk: string;
   maxPenalty?: number;
+}
+
+// Participant of a rally: the crew riding under an EQ number. Optional — an EQ
+// with answer sheets but no record is still scored, it just has no name.
+export interface Participant {
+  _id: string;
+  rallyId: string;
+  eq: number;
+  classification: ClassificationValue;
+  driverName: string;
+  navigatorName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ParticipantFormData {
+  eq: number;
+  classification: ClassificationValue;
+  driverName: string;
+  navigatorName: string;
 }
 
 // Answer sheet types (a participant's submission for one stage)
@@ -87,6 +108,11 @@ export interface MerkScoreRow {
 // Standings entry for a rally (one row per participant)
 export interface StandingsEntry {
   eq: number;
+  // Copied onto the entry by the standings route from the participant record;
+  // empty when nobody has recorded who this EQ is.
+  classification: ClassificationValue;
+  driverName: string;
+  navigatorName: string;
   totalPenalty: number;
   timePenalty: number;
   sheetsSubmitted: number;

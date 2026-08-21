@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import ClassificationBadge from '../../components/ClassificationBadge';
+import ParticipantsPanel from '../../components/ParticipantsPanel';
+import { crewLabel, type ClassificationValue } from '../../lib/participants';
 
 interface Rally {
   _id: string;
@@ -17,6 +20,9 @@ interface Stage {
 
 interface StandingsEntry {
   eq: number;
+  classification: ClassificationValue;
+  driverName: string;
+  navigatorName: string;
   totalPenalty: number;
   timePenalty: number;
   sheetsSubmitted: number;
@@ -41,10 +47,12 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
     getParams();
   }, [params]);
 
-  const loadData = useCallback(async () => {
+  // `showLoading` is off for the refresh after a participant change: the page
+  // is already on screen and should not blink back to the loading state.
+  const loadData = useCallback(async (showLoading = true) => {
     if (!rallyId) return;
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const [rallyRes, stagesRes, standingsRes] = await Promise.all([
         fetch(`/api/rallies/${rallyId}`),
         fetch(`/api/stages?rallyId=${rallyId}`),
@@ -91,12 +99,12 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
     }
   };
 
-  // A participant is not a record of its own — they are their answer sheets, so
-  // removing them from the rally means deleting every sheet they have in it.
+  // Removing a participant from the rally deletes their details and every
+  // answer sheet they have in it.
   const handleDeleteParticipant = async (eq: number) => {
     if (
       !window.confirm(
-        `Delete participant ${eq} from this rally? Every answer sheet they submitted for it will be deleted. This cannot be undone.`
+        `Delete participant ${eq} from this rally? Their details and every answer sheet they submitted for it will be deleted. This cannot be undone.`
       )
     ) {
       return;
@@ -106,7 +114,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to delete participant');
-      loadData();
+      loadData(false);
     } catch (err) {
       alert('Failed to delete participant. Please try again.');
       console.error(err);
@@ -235,6 +243,13 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
           )}
         </div>
 
+        {/* Participants */}
+        <ParticipantsPanel
+          rallyId={rally._id}
+          sheetEqs={standings.map((entry) => entry.eq)}
+          onChanged={() => loadData(false)}
+        />
+
         {/* Standings */}
         <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-gray-200">
@@ -259,6 +274,12 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     Participant (EQ)
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    Class
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    Driver / Navigator
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     Sheets
@@ -309,6 +330,14 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                       >
                         {entry.eq}
                       </Link>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <ClassificationBadge classification={entry.classification} />
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-base text-gray-800">
+                        {crewLabel(entry) || <span className="text-gray-400">—</span>}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-base text-gray-600">
