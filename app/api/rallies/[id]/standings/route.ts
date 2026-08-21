@@ -33,25 +33,44 @@ export async function GET(
     const totalStages = await Stage.countDocuments({ rallyId: id });
     const sheets = await AnswerSheet.find({ rallyId: id });
 
-    // Aggregate penalties per participant.
+    // Aggregate penalties per participant. `totalPenalty` on a sheet already
+    // covers the ORC's and the time part; the time part is carried separately so
+    // the table can show where the points came from.
     const byParticipant = new Map<
       number,
-      { eq: number; totalPenalty: number; sheetsSubmitted: number }
+      {
+        eq: number;
+        totalPenalty: number;
+        timePenalty: number;
+        sheetsSubmitted: number;
+        disqualified: boolean;
+      }
     >();
 
     for (const sheet of sheets) {
       const existing = byParticipant.get(sheet.eq) || {
         eq: sheet.eq,
         totalPenalty: 0,
+        timePenalty: 0,
         sheetsSubmitted: 0,
+        disqualified: false,
       };
       existing.totalPenalty += sheet.totalPenalty || 0;
+      existing.timePenalty += sheet.timePenalty || 0;
       existing.sheetsSubmitted += 1;
+      existing.disqualified = existing.disqualified || Boolean(sheet.disqualified);
       byParticipant.set(sheet.eq, existing);
     }
 
+    // A disqualified participant is ranked behind everyone still in the rally,
+    // whatever their points.
     const standings = Array.from(byParticipant.values())
-      .sort((a, b) => a.totalPenalty - b.totalPenalty || a.eq - b.eq)
+      .sort(
+        (a, b) =>
+          Number(a.disqualified) - Number(b.disqualified) ||
+          a.totalPenalty - b.totalPenalty ||
+          a.eq - b.eq
+      )
       .map((entry, index) => ({ ...entry, rank: index + 1 }));
 
     return NextResponse.json({ totalStages, standings });

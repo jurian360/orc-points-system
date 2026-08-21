@@ -5,6 +5,7 @@ import dbConnect from '../../lib/mongodb';
 import { AnswerSheet, Stage } from '../../models';
 import { calculateTotalPenalty } from '../../lib/scoring';
 import { readBody, requireSession } from '../../lib/api-guard';
+import { rescoreParticipants } from '../../lib/rescore';
 import {
   parseAnswerRows,
   parseEq,
@@ -121,12 +122,20 @@ export async function POST(request: NextRequest) {
       answers,
       timePenalties: parseTimePenalties(body.timePenalties),
       merkScores: parseMerkScores(body.merkScores),
+      // ORC's part only; rescoreParticipants adds the time part below.
       totalPenalty: calculateTotalPenalty(stage.scoreKey, answers),
     });
 
     const savedSheet = await answerSheet.save();
 
-    return NextResponse.json(savedSheet, { status: 201 });
+    // The time penalties of this sheet — and of every later stage of this
+    // participant — depend on the delta they carry through the rally, so they
+    // are computed from the stage time keys after the insert.
+    await rescoreParticipants(stage.rallyId, [eq]);
+
+    const scoredSheet = await AnswerSheet.findById(savedSheet._id);
+
+    return NextResponse.json(scoredSheet || savedSheet, { status: 201 });
   } catch (error) {
     // The unique {stageId, eq} index is the authoritative guard against the
     // check-then-insert race above.

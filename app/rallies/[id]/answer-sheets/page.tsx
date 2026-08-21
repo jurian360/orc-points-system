@@ -12,6 +12,8 @@ interface Rally {
 interface Stage {
   _id: string;
   name: string;
+  timeScoreKey?: { rowNumber: number; ipt?: string }[];
+  timeConfig?: Record<string, number>;
 }
 
 interface AnswerSheet {
@@ -19,6 +21,9 @@ interface AnswerSheet {
   eq: number;
   stageId: string;
   totalPenalty: number;
+  timePenalty?: number;
+  disqualified?: boolean;
+  timePenalties?: { rowNumber: number; wpt?: string }[];
   submittedAt: string;
   stageName?: string;
 }
@@ -172,7 +177,7 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
                 </Link>
               </div>
             ) : (
-              <AnswerSheetForm onSubmit={handleSubmit} stages={stages} />
+              <AnswerSheetForm onSubmit={handleSubmit} stages={stages} sheets={sheets} />
             )}
           </div>
         </div>
@@ -203,6 +208,9 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
                         Stage
                       </th>
                       <th className="px-8 py-5 text-left text-base font-bold text-gray-800 uppercase border-b-2 border-r-2 border-gray-200">
+                        Tijd
+                      </th>
+                      <th className="px-8 py-5 text-left text-base font-bold text-gray-800 uppercase border-b-2 border-r-2 border-gray-200">
                         Penalty
                       </th>
                       <th className="px-8 py-5 text-left text-base font-bold text-gray-800 uppercase border-b-2 border-r-2 border-gray-200">
@@ -229,7 +237,15 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
                           <div className="text-lg text-gray-700">{sheet.stageName}</div>
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap border-r-2 border-gray-200">
+                          <div className="text-lg text-gray-700">{sheet.timePenalty || 0}</div>
+                        </td>
+                        <td className="px-8 py-5 whitespace-nowrap border-r-2 border-gray-200">
                           <div className="text-lg font-bold text-red-600">{sheet.totalPenalty}</div>
+                          {sheet.disqualified && (
+                            <span className="inline-block mt-1 px-2 py-0.5 rounded bg-red-100 text-red-800 text-sm font-bold">
+                              DQ
+                            </span>
+                          )}
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap border-r-2 border-gray-200">
                           <div className="text-lg text-gray-700">{formatDate(sheet.submittedAt)}</div>

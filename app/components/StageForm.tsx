@@ -1,4 +1,12 @@
 import React, { useState } from 'react';
+import {
+  DEFAULT_TIME_CONFIG,
+  maxStageTimePenalty,
+  resolveTimeConfig,
+  timeRowLabel,
+  timeRowKind,
+  type StageTimeConfig,
+} from '../lib/timeScoring';
 
 interface ScoreKeyRow {
   rowNumber: number;
@@ -26,15 +34,20 @@ interface StageFormProps {
     stageName: string,
     scoreKey: ScoreKeyRow[],
     timeScoreKey: TimeScoreKeyRow[],
-    merkScoreKey: MerkScoreKeyRow[]
+    merkScoreKey: MerkScoreKeyRow[],
+    timeConfig: StageTimeConfig
   ) => void;
   initialData?: {
     name: string;
     scoreKey: ScoreKeyRow[];
     timeScoreKey?: TimeScoreKeyRow[];
     merkScoreKey?: MerkScoreKeyRow[];
+    timeConfig?: Partial<StageTimeConfig>;
   };
   isEditing?: boolean;
+  // The finish of the last stage of a rally disqualifies instead of costing the
+  // maximum plus the break, which changes the maximum shown in the overview.
+  isFinalStage?: boolean;
 }
 
 // Layout constants matching the SARK controlekaart
@@ -47,6 +60,7 @@ const StageForm: React.FC<StageFormProps> = ({
   onSubmit,
   initialData,
   isEditing = false,
+  isFinalStage = true,
 }) => {
   const [stageName, setStageName] = useState(initialData?.name || '');
 
@@ -85,6 +99,15 @@ const StageForm: React.FC<StageFormProps> = ({
       maxPenalty: 0,
     }));
   });
+
+  const [timeConfig, setTimeConfig] = useState<StageTimeConfig>(() =>
+    resolveTimeConfig(initialData?.timeConfig)
+  );
+
+  const handleTimeConfigChange = (field: keyof StageTimeConfig, value: string) => {
+    const numValue = parseInt(value, 10);
+    setTimeConfig((prev) => ({ ...prev, [field]: isNaN(numValue) ? 0 : Math.max(numValue, 0) }));
+  };
 
   const handleAnswerChange = (rowIndex: number, colIndex: number, value: string) => {
     setScoreKey((prev) => {
@@ -126,23 +149,10 @@ const StageForm: React.FC<StageFormProps> = ({
     });
   };
 
-  const handleTimeChange = (
-    rowIndex: number,
-    field: 'ipt' | 'wpt' | 'plusMinus',
-    value: string
-  ) => {
+  const handleTimeChange = (rowIndex: number, field: 'ipt', value: string) => {
     setTimeScoreKey((prev) => {
       const next = [...prev];
       next[rowIndex] = { ...next[rowIndex], [field]: value };
-      return next;
-    });
-  };
-
-  const handleTimeMaxPenaltyChange = (rowIndex: number, value: string) => {
-    setTimeScoreKey((prev) => {
-      const next = [...prev];
-      const numValue = parseInt(value, 10);
-      next[rowIndex] = { ...next[rowIndex], maxPenalty: isNaN(numValue) ? 0 : numValue };
       return next;
     });
   };
@@ -166,7 +176,7 @@ const StageForm: React.FC<StageFormProps> = ({
 
   // Max penalty totals for the overview box
   const orcTotal = scoreKey.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
-  const tijdTotal = timeScoreKey.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
+  const tijdTotal = maxStageTimePenalty(timeScoreKey, timeConfig, isFinalStage);
   const diversenTotal = merkScoreKey.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
   const grandTotal = orcTotal + tijdTotal + diversenTotal;
 
@@ -199,7 +209,13 @@ const StageForm: React.FC<StageFormProps> = ({
       maxPenalty: row.maxPenalty || 0,
     }));
 
-    onSubmit(stageName, processedScoreKey, processedTimeScoreKey, processedMerkScoreKey);
+    onSubmit(
+      stageName,
+      processedScoreKey,
+      processedTimeScoreKey,
+      processedMerkScoreKey,
+      timeConfig
+    );
   };
 
   // Render one ORC score-key row (letters correct/false + max penalty), used in both columns
@@ -322,9 +338,9 @@ const StageForm: React.FC<StageFormProps> = ({
           </div>
         </div>
 
-        {/* Column 3 — For official use only (IPT / WPT / +/- reference) */}
+        {/* Column 3 — Tijd: the stage's timetable, written for participant 0 */}
         <div>
-          <h2 className="text-lg font-semibold mb-2 text-gray-800">For Official Use Only</h2>
+          <h2 className="text-lg font-semibold mb-2 text-gray-800">Tijd (IPT 0)</h2>
           <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full border-collapse">
               <thead>
@@ -333,56 +349,134 @@ const StageForm: React.FC<StageFormProps> = ({
                     NR
                   </th>
                   <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800">
-                    IPT 0
-                  </th>
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800">
-                    WPT
-                  </th>
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800">
-                    +/-
+                    CONTROLE
                   </th>
                   <th className="py-2 px-2 border-b border-gray-300 text-xs font-semibold text-gray-800">
-                    Max Penalty
+                    IPT 0
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {timeScoreKey.map((row, rowIndex) => (
-                  <tr
-                    key={row.rowNumber}
-                    className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                  >
-                    <td className="py-2 px-2 border-b border-r border-gray-300 font-medium text-base text-gray-800 text-center">
-                      {row.rowNumber}
-                    </td>
-                    {(['ipt', 'wpt', 'plusMinus'] as const).map((field) => (
+                {timeScoreKey.map((row, rowIndex) => {
+                  const kind = timeRowKind(row.rowNumber);
+                  return (
+                    <tr
+                      key={row.rowNumber}
+                      className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                    >
+                      <td className="py-2 px-2 border-b border-r border-gray-300 font-medium text-base text-gray-800 text-center">
+                        {row.rowNumber}
+                      </td>
                       <td
-                        key={field}
-                        className="py-2 px-1 border-b border-r border-gray-300 text-center"
+                        className={`py-2 px-2 border-b border-r border-gray-300 text-sm font-semibold ${
+                          kind === 'gtc' ? 'text-gray-700' : 'text-blue-700'
+                        }`}
                       >
+                        {timeRowLabel(row.rowNumber)}
+                      </td>
+                      <td className="py-2 px-1 border-b border-gray-300 text-center">
                         <input
                           type="text"
-                          className="w-20 h-10 p-1 border border-gray-300 rounded text-center text-base focus:border-yellow-500 focus:ring-1 focus:ring-yellow-200 text-gray-700"
-                          value={row[field] || ''}
-                          onChange={(e) => handleTimeChange(rowIndex, field, e.target.value)}
-                          aria-label={`${field} for time row ${row.rowNumber}`}
+                          className="w-24 h-10 p-1 border border-gray-300 rounded text-center text-base focus:border-yellow-500 focus:ring-1 focus:ring-yellow-200 text-gray-700"
+                          value={row.ipt || ''}
+                          onChange={(e) => handleTimeChange(rowIndex, 'ipt', e.target.value)}
+                          placeholder="8:00"
+                          aria-label={`IPT of participant 0 for ${timeRowLabel(row.rowNumber)}`}
                         />
                       </td>
-                    ))}
-                    <td className="py-2 px-1 border-b border-gray-300 text-center">
-                      <input
-                        type="number"
-                        min={0}
-                        className="w-16 h-10 p-1 border border-blue-300 rounded text-center text-base font-bold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
-                        value={row.maxPenalty || 0}
-                        onChange={(e) => handleTimeMaxPenaltyChange(rowIndex, e.target.value)}
-                        aria-label={`Max penalty for time row ${row.rowNumber}`}
-                      />
-                    </td>
-                  </tr>
-                ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+
+          <p className="text-sm text-gray-600 mt-2">
+            Enter the ideal passage time of participant 0 (e.g. 8:00). Every other participant
+            starts a minute later, so participant 12 passes at 8:12. Leave a GTC row empty when the
+            stage does not use it.
+          </p>
+
+          {/* Time-penalty settings of this stage */}
+          <div className="mt-4 border border-gray-300 rounded-lg shadow-md overflow-hidden">
+            <div className="bg-yellow-100 py-2 px-3 font-semibold text-sm text-gray-800">
+              Tijdstraf instellingen
+            </div>
+            <div className="p-3 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm text-gray-700">
+                  GTC venster te vroeg (min)
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full h-10 p-1 border border-gray-300 rounded text-center text-base text-gray-700"
+                    value={timeConfig.gtcEarlyWindow}
+                    onChange={(e) => handleTimeConfigChange('gtcEarlyWindow', e.target.value)}
+                  />
+                </label>
+                <label className="text-sm text-gray-700">
+                  GTC venster te laat (min)
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full h-10 p-1 border border-gray-300 rounded text-center text-base text-gray-700"
+                    value={timeConfig.gtcLateWindow}
+                    onChange={(e) => handleTimeConfigChange('gtcLateWindow', e.target.value)}
+                  />
+                </label>
+                <label className="text-sm text-gray-700">
+                  Finish venster te vroeg (min)
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full h-10 p-1 border border-gray-300 rounded text-center text-base text-gray-700"
+                    value={timeConfig.finishEarlyWindow}
+                    onChange={(e) => handleTimeConfigChange('finishEarlyWindow', e.target.value)}
+                  />
+                </label>
+                <label className="text-sm text-gray-700">
+                  Finish venster te laat (min)
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full h-10 p-1 border border-gray-300 rounded text-center text-base text-gray-700"
+                    value={timeConfig.finishLateWindow}
+                    onChange={(e) => handleTimeConfigChange('finishLateWindow', e.target.value)}
+                  />
+                </label>
+                <label className="text-sm text-gray-700">
+                  Max strafpunten buiten venster
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full h-10 p-1 border border-gray-300 rounded text-center text-base text-gray-700"
+                    value={timeConfig.outOfWindowPenalty}
+                    onChange={(e) => handleTimeConfigChange('outOfWindowPenalty', e.target.value)}
+                  />
+                </label>
+                <label className="text-sm text-gray-700">
+                  Pauze na deze etappe (min)
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full h-10 p-1 border border-gray-300 rounded text-center text-base text-gray-700"
+                    value={timeConfig.breakMinutes}
+                    onChange={(e) => handleTimeConfigChange('breakMinutes', e.target.value)}
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-gray-600">
+                A control passed outside its window costs the maximum ({timeConfig.outOfWindowPenalty}
+                ) and the delta falls back to what it was before it. On the finish of a stage that is
+                followed by another one the break is charged on top ({timeConfig.outOfWindowPenalty} +{' '}
+                {timeConfig.breakMinutes} ={' '}
+                {timeConfig.outOfWindowPenalty + timeConfig.breakMinutes}); on the finish of the last
+                stage the same window means a disqualification. Defaults:{' '}
+                {DEFAULT_TIME_CONFIG.gtcEarlyWindow}/{DEFAULT_TIME_CONFIG.gtcLateWindow} for a GTC,{' '}
+                {DEFAULT_TIME_CONFIG.finishEarlyWindow}/{DEFAULT_TIME_CONFIG.finishLateWindow} for the
+                finish.
+              </p>
+            </div>
           </div>
         </div>
 

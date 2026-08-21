@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
-import ControlekaartCard from './ControlekaartCard';
+import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
 import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
 
 interface Stage {
@@ -21,6 +21,8 @@ interface AnswerSheet {
   timePenalties?: TimePenaltyRow[];
   merkScores?: MerkScoreRow[];
   totalPenalty: number;
+  timePenalty?: number;
+  disqualified?: boolean;
   submittedAt: string;
 }
 
@@ -99,7 +101,10 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
     );
   }
 
-  const totalPenalties = calculateTotalPenalty(stage.scoreKey, sheet.answers);
+  // ORC's + Tijd, the two parts the standings are built from.
+  const orcPenalty = calculateTotalPenalty(stage.scoreKey, sheet.answers);
+  const tijdPenalty = sumStrafp(sheet.timePenalties || []);
+  const totalPenalties = orcPenalty + tijdPenalty;
 
   return (
     <div className="min-h-screen bg-gray-100 py-4">
@@ -119,7 +124,15 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
             <div className="flex items-center gap-4">
               <span className="text-lg font-bold text-red-600">
                 {totalPenalties} penalty points
+                <span className="ml-2 text-sm font-semibold text-gray-600">
+                  (ORC&apos;s {orcPenalty} + Tijd {tijdPenalty})
+                </span>
               </span>
+              {sheet.disqualified && (
+                <span className="px-2 py-1 rounded bg-red-100 text-red-800 text-sm font-bold">
+                  DQ
+                </span>
+              )}
               <Link
                 href={`/rallies/${rallyId}/participants/${sheet.eq}`}
                 className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-medium text-base transition-colors"
@@ -135,6 +148,7 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
             answers={sheet.answers}
             timePenalties={sheet.timePenalties}
             merkScores={sheet.merkScores}
+            disqualified={sheet.disqualified}
           />
         </div>
 

@@ -25,6 +25,8 @@ interface AnswerSheet {
   timePenalties?: TimePenaltyRow[];
   merkScores?: MerkScoreRow[];
   totalPenalty: number;
+  timePenalty?: number;
+  disqualified?: boolean;
   submittedAt: string;
 }
 
@@ -132,10 +134,9 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   });
 
   const orcTotal = entries.reduce((total, entry) => total + entry.orcPenalty, 0);
-  const officialsTotal = entries.reduce(
-    (total, entry) => total + entry.tijdTotal + entry.diversenTotal,
-    0
-  );
+  const tijdTotal = entries.reduce((total, entry) => total + entry.tijdTotal, 0);
+  const diversenTotal = entries.reduce((total, entry) => total + entry.diversenTotal, 0);
+  const disqualified = sheets.some((sheet) => sheet.disqualified);
 
   return (
     <div className="min-h-screen bg-gray-100 py-4">
@@ -170,20 +171,28 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
             </div>
             <div className="p-6">
               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                ORC Penalty
+                Strafpunten
               </p>
-              <p className="text-3xl font-bold text-red-600 mt-1">{orcTotal}</p>
-              <p className="text-sm text-gray-600 mt-1">Counts for the standings</p>
+              <p className="text-3xl font-bold text-red-600 mt-1">{orcTotal + tijdTotal}</p>
+              <p className="text-sm text-gray-600 mt-1">
+                ORC&apos;s {orcTotal} + Tijd {tijdTotal} — counts for the standings
+              </p>
             </div>
             <div className="p-6">
               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                Tijd + Diversen
+                Diversen
               </p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{officialsTotal}</p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">{diversenTotal}</p>
               <p className="text-sm text-gray-600 mt-1">Recorded by the officials</p>
             </div>
           </div>
         </div>
+
+        {disqualified && (
+          <div className="bg-red-100 border-l-4 border-red-500 text-red-800 px-6 py-3 rounded-lg mb-6 text-base font-bold shadow-md">
+            Disqualified — this participant passed the finish of the last stage outside its window.
+          </div>
+        )}
 
         {stages.length === 0 ? (
           <div className="bg-white rounded-xl shadow-xl p-12 text-center">
@@ -192,7 +201,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
             </p>
           </div>
         ) : (
-          entries.map(({ stage, sheet, orcPenalty }) => {
+          entries.map(({ stage, sheet, orcPenalty, tijdTotal: stageTijdTotal }) => {
             if (!sheet) {
               return (
                 <div
@@ -227,7 +236,10 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="text-lg font-bold text-red-600">
-                      {orcPenalty} penalty points
+                      {orcPenalty + stageTijdTotal} penalty points
+                      <span className="ml-2 text-sm font-semibold text-gray-600">
+                        (ORC&apos;s {orcPenalty} + Tijd {stageTijdTotal})
+                      </span>
                     </span>
                     <Link
                       href={`/rallies/${rallyId}/answer-sheets/${sheet._id}`}
@@ -243,6 +255,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                   answers={sheet.answers}
                   timePenalties={sheet.timePenalties}
                   merkScores={sheet.merkScores}
+                  disqualified={sheet.disqualified}
                 />
               </div>
             );

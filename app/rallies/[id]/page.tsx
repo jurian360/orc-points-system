@@ -18,7 +18,9 @@ interface Stage {
 interface StandingsEntry {
   eq: number;
   totalPenalty: number;
+  timePenalty: number;
   sheetsSubmitted: number;
+  disqualified: boolean;
   rank: number;
 }
 
@@ -216,7 +218,8 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
           <div className="px-6 py-4 border-b border-gray-200">
             <h2 className="text-2xl font-semibold text-gray-800">Standings</h2>
             <p className="text-gray-600 text-base mt-1">
-              Ranked by total penalty points across all answer sheets — lowest wins.
+              Ranked by total penalty points (ORC&apos;s + Tijd) across all answer sheets — lowest
+              wins. A disqualified participant is ranked behind everyone still in the rally.
             </p>
           </div>
           {standings.length === 0 ? (
@@ -239,6 +242,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                     Sheets
                   </th>
                   <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    Tijd
+                  </th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     Total Penalty
                   </th>
                   <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
@@ -250,12 +256,28 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 {standings.map((entry) => (
                   <tr
                     key={entry.eq}
-                    className={entry.rank === 1 ? 'bg-yellow-50' : 'hover:bg-gray-50'}
+                    className={
+                      entry.disqualified
+                        ? 'bg-red-50'
+                        : entry.rank === 1
+                          ? 'bg-yellow-50'
+                          : 'hover:bg-gray-50'
+                    }
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-lg font-bold text-gray-900">
                         {entry.rank}
-                        {entry.rank === 1 && <span className="ml-2" title="Winner">🏆</span>}
+                        {entry.rank === 1 && !entry.disqualified && (
+                          <span className="ml-2" title="Winner">🏆</span>
+                        )}
+                        {entry.disqualified && (
+                          <span
+                            className="ml-2 px-2 py-0.5 rounded bg-red-100 text-red-800 text-sm font-bold"
+                            title="Outside the finish window of the last stage"
+                          >
+                            DQ
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -271,6 +293,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                         {entry.sheetsSubmitted}
                         {totalStages > 0 ? ` / ${totalStages}` : ''}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <span className="text-base text-gray-600">{entry.timePenalty}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <span className="text-lg font-bold text-red-600">{entry.totalPenalty}</span>
