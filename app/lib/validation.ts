@@ -25,6 +25,8 @@ export const MAX_MERK_ROWS = 20; // forms send 6
 export const MAX_COLUMNS = 8; // forms send 4
 export const MAX_FIELD_LENGTH = 64;
 export const MAX_NAME_LENGTH = 200;
+// A rally is numbered 1..100, so an entry list cannot hold more crews than that.
+export const MAX_IMPORT_PARTICIPANTS = 100;
 
 // Clamp any value to a bounded string. Objects and arrays collapse to a safe
 // placeholder rather than being passed through.

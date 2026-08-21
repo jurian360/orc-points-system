@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import ClassificationBadge from './ClassificationBadge';
 import ParticipantDetailsForm from './ParticipantDetailsForm';
+import ParticipantImportPanel from './ParticipantImportPanel';
 import type { ClassificationValue } from '../lib/participants';
 
 interface Participant {
@@ -39,6 +40,8 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
+  const [importing, setImporting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const loadParticipants = useCallback(async () => {
     if (!rallyId) return;
@@ -78,6 +81,20 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
 
   const handleSaved = async () => {
     setEditing(null);
+    await loadParticipants();
+    onChanged?.();
+  };
+
+  const handleImported = async (summary: {
+    total: number;
+    created: number;
+    updated: number;
+  }) => {
+    setImporting(false);
+    setNotice(
+      `Imported ${summary.total} participant${summary.total === 1 ? '' : 's'} — ` +
+        `${summary.created} added, ${summary.updated} updated.`
+    );
     await loadParticipants();
     onChanged?.();
   };
@@ -124,18 +141,49 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
             names of the driver and the navigator.
           </p>
         </div>
-        <button
-          onClick={() => setEditing(editing?.mode === 'add' ? null : { mode: 'add' })}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm"
-        >
-          {editing?.mode === 'add' ? 'Close' : 'Add Participant'}
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => {
+              setNotice(null);
+              setImporting((current) => !current);
+              setEditing(null);
+            }}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 font-medium shadow-sm"
+          >
+            {importing ? 'Close Import' : 'Import Entry List'}
+          </button>
+          <button
+            onClick={() => {
+              setNotice(null);
+              setEditing(editing?.mode === 'add' ? null : { mode: 'add' });
+              setImporting(false);
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm"
+          >
+            {editing?.mode === 'add' ? 'Close' : 'Add Participant'}
+          </button>
+        </div>
       </div>
 
       {error && (
         <div className="bg-red-100 border-l-4 border-red-500 text-red-700 px-6 py-3 text-base font-medium">
           <p>{error}</p>
         </div>
+      )}
+
+      {notice && (
+        <div className="bg-green-100 border-l-4 border-green-500 text-green-800 px-6 py-3 text-base font-medium">
+          <p>{notice}</p>
+        </div>
+      )}
+
+      {importing && (
+        <ParticipantImportPanel
+          rallyId={rallyId}
+          existingEqs={participants.map((participant) => participant.eq)}
+          onImported={handleImported}
+          onCancel={() => setImporting(false)}
+        />
       )}
 
       {editing && (
@@ -164,8 +212,8 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
       ) : rows.length === 0 ? (
         <div className="p-8 text-center">
           <p className="text-lg text-gray-600">
-            No participants yet. Add the crews of this rally, or enter an answer sheet — an EQ that
-            has a sheet shows up here too.
+            No participants yet. Import the entry list of this rally, add the crews by hand, or
+            enter an answer sheet — an EQ that has a sheet shows up here too.
           </p>
         </div>
       ) : (
