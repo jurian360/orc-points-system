@@ -1,8 +1,17 @@
 @import "tailwindcss";
 
+/*
+ * The app is deliberately light-only: every panel is bg-white / bg-gray-50 with
+ * explicit gray-800 text. Do not add a prefers-color-scheme: dark override here
+ * — it repaints the inherited text colour (and the native form controls) light
+ * while the surfaces stay white, which makes placeholders and select values
+ * unreadable. `color-scheme: light` keeps the browser-rendered parts (the select
+ * dropdown list, the search field's clear button, scrollbars) light too.
+ */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -12,15 +21,34 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Form controls default to readable text; utility classes still win. */
+@layer base {
+  input,
+  select,
+  textarea {
+    color: var(--color-gray-900);
+  }
+
+  option {
+    color: var(--color-gray-900);
+    background-color: #ffffff;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-gray-500);
+    opacity: 1; /* Firefox dims placeholders by default */
+  }
+
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    color: var(--color-gray-500);
+  }
 }
