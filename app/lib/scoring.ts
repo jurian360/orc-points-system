@@ -8,6 +8,14 @@
 // key asks for one, capped per row by the row's maxPenalty (when
 // maxPenalty > 0). The same algorithm powers the scoring detail view and the
 // server-side total stored on each answer sheet.
+//
+// The *key* decides which rows are scored, never the sheet: a row the
+// participant did not answer costs its missing letters whether the sheet holds
+// a blank row for it or holds no row at all. A sheet written by the time import
+// (app/api/stages/[id]/times/import) carries no answer rows at all until an
+// official types the card, and it has to score the same as the blank card it
+// stands for — otherwise re-scoring a rally and re-saving a sheet, which are
+// the same computation, would disagree.
 
 const PENALTY_PER_ERROR = 30;
 
@@ -42,12 +50,12 @@ export function hasOrderError(
   scoreKeyRow: ScoreKeyRow,
   participantRow: AnswerRow | undefined
 ): boolean {
-  if (!scoreKeyRow?.orderMatters || !participantRow) return false;
+  if (!scoreKeyRow?.orderMatters) return false;
 
   const key = (scoreKeyRow.answers || []).filter(Boolean);
   if (key.length < 2) return false;
 
-  const given = (participantRow.selectedAnswers || []).filter(
+  const given = (participantRow?.selectedAnswers || []).filter(
     (answer) => answer && key.includes(answer)
   );
   if (given.length < 2) return false;
@@ -66,14 +74,19 @@ export function hasOrderError(
 
 // Penalty points for a single row given its answer-key row and the
 // participant's answers for that row.
+//
+// A missing `participantRow` is an unanswered row, not an unscored one: it is
+// scored as a row with no letters, which costs the key's letters as missing.
+// A key row with no letters of its own still costs nothing, so the rows a stage
+// does not use stay free.
 export function calculateRowPenalty(
   scoreKeyRow: ScoreKeyRow,
   participantRow: AnswerRow | undefined
 ): number {
-  if (!scoreKeyRow || !participantRow) return 0;
+  if (!scoreKeyRow) return 0;
 
   let rowPenalty = 0;
-  const selected = participantRow.selectedAnswers || [];
+  const selected = participantRow?.selectedAnswers || [];
 
   // 1. Explicit false answers cost 30 points each.
   selected.forEach((answer) => {
@@ -128,6 +141,8 @@ export function calculateTotalPenalty(
 ): number {
   if (!scoreKey) return 0;
 
+  // Every row of the key is scored, including the ones the sheet has no row
+  // for — see calculateRowPenalty.
   return scoreKey.reduce((total, scoreKeyRow) => {
     const participantRow = (answers || []).find(
       (row) => row.rowNumber === scoreKeyRow.rowNumber
