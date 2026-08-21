@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import ClassificationBadge from './ClassificationBadge';
 import ParticipantDetailsForm from './ParticipantDetailsForm';
@@ -24,6 +24,9 @@ interface ParticipantsPanelProps {
   // Called after a change that the rest of the page shows too (the standings
   // carry the class and the crew names, and a delete removes answer sheets).
   onChanged?: () => void;
+  // How many crews are recorded, so the page can label its Participants tab
+  // without fetching the entry list a second time.
+  onCountChange?: (count: number) => void;
 }
 
 type Editing = { mode: 'add' } | { mode: 'edit'; eq: number } | null;
@@ -35,6 +38,7 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
   rallyId,
   sheetEqs,
   onChanged,
+  onCountChange,
 }) => {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,13 +46,20 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
   const [editing, setEditing] = useState<Editing>(null);
   const [importing, setImporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  // Held in a ref so an inline callback from the page cannot re-create
+  // `loadParticipants` on every render and fetch in a loop.
+  const countChangeRef = useRef(onCountChange);
+  countChangeRef.current = onCountChange;
 
   const loadParticipants = useCallback(async () => {
     if (!rallyId) return;
     try {
       const response = await fetch(`/api/rallies/${rallyId}/participants`);
       if (!response.ok) throw new Error('Failed to fetch participants');
-      setParticipants(await response.json());
+      const data: Participant[] = await response.json();
+      setParticipants(data);
+      countChangeRef.current?.(data.length);
       setError(null);
     } catch (err) {
       setError('Failed to load the participants of this rally.');
@@ -78,6 +89,18 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
 
     return Array.from(byEq.values()).sort((a, b) => a.eq - b.eq);
   }, [participants, sheetEqs]);
+
+  // An entry list runs to 50+ crews: searching it by number or by name is how
+  // an official finds the one row they came for.
+  const visibleRows = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter(({ eq, details }) => {
+      if (String(eq).startsWith(term)) return true;
+      const crew = `${details?.driverName ?? ''} ${details?.navigatorName ?? ''}`.toLowerCase();
+      return crew.includes(term);
+    });
+  }, [rows, search]);
 
   const handleSaved = async () => {
     setEditing(null);
@@ -132,16 +155,24 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
       : undefined;
 
   return (
-    <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
+    <div className="bg-white rounded-lg shadow-lg overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200 flex flex-wrap justify-between items-center gap-3">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-800">Participants</h2>
-          <p className="text-gray-600 text-base mt-1">
+          <h2 className="text-xl font-semibold text-gray-800">Participants</h2>
+          <p className="text-gray-600 text-sm mt-1">
             Who rides under which EQ number: their classification (B, A, H, I or T) and the full
             names of the driver and the navigator.
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3 items-center">
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search EQ or crew"
+            aria-label="Search the participants"
+            className="px-3 py-2 border border-gray-300 rounded-md text-base w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
           <button
             onClick={() => {
               setNotice(null);
@@ -216,35 +247,39 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
             enter an answer sheet — an EQ that has a sheet shows up here too.
           </p>
         </div>
+      ) : visibleRows.length === 0 ? (
+        <div className="p-8 text-center">
+          <p className="text-lg text-gray-600">No participant matches this search.</p>
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                   EQ
                 </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                   Class
                 </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                   Driver
                 </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                   Navigator
                 </th>
-                <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {rows.map(({ eq, details, hasSheets }) => (
+              {visibleRows.map(({ eq, details, hasSheets }) => (
                 <tr key={eq} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-2 whitespace-nowrap">
                     <Link
                       href={`/rallies/${rallyId}/participants/${eq}`}
-                      className="text-lg font-bold text-blue-600 hover:underline"
+                      className="text-base font-bold text-blue-600 hover:underline"
                     >
                       {eq}
                     </Link>
@@ -252,20 +287,20 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
                       <span className="ml-2 text-sm text-gray-500">no sheets yet</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-2 whitespace-nowrap">
                     <ClassificationBadge classification={details?.classification} />
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-2">
                     <span className="text-base text-gray-800">
                       {details?.driverName || <span className="text-gray-400">—</span>}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-2">
                     <span className="text-base text-gray-800">
                       {details?.navigatorName || <span className="text-gray-400">—</span>}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                  <td className="px-6 py-2 whitespace-nowrap text-right">
                     <div className="flex justify-end space-x-4">
                       <button
                         onClick={() => setEditing({ mode: 'edit', eq })}
