@@ -11,6 +11,9 @@ import type { ClassificationValue } from '../../../../../lib/participants';
 interface Stage {
   _id: string;
   name: string;
+  // The order flags of the key, so the entry grid can mark the rows whose
+  // letters are scored on their order too.
+  scoreKey?: { rowNumber: number; orderMatters?: boolean }[];
   timeScoreKey?: TimeKeyRow[];
   timeConfig?: Partial<StageTimeConfig>;
 }

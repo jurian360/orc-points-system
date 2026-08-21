@@ -13,6 +13,10 @@ import {
 interface Stage {
   _id: string;
   name: string;
+  // Only the order flag of the key is read here: the entry grid marks the rows
+  // whose letters are scored on their order, so the official knows to type them
+  // exactly as the participant wrote them. The grading itself stays server-side.
+  scoreKey?: { rowNumber: number; orderMatters?: boolean }[];
   timeScoreKey?: TimeKeyRow[];
   timeConfig?: Partial<StageTimeConfig>;
 }
@@ -422,6 +426,18 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     });
   };
 
+  // The rows of this stage whose letters are scored on their order as well.
+  // Typing them in the order the participant wrote them is what makes that
+  // scoring correct, so the grid marks them.
+  const orderRows = useMemo(() => {
+    const stage = stages.find((candidate) => candidate._id === stageId);
+    return new Set(
+      (stage?.scoreKey || [])
+        .filter((row) => row.orderMatters)
+        .map((row) => row.rowNumber)
+    );
+  }, [stages, stageId]);
+
   // Render one ORC answer row (letters + strafp) — compact so the whole card fits on screen.
   // `grid`/`localRow` position the row for keyboard navigation; `rowIndex` is the
   // absolute index into the answers state array used when updating values.
@@ -434,6 +450,14 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     <tr key={row.rowNumber} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
       <td className="py-0.5 px-1 border-b border-r border-gray-300 font-bold text-sm text-gray-800 text-center w-7">
         {row.rowNumber}
+        {orderRows.has(row.rowNumber) && (
+          <span
+            className="block text-[9px] font-bold leading-tight text-purple-700"
+            title="Volgorde telt — type the letters in the order the participant wrote them"
+          >
+            1&rarr;2
+          </span>
+        )}
       </td>
       {Array.from({ length: LETTER_COLUMNS }).map((_, colIndex) => (
         <td key={colIndex} className="py-0.5 px-0.5 border-b border-r border-gray-300 text-center">

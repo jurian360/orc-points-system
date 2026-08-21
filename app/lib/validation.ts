@@ -126,6 +126,7 @@ export interface NormalizedScoreKey {
     answers: string[];
     falseAnswers: { column: number; value: string }[];
     maxPenalty: number;
+    orderMatters: boolean;
   }[];
   timeScoreKey: {
     rowNumber: number;
@@ -179,6 +180,9 @@ export function processScoreKey(body: Record<string, unknown>): NormalizedScoreK
         return { column: num(f.column), value: str(f.value) };
       }),
       maxPenalty: num(r.maxPenalty),
+      // Only the ORC rows carry an order; anything but `true` is "no order",
+      // never an object that could reach a query.
+      orderMatters: r.orderMatters === true,
     };
   });
 

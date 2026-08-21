@@ -25,6 +25,9 @@ interface StandingsEntry {
   driverName: string;
   navigatorName: string;
   totalPenalty: number;
+  // The two parts of totalPenalty, so the table can show where the points
+  // came from: the ORC's (letters) and the Tijd (time) penalty.
+  orcPenalty: number;
   timePenalty: number;
   sheetsSubmitted: number;
   disqualified: boolean;
@@ -53,6 +56,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState<string>('');
   const [jumpEq, setJumpEq] = useState('');
+  // Forced recalculation of the whole rally, and what it reported last.
+  const [rescoring, setRescoring] = useState(false);
+  const [rescoreMessage, setRescoreMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const getParams = async () => {
@@ -139,6 +145,35 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
     } catch (err) {
       alert('Failed to delete participant. Please try again.');
       console.error(err);
+    }
+  };
+
+  // Re-score every sheet of the rally against the stages as they are now.
+  // Editing a stage or a sheet already does this for what it touched; this is
+  // the button for everything else — a scoring rule that changed after the
+  // cards were typed, or a stage key corrected straight in the database.
+  const handleRecalculate = async () => {
+    if (
+      !window.confirm(
+        'Recalculate every score of this rally from the current stage keys? Existing sheets keep their answers and times; only the penalty points are recomputed.'
+      )
+    ) {
+      return;
+    }
+    setRescoring(true);
+    setRescoreMessage(null);
+    try {
+      const response = await fetch(`/api/rallies/${rallyId}/rescore`, { method: 'POST' });
+      if (!response.ok) throw new Error('Failed to recalculate scores');
+      const data = await response.json();
+      const sheets = Number(data.sheets) || 0;
+      setRescoreMessage(`Recalculated ${sheets} sheet${sheets === 1 ? '' : 's'}.`);
+      await loadData(false);
+    } catch (err) {
+      setRescoreMessage('Failed to recalculate the scores. Please try again.');
+      console.error(err);
+    } finally {
+      setRescoring(false);
     }
   };
 
@@ -409,10 +444,20 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 <h2 className="text-xl font-semibold text-gray-800">Standings</h2>
                 <p className="text-gray-600 text-sm mt-1">
                   Total penalty points (ORC&apos;s + Tijd) over every sheet — lowest wins. A
-                  disqualified participant is ranked behind everyone still in the rally.
+                  disqualified participant is ranked behind everyone still in the rally. Editing a
+                  stage key or a sheet re-scores what it touches; Recalculate Scores redoes the
+                  whole rally.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleRecalculate}
+                  disabled={rescoring}
+                  title="Re-score every sheet of this rally against the stage keys as they are now"
+                  className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-md hover:bg-amber-200 font-medium disabled:opacity-60"
+                >
+                  {rescoring ? 'Recalculating…' : 'Recalculate Scores'}
+                </button>
                 <input
                   type="search"
                   value={search}
@@ -436,6 +481,11 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 </select>
               </div>
             </div>
+            {rescoreMessage && (
+              <p className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-sm font-medium text-amber-900">
+                {rescoreMessage}
+              </p>
+            )}
             {standings.length === 0 ? (
               <div className="p-8 text-center">
                 <p className="text-lg text-gray-600">
@@ -466,6 +516,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                       </th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                         Sheets
+                      </th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                        ORC&apos;s
                       </th>
                       <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
                         Tijd
@@ -527,6 +580,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                             {entry.sheetsSubmitted}
                             {totalStages > 0 ? ` / ${totalStages}` : ''}
                           </span>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap text-right">
+                          <span className="text-base text-gray-600">{entry.orcPenalty}</span>
                         </td>
                         <td className="px-4 py-2 whitespace-nowrap text-right">
                           <span className="text-base text-gray-600">{entry.timePenalty}</span>

@@ -25,6 +25,8 @@ export interface ScoreKeyRow {
   answers: string[];
   falseAnswers?: { column: number; value: string }[];
   maxPenalty?: number;
+  // The letters of this row have to be given in the order of the key.
+  orderMatters?: boolean;
 }
 
 // Time key row of a stage. `ipt` is the ideal passage time of participant 0;
@@ -114,6 +116,8 @@ export interface StandingsEntry {
   driverName: string;
   navigatorName: string;
   totalPenalty: number;
+  // The two parts of `totalPenalty`: the ORC's (letters) and the time penalty.
+  orcPenalty: number;
   timePenalty: number;
   sheetsSubmitted: number;
   disqualified: boolean;
