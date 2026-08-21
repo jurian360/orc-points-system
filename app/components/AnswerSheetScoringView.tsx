@@ -5,6 +5,8 @@ import { calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
 import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
+import ClassificationBadge from './ClassificationBadge';
+import { crewLabel, type ClassificationValue } from '../lib/participants';
 
 interface Stage {
   _id: string;
@@ -27,6 +29,14 @@ interface AnswerSheet {
   submittedAt: string;
 }
 
+// The crew behind the EQ of this sheet, when it has been recorded.
+interface ParticipantDetails {
+  eq: number;
+  classification: ClassificationValue;
+  driverName: string;
+  navigatorName: string;
+}
+
 interface AnswerSheetScoringViewProps {
   rallyId: string;
   sheetId: string;
@@ -36,6 +46,7 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
   const router = useRouter();
   const [stage, setStage] = useState<Stage | null>(null);
   const [sheet, setSheet] = useState<AnswerSheet | null>(null);
+  const [details, setDetails] = useState<ParticipantDetails | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
@@ -55,6 +66,13 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
         if (!stageRes.ok) throw new Error('Failed to fetch stage');
         const stageData: Stage = await stageRes.json();
         setStage(stageData);
+
+        // A 404 only means nobody has recorded who this EQ is; the sheet is
+        // scored either way.
+        const detailsRes = await fetch(
+          `/api/rallies/${sheetData.rallyId}/participants/${sheetData.eq}`
+        );
+        setDetails(detailsRes.ok ? await detailsRes.json() : null);
       } catch (err) {
         setError('Failed to load answer sheet scoring.');
         console.error(err);
@@ -138,6 +156,15 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
           <h1 className="text-2xl font-bold text-gray-900 mb-1">
             Participant {sheet.eq}&apos;s Answers — {stage.name}
           </h1>
+          <div className="flex flex-wrap items-center gap-3 mb-1">
+            <ClassificationBadge
+              classification={details?.classification}
+              fallback="No classification"
+            />
+            <span className="text-gray-700 text-base">
+              {crewLabel(details) || 'No participant details recorded yet.'}
+            </span>
+          </div>
           <p className="text-gray-700 text-base">
             Scored against the stage answer key. Submitted: {formatDate(sheet.submittedAt)}
           </p>

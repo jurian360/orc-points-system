@@ -1,0 +1,41 @@
+// Participants of a rally: the crew riding under an EQ number.
+//
+// Scoring never looks at any of this — a participant still *is* their answer
+// sheets, and an EQ without a record is simply an EQ nobody typed a name for.
+// This only records who that EQ is and the class they ride in, so the standings
+// read as crews rather than as bare numbers.
+//
+// Shared by the API and the React views on purpose: the class letters an
+// official can pick from must be the same ones the API accepts.
+
+// The five classes a participant can ride in. Kept as bare letters — they are
+// what is written on the entry list and on the card.
+export const CLASSIFICATIONS = ['B', 'A', 'H', 'I', 'T'] as const;
+
+export type Classification = (typeof CLASSIFICATIONS)[number];
+
+// `''` is a participant whose class has not been recorded (yet).
+export type ClassificationValue = Classification | '';
+
+export interface ParticipantDetails {
+  eq: number;
+  classification: ClassificationValue;
+  driverName: string;
+  navigatorName: string;
+}
+
+export function isClassification(value: unknown): value is Classification {
+  return typeof value === 'string' && (CLASSIFICATIONS as readonly string[]).includes(value);
+}
+
+// "Jan Jansen / Piet Peters", or just the name that is known. Empty when
+// neither has been entered, so callers can fall back to the EQ number.
+export function crewLabel(
+  details?: { driverName?: string; navigatorName?: string } | null
+): string {
+  if (!details) return '';
+  return [details.driverName, details.navigatorName]
+    .map((name) => (name || '').trim())
+    .filter(Boolean)
+    .join(' / ');
+}

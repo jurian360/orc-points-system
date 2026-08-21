@@ -3,6 +3,7 @@
 // Structure:
 //   Rally  -> the top-level event an admin creates first
 //   Stage  -> a rally has many stages; each stage holds an answer key
+//   Participant -> optional details of one EQ number in a rally (class, crew).
 //   AnswerSheet -> a participant's filled-in sheet for a single stage.
 //                  A participant (eq) can have many answer sheets per rally
 //                  (one per stage). The rally winner is decided by the sum of
@@ -11,6 +12,8 @@
 import 'server-only';
 
 import mongoose from 'mongoose';
+
+import { CLASSIFICATIONS } from '../lib/participants';
 
 // A rally is the top-level event. Stages and answer sheets hang off of it.
 const RallySchema = new mongoose.Schema({
@@ -94,6 +97,55 @@ const StageSchema = new mongoose.Schema({
     }
   }],
 });
+
+// A participant of a rally: the crew riding under an EQ number. Optional —
+// nothing in the scoring depends on it, an EQ with no record is just an EQ
+// nobody named — it records the class the crew rides in and who is in the car.
+const ParticipantSchema = new mongoose.Schema({
+  rallyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Rally',
+    required: true,
+    index: true,
+  },
+  eq: {
+    type: Number,
+    required: true,
+    min: 1,
+    max: 100,
+  },
+  // One of the five class letters, or '' while the class is still unknown.
+  classification: {
+    type: String,
+    enum: [...CLASSIFICATIONS, ''],
+    default: '',
+  },
+  driverName: {
+    type: String,
+    trim: true,
+    maxlength: 200,
+    default: '',
+  },
+  navigatorName: {
+    type: String,
+    trim: true,
+    maxlength: 200,
+    default: '',
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+// An EQ number identifies one crew within a rally, so a rally holds at most one
+// record per participant. As with the answer sheets, the index is the real
+// guard and the 11000 duplicate-key error is mapped to a 409.
+ParticipantSchema.index({ rallyId: 1, eq: 1 }, { unique: true });
 
 // An answer sheet is a participant's submission for one stage of a rally.
 const AnswerSheetSchema = new mongoose.Schema({
@@ -190,5 +242,7 @@ AnswerSheetSchema.index({ stageId: 1, eq: 1 }, { unique: true });
 // Create models if they don't already exist
 export const Rally = mongoose.models.Rally || mongoose.model('Rally', RallySchema);
 export const Stage = mongoose.models.Stage || mongoose.model('Stage', StageSchema);
+export const Participant = mongoose.models.Participant ||
+  mongoose.model('Participant', ParticipantSchema);
 export const AnswerSheet = mongoose.models.AnswerSheet ||
   mongoose.model('AnswerSheet', AnswerSheetSchema);

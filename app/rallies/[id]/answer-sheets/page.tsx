@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import AnswerSheetForm from '../../../components/AnswerSheetForm';
+import ClassificationBadge from '../../../components/ClassificationBadge';
+import { crewLabel, type ClassificationValue } from '../../../lib/participants';
 
 interface Rally {
   _id: string;
@@ -14,6 +16,13 @@ interface Stage {
   name: string;
   timeScoreKey?: { rowNumber: number; ipt?: string }[];
   timeConfig?: Record<string, number>;
+}
+
+interface Participant {
+  eq: number;
+  classification: ClassificationValue;
+  driverName: string;
+  navigatorName: string;
 }
 
 interface AnswerSheet {
@@ -33,6 +42,7 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
   const [rally, setRally] = useState<Rally | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
   const [sheets, setSheets] = useState<AnswerSheet[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,13 +60,18 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
     if (!rallyId) return;
     try {
       setLoading(true);
-      const [rallyRes, stagesRes, sheetsRes] = await Promise.all([
+      const [rallyRes, stagesRes, sheetsRes, participantsRes] = await Promise.all([
         fetch(`/api/rallies/${rallyId}`),
         fetch(`/api/stages?rallyId=${rallyId}`),
         fetch(`/api/answersheets?rallyId=${rallyId}`),
+        fetch(`/api/rallies/${rallyId}/participants`),
       ]);
 
       if (rallyRes.ok) setRally(await rallyRes.json());
+
+      // Only used to label the EQ numbers — a card can be typed for an EQ that
+      // has no participant record.
+      if (participantsRes.ok) setParticipants(await participantsRes.json());
 
       let stagesData: Stage[] = [];
       if (stagesRes.ok) {
@@ -135,11 +150,12 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
     }
   };
 
-  // Removing a participant from the rally deletes every sheet they have in it.
+  // Removing a participant from the rally deletes their details and every sheet
+  // they have in it.
   const handleDeleteParticipant = async (eq: number) => {
     if (
       !window.confirm(
-        `Delete participant ${eq} from this rally? Every answer sheet they submitted for it will be deleted. This cannot be undone.`
+        `Delete participant ${eq} from this rally? Their details and every answer sheet they submitted for it will be deleted. This cannot be undone.`
       )
     ) {
       return;
@@ -158,6 +174,8 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
       console.error(err);
     }
   };
+
+  const participantByEq = new Map(participants.map((participant) => [participant.eq, participant]));
 
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('en-US', {
@@ -210,7 +228,12 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
                 </Link>
               </div>
             ) : (
-              <AnswerSheetForm onSubmit={handleSubmit} stages={stages} sheets={sheets} />
+              <AnswerSheetForm
+                onSubmit={handleSubmit}
+                stages={stages}
+                sheets={sheets}
+                participants={participants}
+              />
             )}
           </div>
         </div>
@@ -257,14 +280,24 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
                   <tbody className="bg-white divide-y divide-gray-200">
                     {sheets.map((sheet) => (
                       <tr key={sheet._id} className="hover:bg-gray-50">
-                        <td className="px-8 py-5 whitespace-nowrap border-r-2 border-gray-200">
-                          <Link
-                            href={`/rallies/${rallyId}/participants/${sheet.eq}`}
-                            className="text-2xl font-bold text-blue-600 hover:underline"
-                            title={`Show all answers submitted by participant ${sheet.eq}`}
-                          >
-                            {sheet.eq}
-                          </Link>
+                        <td className="px-8 py-5 border-r-2 border-gray-200">
+                          <div className="flex items-center gap-3">
+                            <Link
+                              href={`/rallies/${rallyId}/participants/${sheet.eq}`}
+                              className="text-2xl font-bold text-blue-600 hover:underline"
+                              title={`Show all answers submitted by participant ${sheet.eq}`}
+                            >
+                              {sheet.eq}
+                            </Link>
+                            <ClassificationBadge
+                              classification={participantByEq.get(sheet.eq)?.classification}
+                            />
+                          </div>
+                          {crewLabel(participantByEq.get(sheet.eq)) && (
+                            <div className="text-base text-gray-700 mt-1">
+                              {crewLabel(participantByEq.get(sheet.eq))}
+                            </div>
+                          )}
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap border-r-2 border-gray-200">
                           <div className="text-lg text-gray-700">{sheet.stageName}</div>
@@ -306,7 +339,7 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
                             <button
                               onClick={() => handleDeleteParticipant(sheet.eq)}
                               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-lg transition-colors"
-                              title={`Delete every answer sheet of participant ${sheet.eq} in this rally`}
+                              title={`Delete the details and every answer sheet of participant ${sheet.eq} in this rally`}
                             >
                               Delete EQ {sheet.eq}
                             </button>

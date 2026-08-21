@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { DEFAULT_TIME_CONFIG, type StageTimeConfig } from './timeScoring';
+import { isClassification, type ClassificationValue } from './participants';
 
 // Input validation and normalization for the API routes.
 //
@@ -64,6 +65,27 @@ export function parseName(value: unknown): string | null {
   const trimmed = value.trim();
   if (!trimmed || trimmed.length > MAX_NAME_LENGTH) return null;
   return trimmed;
+}
+
+// Class a participant rides in: one of the five class letters, or '' for a
+// participant whose class has not been recorded. An unknown letter is rejected
+// rather than blanked — a typo should not silently read as "no class".
+export function parseClassification(value: unknown): ClassificationValue | null {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().toUpperCase();
+  if (trimmed === '') return '';
+  return isClassification(trimmed) ? trimmed : null;
+}
+
+// Driver / navigator name. Optional, unlike `parseName`, so '' is a valid
+// value; a non-string (the operator-injection shape) or an over-long name is
+// not.
+export function parseOptionalName(value: unknown): string | null {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > MAX_NAME_LENGTH ? null : trimmed;
 }
 
 // --- Stage answer key ------------------------------------------------------
