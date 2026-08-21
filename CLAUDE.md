@@ -162,19 +162,54 @@ reads the organisation's own spreadsheet.
   Rows upsert on `{rallyId, eq}`, so re-importing a corrected sheet updates the
   crews. Nothing is re-scored — a participant record carries no points.
 
+## Importing the times of a control
+
+A GTC does not hand in a card, it hands in its own export — the reference files
+carry `rallycode, gtc, eq, wpt, mod-wpt, comment`, one line per participant
+number, always the full 1..100 even though only the crews that passed have a
+time. `/time-import` (`TimeImportWizard`) reads that file into **one row** of one
+stage's time column.
+
+- **Four steps, because the file says nothing about where it belongs**: rally,
+  stage, which of the 10 time rows (START / GTC 1-8 / FINISH, each shown with its
+  IPT 0), then the file and its columns. Opening it from a rally or a stage
+  pre-selects those (`/time-import?rallyId=…&stageId=…`).
+- **The rally needs its entry list first.** A time is imported for a *crew*: an
+  EQ with no `Participant` record rejects the import rather than inventing one.
+  A participant who has no sheet for the stage yet gets one holding only this
+  time (`createMissingSheets`, on by default) — empty `answers` score nothing, so
+  the ORC's can still be typed on the card later.
+- **Reading and mapping are shared with the entry-list import**:
+  `app/lib/spreadsheet.ts` for the file, `app/lib/columnMapping.ts` for guessing
+  the header row and the columns, `app/lib/timeImport.ts` for what each line
+  means. Only `{eq, wpt}` per crew is POSTed. A `.xlsx` time cell arrives as a
+  fraction of a day (19:27 is `0.81041666…`) and is read as one; `19.27` stays a
+  clock time.
+- **A line without a time is skipped, never cleared**: the export lists every
+  number, and an import only fills times in. An optional control column filters a
+  file that holds more than one control, and a file that names control 2 while
+  GTC 1 is selected says so before anything is written.
+- `POST /api/stages/[id]/times/import` re-validates everything (`parseEq`,
+  `parseWpt`, `parseTimeRowNumber`), writes the WPT's in one `bulkWrite` and then
+  calls `rescoreParticipants`: it stores no `ipt`, `plusMinus` or `strafp` of its
+  own, exactly like the answer-sheet routes.
+
 ## Layout
 
 ```
 app/
   api/            route handlers (rallies, stages, answersheets, auth, standings,
                   rallies/[id]/participants to list/add the crews of a rally,
-                  .../[eq] to read, save or drop one, .../import for an entry list)
+                  .../[eq] to read, save or drop one, .../import for an entry list,
+                  stages/[id]/times/import for the times of one control)
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env,
                   api-guard, participants (class letters, shared client + server),
-                  spreadsheet + participantImport (entry-list import, browser side)
+                  spreadsheet + columnMapping + participantImport + timeImport
+                  (entry-list and time imports, browser side)
   models/         Mongoose schemas
   rallies/...     pages (rally dashboard, stages, answer sheets, participant view)
+  time-import/    the time import wizard (rally -> stage -> control -> file)
   types/          shared TS interfaces
 middleware.ts     auth + rate limit + CSRF at the edge
 scripts/          generate-secret.mjs, hash-password.mjs

@@ -114,12 +114,20 @@ export default function ViewStagePage({
         <div className="bg-white rounded-xl shadow-xl overflow-hidden border-2 border-gray-200 mb-6">
           <div className="px-6 py-3 border-b-2 border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
             <h2 className="text-lg font-bold text-gray-800">Answer Key</h2>
-            <Link
-              href={`/rallies/${rallyId}/stages/${stage._id}/edit`}
-              className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-base transition-colors"
-            >
-              Edit Stage
-            </Link>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href={`/time-import?rallyId=${rallyId}&stageId=${stage._id}`}
+                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium text-base transition-colors"
+              >
+                Import Times
+              </Link>
+              <Link
+                href={`/rallies/${rallyId}/stages/${stage._id}/edit`}
+                className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-base transition-colors"
+              >
+                Edit Stage
+              </Link>
+            </div>
           </div>
 
           {/* Same 4 columns as the stage form and the scored sheets */}

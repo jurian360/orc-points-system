@@ -1,6 +1,12 @@
 import 'server-only';
 
-import { DEFAULT_TIME_CONFIG, type StageTimeConfig } from './timeScoring';
+import {
+  DEFAULT_TIME_CONFIG,
+  formatClock,
+  parseClock,
+  TIME_ROWS,
+  type StageTimeConfig,
+} from './timeScoring';
 import { isClassification, type ClassificationValue } from './participants';
 
 // Input validation and normalization for the API routes.
@@ -27,6 +33,9 @@ export const MAX_FIELD_LENGTH = 64;
 export const MAX_NAME_LENGTH = 200;
 // A rally is numbered 1..100, so an entry list cannot hold more crews than that.
 export const MAX_IMPORT_PARTICIPANTS = 100;
+// A time control hands in at most one time per participant, so the same bound
+// holds for the import of one control's times.
+export const MAX_IMPORT_TIMES = 100;
 
 // Clamp any value to a bounded string. Objects and arrays collapse to a safe
 // placeholder rather than being passed through.
@@ -88,6 +97,25 @@ export function parseOptionalName(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > MAX_NAME_LENGTH ? null : trimmed;
+}
+
+// Row of the time column an import writes into: 1 (the start), 2-9 (the GTC's)
+// or 10 (the finish). Anything else is not a row of the controlekaart.
+export function parseTimeRowNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
+  if (value < 1 || value > TIME_ROWS) return null;
+  return value;
+}
+
+// A passage time as it is stored on a sheet: "HH:MM". The shapes officials type
+// ("8:05", "805", "8.05") are accepted and normalised here, so a sheet written
+// by an import holds the same cell an official would have typed. A blank is
+// rejected rather than treated as "clear this control" — an import only ever
+// fills times in.
+export function parseWpt(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const minutes = parseClock(value.slice(0, MAX_FIELD_LENGTH));
+  return minutes === null ? null : formatClock(minutes);
 }
 
 // --- Stage answer key ------------------------------------------------------
