@@ -207,8 +207,9 @@ export async function POST(
         continue;
       }
 
-      // A sheet that only holds a time: no ORC's have been typed yet, which
-      // scores as no answer rows rather than as wrong ones.
+      // A sheet that only holds a time: no ORC's have been typed yet, so the
+      // card scores as an empty one — every letter of the key missing — until
+      // an official types it (see app/lib/scoring.ts).
       created++;
       operations.push({
         insertOne: {

@@ -95,6 +95,15 @@ Rally ──< Stage ──< AnswerSheet
 5. The row total is then **capped at `maxPenalty`** when `maxPenalty > 0`
    (`0` / undefined means no cap).
 
+The **key** decides which rows are scored, never the sheet. A row the
+participant did not answer costs its missing letters whether the sheet holds a
+blank row for it or holds no row for it at all — a sheet with no `answers` (the
+one a time import creates) is a card nobody has typed yet and scores as an empty
+card, not as a stage without questions. A key row with no letters of its own
+still costs nothing, so the ORC rows a stage does not use stay free. This is what
+keeps `rescoreRally` and a re-saved sheet — the same computation — from
+disagreeing.
+
 The order rule (rule 4) reads the letters left to right, ignores the ones that
 are not in the key, and asks whether what is left is a **subsequence** of the
 key — for the key `BAC`, `BC` and `AC` are in order, `CA` and `AB` are not. It
@@ -201,8 +210,9 @@ stage's time column.
 - **The rally needs its entry list first.** A time is imported for a *crew*: an
   EQ with no `Participant` record rejects the import rather than inventing one.
   A participant who has no sheet for the stage yet gets one holding only this
-  time (`createMissingSheets`, on by default) — empty `answers` score nothing, so
-  the ORC's can still be typed on the card later.
+  time (`createMissingSheets`, on by default); its `answers` stay empty until an
+  official types the card, and an empty card scores every letter of the key as
+  missing — the same as opening that sheet in the form and saving it untouched.
 - **Reading and mapping are shared with the entry-list import**:
   `app/lib/spreadsheet.ts` for the file, `app/lib/columnMapping.ts` for guessing
   the header row and the columns, `app/lib/timeImport.ts` for what each line
