@@ -97,19 +97,25 @@ minutes. Officials type the WPT; the delta is `WPT - IPT` in minutes.
 
 1. The delta starts at **0** at the start of the rally and **carries from stage
    to stage**, up to the last one.
-2. A control costs **1 point per minute the delta moved** since the previous
+2. The **start of the first stage is free**: it is where the rally begins, so it
+   costs nothing and does not move the delta — a participant sent away late does
+   not get to keep that as their delta. The start of every later stage *is*
+   scored (it has no window), so a participant who carries `+3` and starts the
+   next stage on time pays those 3 points.
+3. A control costs **1 point per minute the delta moved** since the previous
    control — arriving `+5` costs 5, then dropping back to `+3` costs 2 more.
    Participants have to *keep* their delta, not undo it.
-3. A **GTC outside its window** (default 15 early / 30 late) costs a flat
-   maximum (default 60) and the running delta **falls back** to what it was
-   before that control.
-4. The **finish of a stage that is followed by another one**, outside its window,
+4. A **GTC outside its window** (default 15 early / 30 late) costs a flat
+   maximum (default 60) and **never moves the delta**: it reverts to the last
+   valid one, so the next control is measured against that.
+5. The **finish of a stage that is followed by another one**, outside its window,
    costs that maximum **plus the break after the stage** (`timeConfig.breakMinutes`,
-   which differs per stage).
-5. The **finish of the last stage** has a wider window (default 15 early / 60
+   which differs per stage) — and, like any blown window, leaves the delta at the
+   last valid one.
+6. The **finish of the last stage** has a wider window (default 15 early / 60
    late); outside it the participant is **disqualified** (`disqualified` on the
    sheet; standings rank them behind everyone else).
-6. A row with no IPT 0 is not a checkpoint of that stage, and a checkpoint with
+7. A row with no IPT 0 is not a checkpoint of that stage, and a checkpoint with
    no WPT yet is simply not scored.
 
 Windows, the maximum and the break live in `Stage.timeConfig` so an event can be

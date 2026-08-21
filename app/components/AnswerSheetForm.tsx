@@ -290,6 +290,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages, she
         strafp: 0,
         outOfWindow: false,
         disqualified: false,
+        free: false,
       }));
 
   // Penalty totals for the "Totaal Strafpunten" overview
@@ -540,6 +541,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages, she
                       }`}
                     >
                       {timeRowLabel(row.rowNumber)}
+                      {row.free && <span className="font-normal text-gray-500"> (vrij)</span>}
                     </td>
                     <td className="py-0.5 px-1 border-b border-r border-gray-300 text-center text-sm text-gray-800">
                       {row.ipt || '-'}
@@ -578,7 +580,8 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({ onSubmit, stages, she
           <p className="text-[11px] text-gray-600 mt-1">
             Type the WPT (e.g. 8:05). The IPT is this participant&apos;s ideal time — the stage&apos;s
             IPT 0 plus their EQ in minutes — and the strafpunten follow from how far the delta moved
-            since the previous control.
+            since the previous control. The start of the first stage is free; a control passed
+            outside its window costs the maximum and the delta reverts to the last valid one.
             {eq === '' && ' Enter an EQ. No. to see this participant\u2019s own times.'}
           </p>
           {timeResult?.disqualified && (

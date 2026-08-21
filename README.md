@@ -29,11 +29,14 @@ Each answer sheet is scored on two things:
   participant 0. Officials type in the actual passage time ("WPT") of each
   control and the app charges 1 penalty point per minute the participant's
   delta moved since the previous control — they have to *hold* their delta, not
-  correct it. A control passed outside its window (by default 15 minutes early
-  or 30 late; 15/60 on a finish) costs a flat 60 points, plus the length of the
-  break when it is the finish of a stage that is followed by another one; past
-  the finish window of the **last** stage the participant is disqualified. The
-  windows, the maximum and the break are per-stage settings.
+  correct it. The start of the first stage is free (it is where the delta
+  begins); every later control, including the start of the next stage, counts.
+  A control passed outside its window (by default 15 minutes early or 30 late;
+  15/60 on a finish) costs a flat 60 points — plus the length of the break when
+  it is the finish of a stage that is followed by another one — and the delta
+  reverts to the last valid one. Past the finish window of the **last** stage
+  the participant is disqualified. The windows, the maximum and the break are
+  per-stage settings.
 
 The **rally winner** is the participant with the **lowest total penalty** summed
 across all of their answer sheets.

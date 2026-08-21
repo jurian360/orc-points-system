@@ -22,13 +22,16 @@
 // Scoring is on the *change* of the delta, not on the delta itself:
 //
 //   * the delta starts at 0 at the start of the rally;
+//   * the start of the *first* stage is free: the rally begins there, so it
+//     costs nothing and does not move the delta. Every other control, the start
+//     of a later stage included, is scored;
 //   * each control costs 1 penalty point per minute the delta moved since the
 //     previous control — arriving +5 costs 5, and then dropping back from +5 to
 //     +3 costs another 2 (the participant has to *keep* their delta, not undo
 //     it);
 //   * a GTC outside its window (default 15 minutes early / 30 minutes late)
-//     costs a flat maximum (default 60) and the running delta is left at its
-//     previous value;
+//     costs a flat maximum (default 60) and the running delta reverts to the
+//     last valid one — a control passed outside its window never moves it;
 //   * the finish of a stage that is followed by another stage costs, when it is
 //     outside its window, that same maximum *plus* the length of the break after
 //     the stage, because the break itself varies per stage;
@@ -100,6 +103,8 @@ export interface ScoredTimeRow {
   strafp: number;
   outOfWindow: boolean;
   disqualified: boolean;
+  // The start of the first stage of a rally: shown, but never scored.
+  free: boolean;
 }
 
 export interface StageTimeResult {
@@ -188,6 +193,9 @@ export interface ScoreStageTimesInput {
   entries?: TimeEntryRow[] | null;
   // Delta the participant carried in from the previous stage.
   startDelta?: number;
+  // The start row of the first stage of a rally is where the delta begins, so
+  // it is free; the start of any later stage is scored like any other control.
+  isFirstStage?: boolean;
   // The finish of the last stage is a disqualification, not a penalty.
   isFinalStage: boolean;
 }
@@ -199,6 +207,7 @@ export function scoreStageTimes({
   eq,
   entries,
   startDelta = 0,
+  isFirstStage = false,
   isFinalStage,
 }: ScoreStageTimesInput): StageTimeResult {
   const config = resolveTimeConfig(timeConfig);
@@ -230,12 +239,15 @@ export function scoreStageTimes({
         strafp: 0,
         outOfWindow: false,
         disqualified: false,
+        free: false,
       };
     }
 
     const idealMinutes = participantIpt(ipt0, eq);
     const ipt = formatClock(idealMinutes);
     const actual = parseClock(wpt);
+
+    const free = kind === 'start' && isFirstStage;
 
     // The checkpoint exists but has not been timed yet.
     if (actual === null) {
@@ -250,13 +262,33 @@ export function scoreStageTimes({
         strafp: 0,
         outOfWindow: false,
         disqualified: false,
+        free,
       };
     }
 
     const delta = minutesBetween(actual, idealMinutes);
 
-    // The start of a stage has no window: however far off it is, it only moves
-    // the delta the participant then has to hold.
+    // The start of the first stage is where the rally begins: it is shown, but
+    // it neither costs points nor moves the delta, so a participant who is sent
+    // away late does not get to keep that as their delta.
+    if (free) {
+      return {
+        rowNumber,
+        kind,
+        active: true,
+        ipt,
+        wpt,
+        plusMinus: formatDelta(delta),
+        delta,
+        strafp: 0,
+        outOfWindow: false,
+        disqualified: false,
+        free,
+      };
+    }
+
+    // The start of a later stage has no window: however far off it is, it only
+    // moves the delta the participant then has to hold.
     const early = kind === 'gtc' ? config.gtcEarlyWindow : config.finishEarlyWindow;
     const late = kind === 'gtc' ? config.gtcLateWindow : config.finishLateWindow;
     const outOfWindow = kind !== 'start' && (delta < -early || delta > late);
@@ -277,7 +309,8 @@ export function scoreStageTimes({
       } else {
         strafp = config.outOfWindowPenalty;
       }
-      // The delta falls back to what it was before this control.
+      // `runningDelta` is deliberately left alone: a control passed outside its
+      // window does not move the delta, which reverts to the last valid one.
     } else {
       strafp = Math.abs(delta - runningDelta) * PENALTY_PER_MINUTE;
       runningDelta = delta;
@@ -296,6 +329,7 @@ export function scoreStageTimes({
       strafp,
       outOfWindow,
       disqualified: rowDisqualified,
+      free,
     };
   });
 
@@ -309,8 +343,9 @@ export interface RallyStageTimeInput {
 }
 
 // Score every stage of a rally for one participant, carrying the delta from one
-// stage into the next. `stages` must be in running order; the last one is the
-// stage whose finish disqualifies instead of penalising.
+// stage into the next. `stages` must be in running order: the start of the first
+// one is free, and the finish of the last one disqualifies instead of
+// penalising.
 export function scoreRallyTimes(
   stages: RallyStageTimeInput[],
   eq: number,
@@ -326,6 +361,7 @@ export function scoreRallyTimes(
       eq,
       entries: entriesByStage.get(stage.stageId) || [],
       startDelta: delta,
+      isFirstStage: index === 0,
       isFinalStage: index === stages.length - 1,
     });
     results.set(stage.stageId, result);
