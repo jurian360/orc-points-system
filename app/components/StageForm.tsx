@@ -13,6 +13,10 @@ interface ScoreKeyRow {
   answers: string[];
   falseAnswers?: { column: number; value: string }[];
   maxPenalty?: number;
+  // "Volgorde": the correct letters of this row have to be given in the order
+  // of the key. Only the ORC rows have an order — the time and merk columns
+  // are single values, so they never carry this flag.
+  orderMatters?: boolean;
 }
 
 interface TimeScoreKeyRow {
@@ -73,6 +77,7 @@ const StageForm: React.FC<StageFormProps> = ({
       answers: Array(LETTER_COLUMNS).fill(''),
       falseAnswers: [],
       maxPenalty: 0,
+      orderMatters: false,
     }));
   });
 
@@ -140,6 +145,17 @@ const StageForm: React.FC<StageFormProps> = ({
     });
   };
 
+  // Ticking "volgorde" on a row makes the order of its correct letters count:
+  // giving them out of order costs one extra error (30 points) on top of the
+  // letters themselves. See app/lib/scoring.ts.
+  const handleOrderMattersChange = (rowIndex: number, checked: boolean) => {
+    setScoreKey((prev) => {
+      const next = [...prev];
+      next[rowIndex] = { ...next[rowIndex], orderMatters: checked };
+      return next;
+    });
+  };
+
   const handleMaxPenaltyChange = (rowIndex: number, value: string) => {
     setScoreKey((prev) => {
       const next = [...prev];
@@ -193,6 +209,7 @@ const StageForm: React.FC<StageFormProps> = ({
       answers: row.answers.filter((answer) => answer.trim() !== ''),
       falseAnswers: row.falseAnswers || [],
       maxPenalty: row.maxPenalty || 0,
+      orderMatters: Boolean(row.orderMatters),
     }));
 
     const processedTimeScoreKey = timeScoreKey.map((row) => ({
@@ -248,6 +265,16 @@ const StageForm: React.FC<StageFormProps> = ({
           </div>
         </td>
       ))}
+      <td className="py-2 px-2 border-b border-r border-gray-300 text-center">
+        <input
+          type="checkbox"
+          className="w-5 h-5 accent-purple-600 cursor-pointer"
+          checked={Boolean(row.orderMatters)}
+          onChange={(e) => handleOrderMattersChange(rowIndex, e.target.checked)}
+          aria-label={`The letters of row ${row.rowNumber} have to be in the order of the key`}
+          title="Volgorde telt: the correct letters have to be given in the order of the key"
+        />
+      </td>
       <td className="py-2 px-2 border-b border-gray-300 text-center">
         <input
           type="number"
@@ -272,6 +299,12 @@ const StageForm: React.FC<StageFormProps> = ({
           className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800"
         >
           LETTERS (Correct / False)
+        </th>
+        <th
+          className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800"
+          title="Volgorde telt: the correct letters have to be given in the order of the key"
+        >
+          Volgorde
         </th>
         <th className="py-2 px-2 border-b border-gray-300 text-xs font-semibold text-gray-800">
           Max Penalty
@@ -308,6 +341,12 @@ const StageForm: React.FC<StageFormProps> = ({
         <p className="text-base text-gray-700">
           Enter the correct answer (green) and any explicit false answer (red) per column, plus the
           max penalty for each row.
+        </p>
+        <p className="text-sm text-gray-600 mt-1">
+          Tick <span className="font-semibold">Volgorde</span> on an ORC row whose letters have to
+          be given in the order of the key: the wrong order costs one extra error (30). A
+          participant who gives only one of the letters pays for the missing ones and nothing more
+          — a single letter cannot be out of order. The time and merk columns have no order.
         </p>
       </div>
 

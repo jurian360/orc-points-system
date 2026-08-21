@@ -1,5 +1,5 @@
 import React from 'react';
-import { calculateRowPenalty } from '../lib/scoring';
+import { calculateRowPenalty, hasOrderError } from '../lib/scoring';
 import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
 
 interface OrcAnswerGridProps {
@@ -48,11 +48,29 @@ const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
   const renderAnswerRow = (row: ScoreKeyRow) => {
     const participantRow = findParticipantAnswer(row.rowNumber);
     const rowPenalties = calculateRowPenalty(row, participantRow);
+    // A row whose key asks for an order is marked, and the mark turns red when
+    // the letters were given out of order — the 30 points for that are part of
+    // the row penalty on the right.
+    const orderError = hasOrderError(row, participantRow);
 
     return (
       <tr key={row.rowNumber} className={row.rowNumber % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
         <td className="py-1.5 px-2 border-2 border-gray-300 font-bold text-base text-gray-800 text-center">
           {row.rowNumber}
+          {row.orderMatters && (
+            <span
+              className={`block text-[10px] font-bold leading-tight ${
+                orderError ? 'text-red-700' : 'text-purple-700'
+              }`}
+              title={
+                orderError
+                  ? 'The letters of this row are out of the order of the key (+30)'
+                  : 'The letters of this row have to be given in the order of the key'
+              }
+            >
+              1&rarr;2
+            </span>
+          )}
         </td>
         {[0, 1, 2, 3].map((colIndex) => {
           const answer = participantRow?.selectedAnswers[colIndex] || '';
@@ -93,7 +111,10 @@ const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
         })}
         <td className="py-1.5 px-1 border-2 border-gray-300 text-center">
           {rowPenalties > 0 ? (
-            <div className="px-2 py-1 bg-red-100 text-red-800 rounded-md shadow-sm border border-red-300 font-bold text-sm text-center">
+            <div
+              className="px-2 py-1 bg-red-100 text-red-800 rounded-md shadow-sm border border-red-300 font-bold text-sm text-center"
+              title={orderError ? 'Includes 30 points for the wrong order' : undefined}
+            >
               {rowPenalties}
             </div>
           ) : (

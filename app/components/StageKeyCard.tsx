@@ -13,6 +13,8 @@ export interface StageScoreKeyRow {
   answers: string[];
   falseAnswers?: { column: number; value: string }[];
   maxPenalty?: number;
+  // The correct letters of this row have to be given in the order of the key.
+  orderMatters?: boolean;
 }
 
 export interface StageMerkKeyRow {
@@ -74,6 +76,12 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
             Col {colIndex + 1}
           </th>
         ))}
+        <th
+          className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800"
+          title="Volgorde telt: the correct letters have to be given in the order of the key"
+        >
+          Volg.
+        </th>
         <th className="py-2 px-1 border-b border-gray-300 text-center font-bold text-sm text-gray-800">
           Max
         </th>
@@ -119,6 +127,18 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
           </td>
         );
       })}
+      <td className="py-1.5 px-1 border-b border-r border-gray-300 text-center">
+        {row.orderMatters ? (
+          <span
+            className="px-2 py-1 rounded-md bg-purple-100 text-purple-800 border border-purple-300 text-sm font-bold"
+            title="The letters of this row have to be given in the order of the key"
+          >
+            1&rarr;2
+          </span>
+        ) : (
+          <span className="text-gray-300 text-base">-</span>
+        )}
+      </td>
       <td className="py-1.5 px-1 border-b border-gray-300 text-center">
         <div className="w-12 h-9 mx-auto flex items-center justify-center bg-blue-100 rounded-md shadow-sm border border-blue-200">
           <span className="text-base font-bold text-blue-800">{row.maxPenalty || 0}</span>
@@ -150,7 +170,8 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
             {orcColumn(leftRows)}
             <p className="text-sm text-gray-600 mt-2">
               Green is the correct letter of the column, red an explicit false letter. Max is the
-              cap on the penalty of the row.
+              cap on the penalty of the row. A row marked 1&rarr;2 under Volg. is scored on the
+              order of its letters as well: giving them out of order costs one extra error (30).
             </p>
           </div>
 

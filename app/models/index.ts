@@ -58,7 +58,13 @@ const StageSchema = new mongoose.Schema({
     maxPenalty: {
       type: Number,
       default: 0
-    } // Maximum penalty points for the row
+    }, // Maximum penalty points for the row
+    // The row's correct letters have to be given in the order of the key.
+    // Officials tick this per ORC row; the time and merk columns have no order.
+    orderMatters: {
+      type: Boolean,
+      default: false
+    }
   }],
   // Time key of the stage, 10 rows: `ipt` is the ideal passage time of
   // participant 0 — every other participant's ideal time is that plus their eq

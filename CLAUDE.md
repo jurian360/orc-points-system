@@ -46,7 +46,11 @@ Rally ──< Stage ──< AnswerSheet
    └──< Participant      (optional details of one EQ: class + crew names)
 ```
 
-- `Stage.scoreKey` — 30 rows: `{ rowNumber, answers[], falseAnswers[{column,value}], maxPenalty }`.
+- `Stage.scoreKey` — 30 rows:
+  `{ rowNumber, answers[], falseAnswers[{column,value}], maxPenalty, orderMatters }`.
+  `orderMatters` is the officials' "volgorde" tick: the row's letters have to be
+  given in the order of the key. Only ORC rows carry it — the time and merk
+  columns hold single values and have no order.
   `timeScoreKey` (10 rows) holds the stage timetable — `ipt` is the ideal
   passage time of participant 0 — and `timeConfig` its time-penalty settings
   (windows, maximum, break after the stage). `merkScoreKey` (6 rows) stays an
@@ -86,12 +90,25 @@ Rally ──< Stage ──< AnswerSheet
 1. Each selected letter listed in the row's `falseAnswers` → **+30**.
 2. More correct letters given than the key expects → **+30** (once).
 3. Each required correct letter **missing** → **+30**.
-4. The row total is then **capped at `maxPenalty`** when `maxPenalty > 0`
+4. On a row with `orderMatters`, the correct letters given **out of the key's
+   order** → **+30**, once, on top of what the letters themselves cost.
+5. The row total is then **capped at `maxPenalty`** when `maxPenalty > 0`
    (`0` / undefined means no cap).
+
+The order rule (rule 4) reads the letters left to right, ignores the ones that
+are not in the key, and asks whether what is left is a **subsequence** of the
+key — for the key `BAC`, `BC` and `AC` are in order, `CA` and `AB` are not. It
+never fires when it cannot tell: a key of one letter has no order, and **one
+correct letter given is never out of order**. So on the key `NW`: `WN` costs 30
+for the order, `N` alone costs 30 for the missing `W` and nothing more, and on
+the key `BAC` both `CA` and `AB` cost 60 — 30 for the missing letter and 30 for
+the order, because two letters do show an order.
 
 Sheet total = ORC's rows + the stage's time penalty. Rally total = sum of a
 participant's sheet totals; standings sort ascending, ties broken by EQ, with
-disqualified participants last.
+disqualified participants last. A standings entry carries the two parts as well
+(`orcPenalty` / `timePenalty`, the ORC's part being the stored total minus the
+stored time part), so the table shows an ORC's, a Tijd and a Total column.
 
 Merk penalties are typed in **by officials** — they are not derived from a key,
 and they are shown and summed in the card view but are **not** part of
@@ -138,6 +155,13 @@ Because the delta chains, **a sheet cannot be scored on its own**: writing a
 sheet re-scores that participant's whole rally (`rescoreParticipants`), and
 adding, editing or deleting a stage re-scores every participant (`rescoreRally`),
 since it also moves which stage is last.
+
+`POST /api/rallies/[id]/rescore` (the *Recalculate Scores* button on the rally
+dashboard) runs `rescoreRally` over a whole rally on demand. The write paths
+above already keep the standings correct, so this is for what happens outside
+them: a scoring rule that shipped after the cards were typed, or a document
+edited straight in the database. It takes no body — the rally in the path is the
+whole request.
 
 ## Importing an entry list
 
@@ -201,6 +225,7 @@ app/
   api/            route handlers (rallies, stages, answersheets, auth, standings,
                   rallies/[id]/participants to list/add the crews of a rally,
                   .../[eq] to read, save or drop one, .../import for an entry list,
+                  rallies/[id]/rescore to re-score a whole rally on demand,
                   stages/[id]/times/import for the times of one control)
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env,
@@ -274,8 +299,10 @@ Do not regress them.**
 - `ControlekaartCard` is the shared read-only rendering of a scored sheet
   (single-sheet view and per-participant view). Prefer extending it over adding
   a parallel layout. `StageKeyCard` is its counterpart for a stage *key* — the
-  same four columns, but showing the correct/false letters, the IPT 0 timetable
-  with the stage's time settings and the maximum each part can cost.
+  same four columns, but showing the correct/false letters, which rows are scored
+  on their order, the IPT 0 timetable with the stage's time settings and the
+  maximum each part can cost. A row whose order counts is marked `1→2` in the key
+  card, in the scored card and in the entry grid.
 - A submitted sheet is corrected on the entry form itself: `AnswerSheetForm`
   takes `initialData` + `isEditing` and the edit page PUTs to
   `/api/answersheets/[id]`. The stage of a sheet is fixed there — a sheet is
