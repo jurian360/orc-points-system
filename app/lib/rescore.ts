@@ -13,6 +13,8 @@ import 'server-only';
 // So a write never rescores a single sheet: it rescores every sheet of the
 // participants it can affect, in stage order, in one bulkWrite.
 
+import mongoose from 'mongoose';
+
 import { AnswerSheet, Stage } from '../models';
 import { calculateTotalPenalty } from './scoring';
 import { scoreRallyTimes, type RallyStageTimeInput, type TimeEntryRow } from './timeScoring';
@@ -36,10 +38,14 @@ export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {
 
   const query: Record<string, unknown> = { rallyId };
   if (options.eqs) {
-    // Callers pass validated participant numbers (parseEq); an empty list means
-    // there is nothing to do rather than "everything".
+    // An empty list means there is nothing to do rather than "everything".
     if (options.eqs.length === 0) return;
-    query.eq = { $in: options.eqs };
+    // `sanitizeFilter` (app/lib/mongodb.ts) wraps any operator that reaches a
+    // filter in `$eq`, which turns this into a cast error. `trusted` is the
+    // documented opt-out and is safe here precisely because the backstop is not
+    // what makes it safe: these are integers, checked by `Number.isInteger`
+    // below and originally by `parseEq`, never a value off the wire.
+    query.eq = mongoose.trusted({ $in: options.eqs });
   }
 
   const sheets = await AnswerSheet.find(query);
@@ -115,7 +121,7 @@ export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {
 
 // Convenience wrapper for the answer-sheet routes: a sheet write only moves the
 // chain of the participants it touched (both the old and the new eq when a sheet
-// is renumbered).
+// is renumbered). Non-integers are dropped rather than passed to the query.
 export async function rescoreParticipants(rallyId: unknown, eqs: number[]) {
   const unique = Array.from(new Set(eqs.filter((eq) => Number.isInteger(eq))));
   await rescoreRally(rallyId, { eqs: unique });
