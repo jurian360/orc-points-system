@@ -10,6 +10,12 @@
 // applies (app/lib/validation.ts). That is a preview, not a guard: the import
 // route re-validates everything it is sent.
 
+import {
+  emptyColumnMap,
+  findHeaderRowFor,
+  guessColumnMap,
+  type ColumnIndexMap,
+} from './columnMapping';
 import { isClassification, type ClassificationValue } from './participants';
 
 export const MAX_NAME_LENGTH = 200;
@@ -25,15 +31,12 @@ export const IMPORT_FIELDS: { field: ImportField; label: string; required: boole
   { field: 'navigatorName', label: 'Navigator', required: false },
 ];
 
-// Column index per field; -1 is "this sheet has no such column".
-export type ColumnMap = Record<ImportField, number>;
+const FIELDS = IMPORT_FIELDS.map(({ field }) => field);
 
-export const EMPTY_COLUMN_MAP: ColumnMap = {
-  eq: -1,
-  classification: -1,
-  driverName: -1,
-  navigatorName: -1,
-};
+// Column index per field; -1 is "this sheet has no such column".
+export type ColumnMap = ColumnIndexMap<ImportField>;
+
+export const EMPTY_COLUMN_MAP: ColumnMap = emptyColumnMap(FIELDS);
 
 // Header names seen on rally entry lists, best match first. Dutch and English
 // both appear; `b` is "bestuurder" (driver) and `n` is the navigator, which is
@@ -45,56 +48,15 @@ const HEADER_CANDIDATES: Record<ImportField, string[]> = {
   navigatorName: ['nnaam', 'navigator', 'navigatorname', 'nav', 'bijrijder'],
 };
 
-const normalize = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-// Which row holds the headers. Entry lists sometimes carry a title or a blank
-// line above them, so the sheet is scanned for the first row that names at
-// least two of the four fields; failing that, the first non-empty row is used
-// and the official remaps the columns by hand.
+// Which row holds the headers, and which column is which: guessed here, shown
+// to the official in the import panel, and corrected there when a sheet names
+// its columns something these lists do not know yet.
 export function findHeaderRow(rows: string[][]): number {
-  const limit = Math.min(rows.length, 20);
-
-  for (let index = 0; index < limit; index++) {
-    const map = guessColumns(rows[index]);
-    const matched = Object.values(map).filter((column) => column >= 0).length;
-    if (map.eq >= 0 && matched >= 2) return index;
-  }
-
-  const firstFilled = rows.findIndex((row) => row.some((cell) => cell !== ''));
-  return firstFilled < 0 ? 0 : firstFilled;
+  return findHeaderRowFor(rows, FIELDS, HEADER_CANDIDATES, 'eq', 2);
 }
 
-// Match the header cells against the known names. An exact match wins over a
-// "contains" match, so a sheet with both "klasse" and "nklasse" (the navigator's
-// own class) still maps the equipe class.
 export function guessColumns(header: string[]): ColumnMap {
-  const cells = header.map(normalize);
-  const map: ColumnMap = { ...EMPTY_COLUMN_MAP };
-  const taken = new Set<number>();
-
-  for (const { field } of IMPORT_FIELDS) {
-    const candidates = HEADER_CANDIDATES[field];
-
-    const exact = cells.findIndex(
-      (cell, index) => !taken.has(index) && candidates.includes(cell)
-    );
-    const index =
-      exact >= 0
-        ? exact
-        : cells.findIndex(
-            (cell, position) =>
-              !taken.has(position) &&
-              cell.length > 2 &&
-              candidates.some((candidate) => candidate.length > 2 && cell.includes(candidate))
-          );
-
-    if (index >= 0) {
-      map[field] = index;
-      taken.add(index);
-    }
-  }
-
-  return map;
+  return guessColumnMap(header, FIELDS, HEADER_CANDIDATES);
 }
 
 // One participant as read from the sheet. `error` is set when the row cannot be

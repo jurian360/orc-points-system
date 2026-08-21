@@ -2,6 +2,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import ClassificationBadge from './ClassificationBadge';
+import { columnLetters } from '../lib/columnMapping';
 import { readSpreadsheet, SpreadsheetError } from '../lib/spreadsheet';
 import {
   buildImportRows,
@@ -126,12 +127,8 @@ const ParticipantImportPanel: React.FC<ParticipantImportPanelProps> = ({
   // "C — EqKlasse", so a column can be recognised both by its letter and by
   // whatever the sheet calls it.
   const columnLabel = (index: number): string => {
-    let letters = '';
-    for (let n = index; n >= 0; n = Math.floor(n / 26) - 1) {
-      letters = String.fromCharCode(65 + (n % 26)) + letters;
-    }
     const name = (header[index] || '').trim();
-    return name ? `${letters} — ${name}` : letters;
+    return name ? `${columnLetters(index)} — ${name}` : columnLetters(index);
   };
 
   const columnCount = Math.max(header.length, ...sheet.map((row) => row.length), 0);

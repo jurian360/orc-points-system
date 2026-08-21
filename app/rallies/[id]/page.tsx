@@ -159,12 +159,20 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
             <h1 className="text-3xl font-bold text-gray-800">{rally.name}</h1>
             <p className="text-gray-600 mt-1 text-base">Created: {formatDate(rally.createdAt)}</p>
           </div>
-          <Link
-            href={`/rallies/${rally._id}/answer-sheets`}
-            className="px-5 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 text-lg font-medium shadow-md transition duration-150 text-center"
-          >
-            Enter Answer Sheets
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href={`/time-import?rallyId=${rally._id}`}
+              className="px-5 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-lg font-medium shadow-md transition duration-150 text-center"
+            >
+              Import Times
+            </Link>
+            <Link
+              href={`/rallies/${rally._id}/answer-sheets`}
+              className="px-5 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 text-lg font-medium shadow-md transition duration-150 text-center"
+            >
+              Enter Answer Sheets
+            </Link>
+          </div>
         </div>
 
         {/* Stages */}
