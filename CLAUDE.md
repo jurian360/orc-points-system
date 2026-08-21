@@ -130,7 +130,8 @@ since it also moves which stage is last.
 
 ```
 app/
-  api/            route handlers (rallies, stages, answersheets, auth, standings)
+  api/            route handlers (rallies, stages, answersheets, auth, standings,
+                  rallies/[id]/participants/[eq] to drop a participant from a rally)
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env, api-guard
   models/         Mongoose schemas
@@ -194,7 +195,13 @@ Do not regress them.**
   `data-row`, `data-col` attributes — preserve them on any new input cell.
 - `ControlekaartCard` is the shared read-only rendering of a scored sheet
   (single-sheet view and per-participant view). Prefer extending it over adding
-  a parallel layout.
+  a parallel layout. `StageKeyCard` is its counterpart for a stage *key* — the
+  same four columns, but showing the correct/false letters, the IPT 0 timetable
+  with the stage's time settings and the maximum each part can cost.
+- A submitted sheet is corrected on the entry form itself: `AnswerSheetForm`
+  takes `initialData` + `isEditing` and the edit page PUTs to
+  `/api/answersheets/[id]`. The stage of a sheet is fixed there — a sheet is
+  identified by `{stageId, eq}`, so moving it is a delete plus a new sheet.
 - Styling is Tailwind utility classes inline; no component library.
 - Deleting cascades: deleting a rally removes its stages and sheets, deleting a
   stage removes its sheets. Keep that behaviour when touching those routes.

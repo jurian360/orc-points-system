@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
@@ -32,10 +33,12 @@ interface AnswerSheetScoringViewProps {
 }
 
 const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId, sheetId }) => {
+  const router = useRouter();
   const [stage, setStage] = useState<Stage | null>(null);
   const [sheet, setSheet] = useState<AnswerSheet | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<boolean>(false);
 
   useEffect(() => {
     if (!sheetId) return;
@@ -62,6 +65,28 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
 
     fetchData();
   }, [sheetId]);
+
+  // Deleting this sheet re-scores the rest of the participant's rally, so the
+  // list is where the corrected numbers show up.
+  const handleDelete = async () => {
+    if (
+      !window.confirm(
+        'Delete this answer sheet? The participant keeps their sheets for the other stages. This cannot be undone.'
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/answersheets/${sheetId}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete answer sheet');
+      router.push(`/rallies/${rallyId}/answer-sheets`);
+    } catch (err) {
+      setError('Failed to delete this answer sheet. Please try again.');
+      console.error(err);
+      setDeleting(false);
+    }
+  };
 
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('en-US', {
@@ -121,7 +146,7 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
         <div className="bg-white rounded-xl shadow-xl overflow-hidden border-2 border-gray-200 mb-6">
           <div className="px-6 py-3 border-b-2 border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
             <h2 className="text-lg font-bold text-gray-800">Answer Sheet Scoring</h2>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-4">
               <span className="text-lg font-bold text-red-600">
                 {totalPenalties} penalty points
                 <span className="ml-2 text-sm font-semibold text-gray-600">
@@ -139,6 +164,19 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
               >
                 All Answers of Participant {sheet.eq}
               </Link>
+              <Link
+                href={`/rallies/${rallyId}/answer-sheets/${sheet._id}/edit`}
+                className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-base transition-colors"
+              >
+                Edit Answers
+              </Link>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-base transition-colors disabled:opacity-60"
+              >
+                {deleting ? 'Deleting…' : 'Delete Sheet'}
+              </button>
             </div>
           </div>
 

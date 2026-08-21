@@ -112,16 +112,49 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
   };
 
   const handleDelete = async (sheetId: string) => {
-    if (!window.confirm("Delete this answer sheet? This action cannot be undone.")) {
+    if (
+      !window.confirm(
+        'Delete this answer sheet? The participant keeps their sheets for the other stages. This cannot be undone.'
+      )
+    ) {
       return;
     }
+    setError(null);
+    setSuccess(null);
     try {
       const response = await fetch(`/api/answersheets/${sheetId}`, { method: 'DELETE' });
       if (!response.ok) throw new Error('Failed to delete answer sheet');
-      setSheets(sheets.filter((s) => s._id !== sheetId));
       setSuccess('Answer sheet deleted successfully!');
+      // Deleting a sheet re-scores the rest of that participant's rally — their
+      // delta no longer passes through this stage — so the table is reloaded
+      // rather than filtered in place.
+      loadData();
     } catch (err) {
       setError('Failed to delete answer sheet. Please try again.');
+      console.error(err);
+    }
+  };
+
+  // Removing a participant from the rally deletes every sheet they have in it.
+  const handleDeleteParticipant = async (eq: number) => {
+    if (
+      !window.confirm(
+        `Delete participant ${eq} from this rally? Every answer sheet they submitted for it will be deleted. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch(`/api/rallies/${rallyId}/participants/${eq}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete participant');
+      setSuccess(`Participant ${eq} deleted from this rally.`);
+      loadData();
+    } catch (err) {
+      setError('Failed to delete participant. Please try again.');
       console.error(err);
     }
   };
@@ -251,18 +284,31 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
                           <div className="text-lg text-gray-700">{formatDate(sheet.submittedAt)}</div>
                         </td>
                         <td className="px-8 py-5 whitespace-nowrap text-right">
-                          <div className="flex justify-end space-x-3">
+                          <div className="flex justify-end flex-wrap gap-3">
                             <Link
                               href={`/rallies/${rallyId}/answer-sheets/${sheet._id}`}
                               className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-medium text-lg transition-colors"
                             >
                               View Score
                             </Link>
+                            <Link
+                              href={`/rallies/${rallyId}/answer-sheets/${sheet._id}/edit`}
+                              className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-lg transition-colors"
+                            >
+                              Edit
+                            </Link>
                             <button
                               onClick={() => handleDelete(sheet._id)}
                               className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-lg transition-colors"
                             >
-                              Delete
+                              Delete Sheet
+                            </button>
+                            <button
+                              onClick={() => handleDeleteParticipant(sheet.eq)}
+                              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-lg transition-colors"
+                              title={`Delete every answer sheet of participant ${sheet.eq} in this rally`}
+                            >
+                              Delete EQ {sheet.eq}
                             </button>
                           </div>
                         </td>
