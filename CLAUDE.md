@@ -14,6 +14,12 @@ grades every sheet — letters and times — and keeps a live rally standing.
 Lowest total penalty wins. Points are a penalty, never a reward — nothing in
 this system ever subtracts.
 
+Officials can also hand the typing to the crews: every stage has a page of QR
+codes, one per participant, that the **Android control-card app**
+(`jurian360/android-control-card`) scans to pull that crew's card. A card the
+crew finalises comes back here and is scored like any other sheet — see
+*The participants' Android app* below.
+
 Stack: **Next.js 15 (App Router) + React 19 + TypeScript + Tailwind v4**, data in
 **MongoDB via Mongoose**. Deployed as a single container (see `COOLIFY.md`).
 
@@ -38,13 +44,17 @@ in code and UI — do not "translate" them:
 | **Delta** | How many minutes a participant is off their own schedule. It runs from the start of the rally to the last stage. |
 | **Merk** | Marker/sign rows, 6 rows, one letter each. Scored *vertically* against the stage's merk key, which holds the correct letters and the letters it rules out. |
 | **Diversen** | The merk part of a sheet's penalty, the third line of TOTAAL STRAFPUNTEN next to ORC's and Tijd. |
+| **App code** | The 8-character code behind the QR a participant scans. It stands for exactly one card — one `{rally, stage, eq}` — and is the crew's only credential. |
+| **Rally code** | A rally's short public identifier (`Rally.code`), e.g. `SARKNAJAAR`. The app shows it and sends it back with a finalised card. |
+| **Card number** | A stage's `cardId`: its stable number within the rally, which a submission is resolved by. Unlike the place in the running order, it does not move when a stage is deleted. |
 
 ## Data model (`app/models/index.ts`)
 
 ```
 Rally ──< Stage ──< AnswerSheet
-   ├──────────────────┘  (AnswerSheet also stores rallyId for cheap standings)
-   └──< Participant      (optional details of one EQ: class + crew names)
+   ├──────────────────┤  (AnswerSheet also stores rallyId for cheap standings)
+   │                  └─< CardAccess   (the QR code of one {stage, eq})
+   └──< Participant       (optional details of one EQ: class + crew names)
 ```
 
 - `Stage.scoreKey` — 30 rows:
@@ -78,6 +88,15 @@ Rally ──< Stage ──< AnswerSheet
   of overwriting another crew. Deleting a participant removes the record *and*
   their sheets in that rally. `POST .../participants/import` writes a whole entry
   list in one `bulkWrite` of upserts — see the import section below.
+- `CardAccess` — `{ rallyId, stageId, eq, code, submittedAt }`, the code behind
+  one printed QR. Minted per `{stage, eq}` (**unique index**), never derived, so
+  it cannot be guessed from an EQ number. `submittedAt` is the hand-in lock: a
+  code stores one card, and a second submission is refused until an official
+  reopens it. See the Android app section below.
+- `Rally.code` and `Stage.cardId` are what a submission from the app is resolved
+  by. Both are generated on first use (`app/lib/appCards.ts`) rather than at
+  creation, so rallies that pre-date the app integration get one the moment
+  their first QR code is printed.
 - `totalPenalty` is **denormalised** on the sheet: the ORC's penalty plus the
   time penalty plus the merk penalty, computed server-side at write time.
   Standings read this field.
@@ -280,6 +299,49 @@ stage's time column.
   calls `rescoreParticipants`: it stores no `ipt`, `plusMinus` or `strafp` of its
   own, exactly like the answer-sheet routes.
 
+## The participants' Android app
+
+The crews type their own cards on their phones. The app
+(`jurian360/android-control-card`) is offline-first: it holds the card in a
+local Room database and talks to this app exactly twice.
+
+- **The QR page** — `/rallies/[id]/stages/[stageId]/qr-codes`, reached from the
+  stage view and from the stage list on the rally dashboard. It shows one card
+  per participant of the rally: the EQ, the crew, the QR and the code in
+  readable characters underneath, and it is laid out to be printed and cut up.
+  The rally needs its entry list first — a code belongs to a *crew*, not to an
+  EQ number nobody has claimed.
+- **The QR holds `ADD:<code>`.** `ADD:` is the prefix the app strips from a
+  scanned code; the code alone is what a participant types when a camera will
+  not focus, which is why the alphabet has no `I`, `L`, `O`, `U`, `0` or `1`
+  (`app/lib/appCards.ts`).
+- **Two public endpoints**, `app/api/app/card` (scan) and `app/api/app/submit`
+  (hand in). They are the only routes in this app without `requireSession()`,
+  because a participant has no account: the scanned code is the whole
+  credential. Both are rate limited per IP, an unknown code is a 404 whether it
+  is malformed or simply wrong, and a submission has to resolve to a
+  `{rally, stage, eq}` an official actually printed a code for.
+- **A card is handed in once.** `CardAccess.submittedAt` is set on success and a
+  second submission is a 409, so somebody who guesses a rally code and an EQ
+  number cannot write over a crew's sheet after they handed in. *Reopen* on the
+  QR page clears the lock; *New code* replaces the code, which invalidates the
+  sheet that carried the old one.
+- **Nothing about the scoring comes from the phone.** The app sends the letters
+  of the 30 ORC rows (and the 6 merk rows, if a later version starts sending
+  them); the totals are computed here and the participant's rally is re-scored,
+  exactly as when an official saves a sheet. A card that lands on a sheet a time
+  import already created keeps that sheet's WPT's.
+- **The paths look like Umbraco** (`/umbraco/surface/controlekaart/...`) because
+  the app used to talk to the organisation's Umbraco backend and an installed
+  APK can only be pointed at a new host, not a new URL shape. Those two route
+  files re-export the real handlers under `/api/app` and exist for that reason
+  alone; a new version of the app should call `/api/app` directly.
+
+`app/lib/qrcode.ts` is the QR encoder: byte mode, error-correction level M,
+versions 1-10, no dependency — the same trade-off `app/lib/spreadsheet.ts` makes
+for reading .xlsx. It returns a matrix; `QrCode.tsx` renders it as SVG so it
+stays sharp on paper.
+
 ## Layout
 
 ```
@@ -288,15 +350,22 @@ app/
                   rallies/[id]/participants to list/add the crews of a rally,
                   .../[eq] to read, save or drop one, .../import for an entry list,
                   rallies/[id]/rescore to re-score a whole rally on demand,
-                  stages/[id]/times/import for the times of one control)
+                  stages/[id]/times/import for the times of one control,
+                  stages/[id]/access-codes for the QR codes of one stage,
+                  app/card + app/submit, the two public endpoints of the
+                  Android app)
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env,
                   api-guard, participants (class letters, shared client + server),
                   spreadsheet + columnMapping + participantImport + timeImport
-                  (entry-list and time imports, browser side)
+                  (entry-list and time imports, browser side),
+                  appCards (codes and identifiers of the Android app) + qrcode
   models/         Mongoose schemas
-  rallies/...     pages (rally dashboard, stages, answer sheets, participant view)
+  rallies/...     pages (rally dashboard, stages, answer sheets, participant view,
+                  stages/[stageId]/qr-codes: the printable sheet of QR codes)
   time-import/    the time import wizard (rally -> stage -> control -> file)
+  umbraco/...     the two paths the installed Android app calls; they re-export
+                  the handlers under api/app and exist for compatibility only
   types/          shared TS interfaces
 middleware.ts     auth + rate limit + CSRF at the edge
 scripts/          generate-secret.mjs, hash-password.mjs
@@ -328,7 +397,11 @@ Do not regress them.**
 - Every API route starts with `await requireSession()` and reads its body with
   `readBody()` (256 KB cap, object-only JSON). `middleware.ts` also blocks
   unauthenticated requests — the per-handler guard is deliberate defence in
-  depth, keep both.
+  depth, keep both. **The two Android-app endpoints are the only exception**
+  (`/api/app/*` and the `/umbraco/...` paths that forward to them): they are
+  public by design, and they pay for it with a scanned-code check, a per-IP rate
+  limit and a one-submission lock. Do not add a third public route without the
+  same three.
 - **Never interpolate an unvalidated value into a Mongoose query.** Ids go
   through `mongoose.Types.ObjectId.isValid`, `eq` through
   `parseEq` / `parseEqParam`, names through `parseName`, arrays through the
@@ -370,11 +443,18 @@ Do not regress them.**
   `/api/answersheets/[id]`. The stage of a sheet is fixed there — a sheet is
   identified by `{stageId, eq}`, so moving it is a delete plus a new sheet.
 - Styling is Tailwind utility classes inline; no component library.
-- Deleting cascades: deleting a rally removes its stages and sheets, deleting a
-  stage removes its sheets. Keep that behaviour when touching those routes.
+- Deleting cascades: deleting a rally removes its stages, sheets, participants
+  and QR codes; deleting a stage removes its sheets and its QR codes. Keep that
+  behaviour when touching those routes.
 
 ## Gotchas
 
+- A card handed in from the app is a sheet write like any other, so it
+  re-scores that participant's rally. If you add another way for a card to
+  arrive, it has to call `rescoreParticipants` too.
+- Deleting a stage or a rally deletes its `CardAccess` records too, so the
+  printed QR codes stop working with it. The lookup fails closed on a code whose
+  stage is gone in any case, but a code should not outlive what it stands for.
 - Editing a stage's key **re-scores** existing sheets. Any new write path that
   changes a key, a stage's place in the running order, a sheet's WPT or a sheet's
   merk letters must call `rescoreRally` / `rescoreParticipants`, or standings

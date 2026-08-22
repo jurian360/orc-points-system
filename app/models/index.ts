@@ -5,6 +5,8 @@
 //   Stage  -> a rally has many stages; each stage holds an answer key
 //   Participant -> optional details of one EQ number in a rally (class, crew).
 //   AnswerSheet -> a participant's filled-in sheet for a single stage.
+//   CardAccess  -> the code behind the QR a participant scans to pull one
+//                  {stage, eq} card into the Android app.
 //                  A participant (eq) can have many answer sheets per rally
 //                  (one per stage). The rally winner is decided by the sum of
 //                  the penalty points of all of a participant's answer sheets.
@@ -22,6 +24,19 @@ const RallySchema = new mongoose.Schema({
     required: true,
     trim: true,
     maxlength: 200,
+  },
+  // Short public identifier of the rally, e.g. "SARK25". The Android app is
+  // handed this as its `rallycode`, shows it as the name of the card in its
+  // list and sends it back when a participant finalises a card, so it is how a
+  // submission finds its way home. Derived from the name on first use and
+  // unique across rallies (see app/lib/appCards.ts); `sparse` because rallies
+  // created before the app integration have none until one is generated.
+  code: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    maxlength: 32,
+    index: { unique: true, sparse: true },
   },
   createdAt: {
     type: Date,
@@ -43,6 +58,14 @@ const StageSchema = new mongoose.Schema({
     required: true,
     trim: true,
     maxlength: 200,
+  },
+  // Stable number of this stage's card within its rally. The running order is
+  // the creation order and shifts when a stage is deleted; this number never
+  // does, so a card the Android app pulled weeks ago still points at the stage
+  // it was issued for. Assigned on first use (app/lib/appCards.ts).
+  cardId: {
+    type: Number,
+    min: 1,
   },
   createdAt: {
     type: Date,
@@ -266,6 +289,56 @@ const AnswerSheetSchema = new mongoose.Schema({
 // A participant fills in at most one sheet per stage.
 AnswerSheetSchema.index({ stageId: 1, eq: 1 }, { unique: true });
 
+// The code behind one printed QR: it hands the Android app the card of one
+// participant for one stage, and is what the app's submission is checked
+// against. One code per {stage, eq}; regenerating a code replaces it, so a
+// printed sheet that went astray can be invalidated.
+const CardAccessSchema = new mongoose.Schema({
+  rallyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Rally',
+    required: true,
+    index: true,
+  },
+  stageId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Stage',
+    required: true,
+    index: true,
+  },
+  eq: {
+    type: Number,
+    required: true,
+    min: 1,
+    max: 100,
+  },
+  // The scannable secret itself: unambiguous upper-case characters only, so a
+  // participant whose camera fails can read it off the paper and type it.
+  code: {
+    type: String,
+    required: true,
+    unique: true,
+    uppercase: true,
+    trim: true,
+    maxlength: 32,
+  },
+  // When the app last stored a finalised card through this code. A code accepts
+  // one submission: a second one is refused until an official reopens the card,
+  // so a guessed rally code cannot overwrite a crew's sheet. Null while the
+  // participant has not handed in.
+  submittedAt: {
+    type: Date,
+    default: null,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+// One code per participant per stage — the same shape as the sheets.
+CardAccessSchema.index({ stageId: 1, eq: 1 }, { unique: true });
+
 // Create models if they don't already exist
 export const Rally = mongoose.models.Rally || mongoose.model('Rally', RallySchema);
 export const Stage = mongoose.models.Stage || mongoose.model('Stage', StageSchema);
@@ -273,3 +346,5 @@ export const Participant = mongoose.models.Participant ||
   mongoose.model('Participant', ParticipantSchema);
 export const AnswerSheet = mongoose.models.AnswerSheet ||
   mongoose.model('AnswerSheet', AnswerSheetSchema);
+export const CardAccess = mongoose.models.CardAccess ||
+  mongoose.model('CardAccess', CardAccessSchema);

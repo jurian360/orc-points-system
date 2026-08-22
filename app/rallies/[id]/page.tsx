@@ -406,6 +406,12 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                               Edit
                             </Link>
                             <Link
+                              href={`/rallies/${rally._id}/stages/${stage._id}/qr-codes`}
+                              className="text-green-700 hover:text-green-900 font-medium text-base"
+                            >
+                              QR Codes
+                            </Link>
+                            <Link
                               href={`/time-import?rallyId=${rally._id}&stageId=${stage._id}`}
                               className="text-emerald-700 hover:text-emerald-900 font-medium text-base"
                             >

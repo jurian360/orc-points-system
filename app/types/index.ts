@@ -5,6 +5,10 @@ import type { ClassificationValue } from '../lib/participants';
 export interface Rally {
   _id: string;
   name: string;
+  // Short public identifier, handed to the Android app as its `rallycode` and
+  // sent back with a card the participant finalises. Generated on first use, so
+  // it is missing on a rally that has never issued a QR code.
+  code?: string;
   createdAt: string;
 }
 
@@ -13,6 +17,10 @@ export interface Stage {
   _id: string;
   rallyId: string;
   name: string;
+  // Stable card number of this stage within its rally — what a submission from
+  // the app is resolved by. Unlike the stage's place in the running order, it
+  // does not move when another stage is deleted.
+  cardId?: number;
   createdAt: string;
   scoreKey: ScoreKeyRow[];
   timeScoreKey?: TimeScoreKeyRow[];
@@ -155,4 +163,32 @@ export interface AnswerSheetFormData {
   answers: AnswerSheetRow[];
   timePenalties?: TimePenaltyRow[];
   merkScores?: MerkScoreRow[];
+}
+
+// --- QR codes for the participants' app ------------------------------------
+
+// One participant's code for one stage, as the QR page reads it.
+export interface CardAccessRow {
+  eq: number;
+  // Null until an official has generated the codes of this stage.
+  code: string | null;
+  classification: ClassificationValue;
+  driverName: string;
+  navigatorName: string;
+  // When the card was handed in from the app; a code accepts one submission
+  // until an official reopens it.
+  submittedAt: string | null;
+  hasSheet: boolean;
+}
+
+export interface StageAccessCodes {
+  rally: { _id: string; name: string; code: string };
+  stage: {
+    _id: string;
+    name: string;
+    // What the app sends back, and what the participant sees, respectively.
+    cardId: number;
+    cardNumber: number;
+  };
+  cards: CardAccessRow[];
 }
