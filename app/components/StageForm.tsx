@@ -245,11 +245,11 @@ const StageForm: React.FC<StageFormProps> = ({
   // Render one ORC score-key row (letters correct/false + max penalty), used in both columns
   const renderScoreKeyRow = (row: ScoreKeyRow, rowIndex: number) => (
     <tr key={row.rowNumber} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-      <td className="py-2 px-2 border-b border-r border-gray-300 font-medium text-base text-gray-800 text-center w-10">
+      <td className="py-2 px-1 border-b border-r border-gray-300 font-medium text-base text-gray-800 text-center w-8">
         {row.rowNumber}
       </td>
       {Array.from({ length: LETTER_COLUMNS }).map((_, colIndex) => (
-        <td key={colIndex} className="py-2 px-2 border-b border-r border-gray-300">
+        <td key={colIndex} className="py-2 px-1 border-b border-r border-gray-300">
           <div className="flex flex-col space-y-1">
             <input
               type="text"
@@ -272,7 +272,7 @@ const StageForm: React.FC<StageFormProps> = ({
           </div>
         </td>
       ))}
-      <td className="py-2 px-2 border-b border-r border-gray-300 text-center">
+      <td className="py-2 px-1 border-b border-r border-gray-300 text-center">
         <input
           type="checkbox"
           className="w-5 h-5 accent-purple-600 cursor-pointer"
@@ -282,11 +282,11 @@ const StageForm: React.FC<StageFormProps> = ({
           title="Volgorde telt: the correct letters have to be given in the order of the key"
         />
       </td>
-      <td className="py-2 px-2 border-b border-gray-300 text-center">
+      <td className="py-2 px-1 border-b border-gray-300 text-center">
         <input
           type="number"
           min={0}
-          className="w-16 h-10 p-1 border border-blue-300 rounded text-center text-base font-bold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
+          className="w-14 h-10 p-1 border border-blue-300 rounded text-center text-base font-bold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
           value={row.maxPenalty || 0}
           onChange={(e) => handleMaxPenaltyChange(rowIndex, e.target.value)}
           aria-label={`Maximum penalty points for row ${row.rowNumber}`}
@@ -298,22 +298,22 @@ const StageForm: React.FC<StageFormProps> = ({
   const scoreKeyHeader = (
     <thead>
       <tr className="bg-blue-50">
-        <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800 w-10">
+        <th className="py-2 px-1 border-b border-r border-gray-300 text-xs font-semibold text-gray-800 w-8">
           NR
         </th>
         <th
           colSpan={LETTER_COLUMNS}
-          className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800"
+          className="py-2 px-1 border-b border-r border-gray-300 text-xs font-semibold text-gray-800"
         >
           LETTERS (Correct / False)
         </th>
         <th
-          className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800"
+          className="py-2 px-1 border-b border-r border-gray-300 text-[11px] font-semibold text-gray-800"
           title="Volgorde telt: the correct letters have to be given in the order of the key"
         >
           Volgorde
         </th>
-        <th className="py-2 px-2 border-b border-gray-300 text-xs font-semibold text-gray-800">
+        <th className="py-2 px-1 border-b border-gray-300 text-[11px] font-semibold text-gray-800">
           Max Penalty
         </th>
       </tr>
@@ -343,7 +343,12 @@ const StageForm: React.FC<StageFormProps> = ({
       </div>
 
       {/* Answer key laid out as 4 main columns, like the SARK controlekaart:
-          ORC's 1-15 | ORC's 16-30 | For Official Use Only (time) | Merk + totals */}
+          ORC's 1-15 | ORC's 16-30 | For Official Use Only (time) | Merk + totals.
+          The ORC columns are the wide ones — 4 letter pairs, the volgorde tick and
+          a row cap — so their tracks never shrink below the table (minmax with a
+          min-content floor, and no inner scroll container from xl up); the time
+          and merk columns hold single values and give the width up instead. That
+          is what keeps the ORC grids off a horizontal scrollbar. */}
       <div className="mb-4">
         <p className="text-base text-gray-700">
           Enter the correct answer (green) and any explicit false answer (red) per column, plus the
@@ -357,11 +362,11 @@ const StageForm: React.FC<StageFormProps> = ({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(min-content,1.25fr)_minmax(min-content,1.25fr)_minmax(0,0.85fr)_minmax(0,0.65fr)] gap-4 mb-8 items-start">
         {/* Column 1 — ORC's rows 1-15 */}
         <div>
           <h2 className="text-lg font-semibold mb-2 text-gray-800">ORC&apos;s (1&ndash;15)</h2>
-          <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto">
+          <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto xl:overflow-x-visible">
             <table className="min-w-full border-collapse">
               {scoreKeyHeader}
               <tbody>
@@ -374,7 +379,7 @@ const StageForm: React.FC<StageFormProps> = ({
         {/* Column 2 — ORC's rows 16-30 */}
         <div>
           <h2 className="text-lg font-semibold mb-2 text-gray-800">ORC&apos;s (16&ndash;30)</h2>
-          <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto">
+          <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto xl:overflow-x-visible">
             <table className="min-w-full border-collapse">
               {scoreKeyHeader}
               <tbody>
@@ -391,10 +396,10 @@ const StageForm: React.FC<StageFormProps> = ({
             <table className="min-w-full border-collapse">
               <thead>
                 <tr className="bg-yellow-100">
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800 w-10">
+                  <th className="py-2 px-1 border-b border-r border-gray-300 text-xs font-semibold text-gray-800 w-8">
                     NR
                   </th>
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800">
+                  <th className="py-2 px-1 border-b border-r border-gray-300 text-xs font-semibold text-gray-800">
                     CONTROLE
                   </th>
                   <th className="py-2 px-2 border-b border-gray-300 text-xs font-semibold text-gray-800">
@@ -410,11 +415,11 @@ const StageForm: React.FC<StageFormProps> = ({
                       key={row.rowNumber}
                       className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                     >
-                      <td className="py-2 px-2 border-b border-r border-gray-300 font-medium text-base text-gray-800 text-center">
+                      <td className="py-2 px-1 border-b border-r border-gray-300 font-medium text-base text-gray-800 text-center">
                         {row.rowNumber}
                       </td>
                       <td
-                        className={`py-2 px-2 border-b border-r border-gray-300 text-sm font-semibold ${
+                        className={`py-2 px-1 border-b border-r border-gray-300 text-sm font-semibold ${
                           kind === 'gtc' ? 'text-gray-700' : 'text-blue-700'
                         }`}
                       >
@@ -423,7 +428,7 @@ const StageForm: React.FC<StageFormProps> = ({
                       <td className="py-2 px-1 border-b border-gray-300 text-center">
                         <input
                           type="text"
-                          className="w-24 h-10 p-1 border border-gray-300 rounded text-center text-base focus:border-yellow-500 focus:ring-1 focus:ring-yellow-200 text-gray-700"
+                          className="w-20 h-10 p-1 border border-gray-300 rounded text-center text-base focus:border-yellow-500 focus:ring-1 focus:ring-yellow-200 text-gray-700"
                           value={row.ipt || ''}
                           onChange={(e) => handleTimeChange(rowIndex, 'ipt', e.target.value)}
                           placeholder="8:00"
@@ -541,14 +546,14 @@ const StageForm: React.FC<StageFormProps> = ({
             <table className="min-w-full border-collapse">
               <thead>
                 <tr className="bg-orange-100">
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800 w-10">
+                  <th className="py-2 px-1 border-b border-r border-gray-300 text-xs font-semibold text-gray-800 w-8">
                     NR
                   </th>
-                  <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800">
+                  <th className="py-2 px-1 border-b border-r border-gray-300 text-xs font-semibold text-gray-800">
                     MERK
                   </th>
                   <th
-                    className="py-2 px-2 border-b border-gray-300 text-xs font-semibold text-gray-800"
+                    className="py-2 px-1 border-b border-gray-300 text-[11px] font-semibold text-gray-800"
                     title="The merk column is capped at the sum of these, not row by row"
                   >
                     Max Penalty
@@ -561,7 +566,7 @@ const StageForm: React.FC<StageFormProps> = ({
                     key={row.rowNumber}
                     className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                   >
-                    <td className="py-2 px-2 border-b border-r border-gray-300 font-medium text-base text-gray-800 text-center">
+                    <td className="py-2 px-1 border-b border-r border-gray-300 font-medium text-base text-gray-800 text-center">
                       {row.rowNumber}
                     </td>
                     <td className="py-2 px-1 border-b border-r border-gray-300 text-center">
@@ -578,7 +583,7 @@ const StageForm: React.FC<StageFormProps> = ({
                       <input
                         type="number"
                         min={0}
-                        className="w-16 h-10 p-1 border border-blue-300 rounded text-center text-base font-bold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
+                        className="w-14 h-10 p-1 border border-blue-300 rounded text-center text-base font-bold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
                         value={row.maxPenalty || 0}
                         onChange={(e) => handleMerkMaxPenaltyChange(rowIndex, e.target.value)}
                         aria-label={`Max penalty for merk row ${row.rowNumber}`}
