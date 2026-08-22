@@ -211,13 +211,19 @@ export interface MerkAnswerRow {
 //   'false'   — a letter the key explicitly rules out
 //   'ignored' — a letter the key does not use either way, which never costs
 //               anything
-export type MerkRowStatus = 'blank' | 'ok' | 'double' | 'false' | 'ignored';
+//   'missing' — an empty row carrying the 30 points of a key letter the column
+//               never got; the check is vertical, so the letter is charged to
+//               the row of the key that asks for it (see below)
+export type MerkRowStatus = 'blank' | 'ok' | 'double' | 'false' | 'ignored' | 'missing';
 
 export interface ScoredMerkRow {
   rowNumber: number;
   merk: string;
   strafp: number;
   status: MerkRowStatus;
+  // The key letter this row was charged for on a 'missing' row — the letter the
+  // column is short of, not a letter the participant wrote.
+  missingMerk?: string;
 }
 
 export interface MerkPenaltyResult {
@@ -227,7 +233,8 @@ export interface MerkPenaltyResult {
   totalPenalty: number;
   rows: ScoredMerkRow[];
   // Key letters the column is short of, and key letters it holds too many of.
-  // Each of them is one 30-point error.
+  // Each of them is one 30-point error; a missing letter is also shown on a row
+  // of `rows` so the column adds up to what it costs.
   missing: string[];
   doubled: string[];
   // The false letters this column actually holds — one 30-point error each,
@@ -316,46 +323,63 @@ export function calculateMerkPenalty(
     given.map((row) => normalizeMerk(row?.merk)).filter(Boolean)
   );
 
+  // The rows the column is shown on: the ones the sheet holds plus the ones the
+  // key asks about, so a key row a sheet never got is still a row of the column.
+  const scoredByRow = new Map<number, ScoredMerkRow>();
+  (merkScoreKey || []).forEach((row) => {
+    const rowNumber = row?.rowNumber || 0;
+    if (!rowNumber || scoredByRow.has(rowNumber)) return;
+    scoredByRow.set(rowNumber, { rowNumber, merk: '', strafp: 0, status: 'blank' });
+  });
+
   const seen = new Map<string, number>();
   const seenFalse = new Map<string, number>();
-  const rows: ScoredMerkRow[] = given.map((row) => {
+  given.forEach((row) => {
     const merk = normalizeMerk(row?.merk);
     const rowNumber = row?.rowNumber || 0;
 
-    if (!merk) return { rowNumber, merk: '', strafp: 0, status: 'blank' };
+    if (!merk) {
+      scoredByRow.set(rowNumber, { rowNumber, merk: '', strafp: 0, status: 'blank' });
+      return;
+    }
 
     if (falseSet.has(merk)) {
       // A letter the key rules out. Like a double, it costs 30 points once: the
       // first row that holds it carries them, the repeats are the same error.
       const occurrence = (seenFalse.get(merk) || 0) + 1;
       seenFalse.set(merk, occurrence);
-      return {
+      scoredByRow.set(rowNumber, {
         rowNumber,
         merk,
         strafp: occurrence === 1 ? PENALTY_PER_ERROR : 0,
         status: 'false',
-      };
+      });
+      return;
     }
 
     const expected = keyCounts.get(merk);
     if (expected === undefined) {
       // In neither list — free, however often it is written.
-      return { rowNumber, merk, strafp: 0, status: 'ignored' };
+      scoredByRow.set(rowNumber, { rowNumber, merk, strafp: 0, status: 'ignored' });
+      return;
     }
 
     const occurrence = (seen.get(merk) || 0) + 1;
     seen.set(merk, occurrence);
 
-    if (occurrence <= expected) return { rowNumber, merk, strafp: 0, status: 'ok' };
+    if (occurrence <= expected) {
+      scoredByRow.set(rowNumber, { rowNumber, merk, strafp: 0, status: 'ok' });
+      return;
+    }
 
     // The first surplus occurrence carries the 30 points for the double; the
     // ones after it are the same error and cost nothing more.
-    return {
+    scoredByRow.set(rowNumber, {
       rowNumber,
       merk,
       strafp: occurrence === expected + 1 ? PENALTY_PER_ERROR : 0,
       status: 'double',
-    };
+    });
   });
 
   const missing: string[] = [];
@@ -370,6 +394,54 @@ export function calculateMerkPenalty(
 
   // One error per false letter the column holds, however often it was written.
   const falseGiven = falseLetters.filter((letter) => (givenCounts.get(letter) || 0) > 0);
+
+  // A missing letter is an error of the column, not of a row — but a column
+  // whose rows all read 0 while the total reads 30 is unreadable, so the points
+  // are shown on an empty row: the row of the key that asks for the letter when
+  // that row is still empty, otherwise the first empty row of the column. A
+  // column with no empty row left keeps the points in the total only.
+  const keyRowsByLetter = new Map<string, number[]>();
+  (merkScoreKey || []).forEach((row) => {
+    const letter = normalizeMerk(row?.merk);
+    const rowNumber = row?.rowNumber || 0;
+    if (!letter || !rowNumber) return;
+    const rowNumbers = keyRowsByLetter.get(letter);
+    if (rowNumbers) rowNumbers.push(rowNumber);
+    else keyRowsByLetter.set(letter, [rowNumber]);
+  });
+
+  // The key row a missing letter belongs to: the first one the column did not
+  // answer, so a letter the key asks for twice and got once points at the second.
+  const keyRowOf = (letter: string): number | undefined => {
+    const rowNumbers = keyRowsByLetter.get(letter);
+    if (!rowNumbers || rowNumbers.length === 0) return undefined;
+    const answered = givenCounts.get(letter) || 0;
+    return rowNumbers[Math.min(answered, rowNumbers.length - 1)];
+  };
+
+  const emptyRows = Array.from(scoredByRow.values())
+    .filter((row) => row.status === 'blank')
+    .map((row) => row.rowNumber)
+    .sort((a, b) => a - b);
+
+  // Charged in the order of the key so the letters land on the card top down.
+  [...missing]
+    .sort((a, b) => (keyRowOf(a) || 0) - (keyRowOf(b) || 0))
+    .forEach((letter) => {
+      if (emptyRows.length === 0) return;
+      const preferred = keyRowOf(letter);
+      const index = preferred !== undefined ? emptyRows.indexOf(preferred) : -1;
+      const [rowNumber] = emptyRows.splice(index >= 0 ? index : 0, 1);
+      scoredByRow.set(rowNumber, {
+        rowNumber,
+        merk: '',
+        strafp: PENALTY_PER_ERROR,
+        status: 'missing',
+        missingMerk: letter,
+      });
+    });
+
+  const rows = Array.from(scoredByRow.values()).sort((a, b) => a.rowNumber - b.rowNumber);
 
   const raw =
     (missing.length + doubled.length + falseGiven.length) * PENALTY_PER_ERROR;

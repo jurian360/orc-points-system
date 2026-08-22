@@ -148,7 +148,9 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                   <tr
                     key={row.rowNumber}
                     className={
-                      row.status === 'double' || row.status === 'false'
+                      row.status === 'double' ||
+                      row.status === 'false' ||
+                      row.status === 'missing'
                         ? 'bg-red-50'
                         : index % 2 === 0
                           ? 'bg-white'
@@ -169,6 +171,14 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                           title="A letter this stage's merk key rules out"
                         >
                           fout
+                        </span>
+                      )}
+                      {row.status === 'missing' && (
+                        <span
+                          className="ml-2 text-sm font-semibold text-red-700"
+                          title="A letter of this stage's merk key the column never got"
+                        >
+                          {row.missingMerk} ontbreekt
                         </span>
                       )}
                       {row.status === 'ignored' && (
@@ -195,7 +205,8 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
         )}
 
         {/* The merk check is vertical, so the errors belong to the column, not
-            to a row: a missing letter has no row of its own to sit on. */}
+            to a row. A missing letter is still shown on an empty row — the key
+            row that asks for it when it is free — so the column adds up. */}
         <div className="mt-2 text-sm text-gray-700 space-y-0.5">
           <p>
             <span className="font-semibold">Key:</span>{' '}
