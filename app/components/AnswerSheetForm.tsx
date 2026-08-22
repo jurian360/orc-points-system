@@ -386,6 +386,13 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     return calculateMerkPenalty(stage?.merkScoreKey, merkScores);
   }, [stages, stageId, merkScores]);
 
+  // The scored rows by row number: the result also covers key rows the sheet
+  // has no letter on, so the grid cannot read them off by index.
+  const merkRowByNumber = useMemo(
+    () => new Map(merkResult.rows.map((row) => [row.rowNumber, row])),
+    [merkResult]
+  );
+
   // Penalty totals for the "Totaal Strafpunten" overview
   const orcTotal = answers.reduce((sum, row) => sum + toNumber(row.strafp), 0);
   const tijdTotal = timeResult ? timeResult.totalPenalty : 0;
@@ -754,12 +761,14 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
               </thead>
               <tbody>
                 {merkScores.map((row, rowIndex) => {
-                  const scored = merkResult.rows[rowIndex];
+                  const scored = merkRowByNumber.get(row.rowNumber);
                   return (
                     <tr
                       key={row.rowNumber}
                       className={
-                        scored?.status === 'double' || scored?.status === 'false'
+                        scored?.status === 'double' ||
+                        scored?.status === 'false' ||
+                        scored?.status === 'missing'
                           ? 'bg-red-50'
                           : rowIndex % 2 === 0
                             ? 'bg-white'
@@ -790,6 +799,14 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
                             fout
                           </span>
                         )}
+                        {scored?.status === 'missing' && (
+                          <span
+                            className="ml-1 text-[10px] font-semibold text-red-700"
+                            title="A letter of this stage's merk key the column never got"
+                          >
+                            {scored.missingMerk} ontbreekt
+                          </span>
+                        )}
                         {scored?.status === 'ignored' && (
                           <span
                             className="ml-1 text-[10px] text-gray-500"
@@ -814,7 +831,9 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
           </div>
 
           {/* The merk check is vertical: the column as a whole is compared with
-              the key, so a missing letter belongs to no row. */}
+              the key. A missing letter belongs to no row of its own, so it is
+              charged to an empty one — the key row asking for it when it is
+              free — and the column adds up to what it costs. */}
           <div className="mt-1 text-[11px] leading-tight text-gray-700 space-y-0.5">
             <p>
               <span className="font-semibold">Key:</span>{' '}

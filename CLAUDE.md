@@ -201,9 +201,16 @@ missing, the same as the blank card it stands for.
 
 The merk penalty is the **Diversen** line of TOTAAL STRAFPUNTEN and **is** part
 of `totalPenalty` and of the standings. It is stored on the sheet as
-`merkPenalty`; the per-row `strafp` only carries the 30 points a row's letter cost
-as a double or as a ruled-out letter, because a *missing* letter belongs to no
-row.
+`merkPenalty`. A row's `strafp` carries the 30 points that row's letter cost as a
+double or as a ruled-out letter; a *missing* letter belongs to no row, so it is
+charged to an **empty** row — the key row that asks for it when that row is still
+empty, otherwise the first empty row of the column — and shown there (`status:
+'missing'`, with the letter in `missingMerk`) so the column adds up to what it
+costs instead of reading 0 on every row. A column with no empty row left keeps
+those points in `merkPenalty` only, as does the cap: the cap is on the column,
+the rows are not capped. `calculateMerkPenalty` therefore returns a row per row
+of the sheet **and** per row of the key, so a key row a sheet never got is still
+a row of the column.
 
 Because the delta chains, **a sheet cannot be scored on its own**: writing a
 sheet re-scores that participant's whole rally (`rescoreParticipants`), and

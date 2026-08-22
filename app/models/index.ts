@@ -209,8 +209,10 @@ const AnswerSheetSchema = new mongoose.Schema({
   // Merk rows, 6 of them. Officials type only the `merk` letter the participant
   // wrote; `strafp` is computed server-side from the stage's merk key, like the
   // time rows. The column is scored vertically, so a row's `strafp` is the 30
-  // points that row's letter cost as a double or as a false merk — the points
-  // for a *missing* letter belong to no row and live in `merkPenalty` only.
+  // points that row's letter cost as a double or as a false merk — or, on a row
+  // left empty, the 30 points of a key letter the column never got, charged
+  // there so the column adds up to `merkPenalty` on screen. `merkPenalty` stays
+  // the total: it is capped as a column and the rows are not.
   merkScores: [{
     rowNumber: Number,
     merk: String,
