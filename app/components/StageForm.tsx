@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { maxMerkPenalty, PENALTY_PER_ERROR } from '../lib/scoring';
 import {
   DEFAULT_TIME_CONFIG,
   maxStageTimePenalty,
@@ -27,6 +28,10 @@ interface TimeScoreKeyRow {
   maxPenalty?: number;
 }
 
+// One row of the merk key: a single letter. The merk column is scored
+// vertically — the column as a whole is compared with the key, in any order —
+// so `maxPenalty` is not a row cap: the row maximums are summed into one cap on
+// the whole column.
 interface MerkScoreKeyRow {
   rowNumber: number;
   merk: string;
@@ -176,7 +181,7 @@ const StageForm: React.FC<StageFormProps> = ({
   const handleMerkChange = (rowIndex: number, value: string) => {
     setMerkScoreKey((prev) => {
       const next = [...prev];
-      next[rowIndex] = { ...next[rowIndex], merk: value };
+      next[rowIndex] = { ...next[rowIndex], merk: value.toUpperCase() };
       return next;
     });
   };
@@ -193,7 +198,9 @@ const StageForm: React.FC<StageFormProps> = ({
   // Max penalty totals for the overview box
   const orcTotal = scoreKey.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
   const tijdTotal = maxStageTimePenalty(timeScoreKey, timeConfig, isFinalStage);
-  const diversenTotal = merkScoreKey.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
+  // Not the sum of the rows: the merk column is one error per distinct letter of
+  // the key, bounded by the cap those row maximums add up to.
+  const diversenTotal = maxMerkPenalty(merkScoreKey);
   const grandTotal = orcTotal + tijdTotal + diversenTotal;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -222,7 +229,7 @@ const StageForm: React.FC<StageFormProps> = ({
 
     const processedMerkScoreKey = merkScoreKey.map((row) => ({
       rowNumber: row.rowNumber,
-      merk: (row.merk || '').trim(),
+      merk: (row.merk || '').trim().toUpperCase(),
       maxPenalty: row.maxPenalty || 0,
     }));
 
@@ -522,6 +529,14 @@ const StageForm: React.FC<StageFormProps> = ({
         {/* Column 4 — Merk reference + Totaal overview */}
         <div>
           <h2 className="text-lg font-semibold mb-2 text-gray-800">Merk</h2>
+          <p className="text-sm text-gray-700 mb-2">
+            One letter per row. The merk column is scored{' '}
+            <span className="font-semibold">vertically</span>: the participant&apos;s letters are
+            compared with the key as a column, so the rows they wrote them on and the order do not
+            matter. Every key letter given too few or too many times costs {PENALTY_PER_ERROR}{' '}
+            points, once — a letter that is not in the key never costs anything. Leave a row blank
+            to use fewer than six. Max Penalty caps the column as a whole (their sum); 0 is no cap.
+          </p>
           <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full border-collapse">
               <thead>
@@ -532,7 +547,10 @@ const StageForm: React.FC<StageFormProps> = ({
                   <th className="py-2 px-2 border-b border-r border-gray-300 text-xs font-semibold text-gray-800">
                     MERK
                   </th>
-                  <th className="py-2 px-2 border-b border-gray-300 text-xs font-semibold text-gray-800">
+                  <th
+                    className="py-2 px-2 border-b border-gray-300 text-xs font-semibold text-gray-800"
+                    title="The merk column is capped at the sum of these, not row by row"
+                  >
                     Max Penalty
                   </th>
                 </tr>
@@ -549,10 +567,11 @@ const StageForm: React.FC<StageFormProps> = ({
                     <td className="py-2 px-1 border-b border-r border-gray-300 text-center">
                       <input
                         type="text"
-                        className="w-full min-w-[8rem] h-10 p-1 border border-gray-300 rounded text-base focus:border-orange-500 focus:ring-1 focus:ring-orange-200 text-gray-700"
+                        maxLength={1}
+                        className="w-10 h-10 p-1 border border-orange-300 rounded text-center text-lg font-bold uppercase focus:border-orange-500 focus:ring-1 focus:ring-orange-200 text-gray-700"
                         value={row.merk || ''}
                         onChange={(e) => handleMerkChange(rowIndex, e.target.value)}
-                        aria-label={`Merk label for row ${row.rowNumber}`}
+                        aria-label={`Merk letter for row ${row.rowNumber}`}
                       />
                     </td>
                     <td className="py-2 px-1 border-b border-gray-300 text-center">

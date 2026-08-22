@@ -240,13 +240,17 @@ export function parseTimePenalties(value: unknown) {
   });
 }
 
+// Only the letter is taken from the client: the merk column is scored against
+// the stage's merk key server-side (see app/lib/rescore.ts), so accepting a
+// `strafp` here would let a sheet claim a total it did not earn — the same rule
+// the time rows follow.
 export function parseMerkScores(value: unknown) {
   return rows(value, MAX_MERK_ROWS).map((row) => {
     const r = (row ?? {}) as Record<string, unknown>;
     return {
       rowNumber: num(r.rowNumber),
       merk: str(r.merk),
-      strafp: num(r.strafp),
+      strafp: 0,
     };
   });
 }

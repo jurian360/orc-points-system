@@ -39,7 +39,9 @@ export interface TimeScoreKeyRow {
   maxPenalty?: number;
 }
 
-// "Merk" reference row for additional scoring by officials.
+// Merk key row of a stage: one letter. The merk column is scored vertically —
+// the column as a whole is compared with the key — so `maxPenalty` is not a row
+// cap; the row maximums are summed into one cap on the column.
 export interface MerkScoreKeyRow {
   rowNumber: number;
   merk: string;
@@ -77,6 +79,7 @@ export interface AnswerSheet {
   merkScores?: MerkScoreRow[];
   totalPenalty: number;
   timePenalty?: number;
+  merkPenalty?: number;
   disqualified?: boolean;
   startDelta?: number;
   endDelta?: number;
@@ -100,7 +103,10 @@ export interface TimePenaltyRow {
   outOfWindow?: boolean;
 }
 
-// "Merk" scoring row filled in by officials.
+// Merk row of a sheet. Officials type the letter the participant wrote; the
+// `strafp` is computed from the stage's merk key (see app/lib/scoring.ts) and is
+// the 30 points that letter cost as a double — a *missing* letter belongs to no
+// row and is only in the sheet's `merkPenalty`.
 export interface MerkScoreRow {
   rowNumber: number;
   merk: string;
@@ -116,9 +122,11 @@ export interface StandingsEntry {
   driverName: string;
   navigatorName: string;
   totalPenalty: number;
-  // The two parts of `totalPenalty`: the ORC's (letters) and the time penalty.
+  // The three parts of `totalPenalty`: the ORC's (letters), the time penalty and
+  // the merk penalty (shown as "Diversen").
   orcPenalty: number;
   timePenalty: number;
+  merkPenalty: number;
   sheetsSubmitted: number;
   disqualified: boolean;
   rank: number;

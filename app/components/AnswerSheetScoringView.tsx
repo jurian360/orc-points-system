@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { calculateTotalPenalty } from '../lib/scoring';
-import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
+import { calculateMerkPenalty, calculateTotalPenalty } from '../lib/scoring';
+import type { AnswerRow, MerkKeyRow, ScoreKeyRow } from '../lib/scoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
 import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
 import ClassificationBadge from './ClassificationBadge';
@@ -13,6 +13,7 @@ interface Stage {
   name: string;
   rallyId: string;
   scoreKey: ScoreKeyRow[];
+  merkScoreKey?: MerkKeyRow[];
 }
 
 interface AnswerSheet {
@@ -144,10 +145,16 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
     );
   }
 
-  // ORC's + Tijd, the two parts the standings are built from.
+  // ORC's + Tijd + Diversen, the three parts the standings are built from. The
+  // letters are re-scored from the stage's keys; the time part cannot be (it
+  // depends on the rest of the rally) and is summed from the stored rows.
   const orcPenalty = calculateTotalPenalty(stage.scoreKey, sheet.answers);
   const tijdPenalty = sumStrafp(sheet.timePenalties || []);
-  const totalPenalties = orcPenalty + tijdPenalty;
+  const diversenPenalty = calculateMerkPenalty(
+    stage.merkScoreKey,
+    sheet.merkScores
+  ).totalPenalty;
+  const totalPenalties = orcPenalty + tijdPenalty + diversenPenalty;
 
   return (
     <div className="min-h-screen bg-gray-100 py-4">
@@ -177,7 +184,7 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
               <span className="text-lg font-bold text-red-600">
                 {totalPenalties} penalty points
                 <span className="ml-2 text-sm font-semibold text-gray-600">
-                  (ORC&apos;s {orcPenalty} + Tijd {tijdPenalty})
+                  (ORC&apos;s {orcPenalty} + Tijd {tijdPenalty} + Diversen {diversenPenalty})
                 </span>
               </span>
               {sheet.disqualified && (
@@ -212,6 +219,7 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
             scoreKey={stage.scoreKey}
             answers={sheet.answers}
             timePenalties={sheet.timePenalties}
+            merkScoreKey={stage.merkScoreKey}
             merkScores={sheet.merkScores}
             disqualified={sheet.disqualified}
           />

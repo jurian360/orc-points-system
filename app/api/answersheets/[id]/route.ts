@@ -3,7 +3,7 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
 import { AnswerSheet, Stage } from '../../../models';
-import { calculateTotalPenalty } from '../../../lib/scoring';
+import { calculateMerkPenalty, calculateTotalPenalty } from '../../../lib/scoring';
 import { readBody, requireSession } from '../../../lib/api-guard';
 import { rescoreParticipants } from '../../../lib/rescore';
 import {
@@ -92,10 +92,17 @@ export async function PUT(
       sheet.timePenalties = parseTimePenalties(body.timePenalties);
     }
     if (body.merkScores !== undefined) {
+      // Only the letters survive the parse; the rescore below scores the column.
       sheet.merkScores = parseMerkScores(body.merkScores);
     }
-    // ORC's part only; rescoreParticipants adds the time part below.
-    sheet.totalPenalty = calculateTotalPenalty(stage ? stage.scoreKey : [], answers);
+    const merkPenalty = calculateMerkPenalty(
+      stage ? stage.merkScoreKey : [],
+      sheet.merkScores
+    ).totalPenalty;
+    sheet.merkPenalty = merkPenalty;
+    // ORC's + merk; rescoreParticipants adds the time part below.
+    sheet.totalPenalty =
+      calculateTotalPenalty(stage ? stage.scoreKey : [], answers) + merkPenalty;
 
     const updatedSheet = await sheet.save();
 

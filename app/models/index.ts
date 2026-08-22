@@ -93,7 +93,10 @@ const StageSchema = new mongoose.Schema({
     finishLateWindow: { type: Number, default: 60 },
     outOfWindowPenalty: { type: Number, default: 60 },
   },
-  // "Merk" reference rows for additional scoring by officials, 6 rows.
+  // Merk key of the stage, 6 rows: one letter per row. The merk column is
+  // scored vertically — the column as a whole is compared with the key, not row
+  // by row (see app/lib/scoring.ts) — so `maxPenalty` is not a row cap: the row
+  // maximums are summed into one cap on the whole column.
   merkScoreKey: [{
     rowNumber: Number,
     merk: String,
@@ -199,7 +202,11 @@ const AnswerSheetSchema = new mongoose.Schema({
       default: false
     }
   }],
-  // "Merk" scoring by officials, 6 rows.
+  // Merk rows, 6 of them. Officials type only the `merk` letter the participant
+  // wrote; `strafp` is computed server-side from the stage's merk key, like the
+  // time rows. The column is scored vertically, so a row's `strafp` is the 30
+  // points that row's letter made a double — the points for a *missing* letter
+  // belong to no row and live in `merkPenalty` only.
   merkScores: [{
     rowNumber: Number,
     merk: String,
@@ -213,7 +220,8 @@ const AnswerSheetSchema = new mongoose.Schema({
     default: Date.now,
   },
   // Total penalty points for this answer sheet: the ORC's penalty computed from
-  // the stage's answer key plus the time penalty computed from its time key.
+  // the stage's answer key, plus the time penalty computed from its time key,
+  // plus the merk penalty computed from its merk key.
   // Summed across a participant's sheets to rank the rally standings.
   totalPenalty: {
     type: Number,
@@ -222,6 +230,13 @@ const AnswerSheetSchema = new mongoose.Schema({
   // The time part of totalPenalty, kept separately so the card can show the
   // "Tijd" line without recomputing the whole chain.
   timePenalty: {
+    type: Number,
+    default: 0
+  },
+  // The merk part of totalPenalty (the "Diversen" line), kept separately for the
+  // same reason: it cannot be read off the sheet's rows, because a missing
+  // letter is charged to the column rather than to a row.
+  merkPenalty: {
     type: Number,
     default: 0
   },

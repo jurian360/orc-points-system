@@ -26,9 +26,11 @@ interface StandingsEntry {
   navigatorName: string;
   totalPenalty: number;
   // The two parts of totalPenalty, so the table can show where the points
-  // came from: the ORC's (letters) and the Tijd (time) penalty.
+  // came from: the ORC's (letters), the Tijd (time) and the Diversen (merk)
+  // penalty.
   orcPenalty: number;
   timePenalty: number;
+  merkPenalty: number;
   sheetsSubmitted: number;
   disqualified: boolean;
   rank: number;
@@ -443,7 +445,8 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
               <div>
                 <h2 className="text-xl font-semibold text-gray-800">Standings</h2>
                 <p className="text-gray-600 text-sm mt-1">
-                  Total penalty points (ORC&apos;s + Tijd) over every sheet — lowest wins. A
+                  Total penalty points (ORC&apos;s + Tijd + Diversen) over every sheet — lowest
+                  wins. A
                   disqualified participant is ranked behind everyone still in the rally. Editing a
                   stage key or a sheet re-scores what it touches; Recalculate Scores redoes the
                   whole rally.
@@ -523,6 +526,12 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                       <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
                         Tijd
                       </th>
+                      <th
+                        className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider"
+                        title="The merk column of every sheet"
+                      >
+                        Diversen
+                      </th>
                       <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
                         Total
                       </th>
@@ -586,6 +595,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                         </td>
                         <td className="px-4 py-2 whitespace-nowrap text-right">
                           <span className="text-base text-gray-600">{entry.timePenalty}</span>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap text-right">
+                          <span className="text-base text-gray-600">{entry.merkPenalty}</span>
                         </td>
                         <td className="px-4 py-2 whitespace-nowrap text-right">
                           <span className="text-base font-bold text-red-600">

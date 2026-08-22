@@ -1,4 +1,5 @@
 import React from 'react';
+import { maxMerkPenalty, PENALTY_PER_ERROR } from '../lib/scoring';
 import {
   maxStageTimePenalty,
   resolveTimeConfig,
@@ -57,7 +58,14 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
 
   const orcTotal = sortedRows.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
   const tijdTotal = maxStageTimePenalty(timeRows, config, isFinalStage);
-  const diversenTotal = merkRows.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
+  // The merk column is scored vertically, so its maximum is not the sum of the
+  // rows: it is one error per distinct letter of the key, bounded by the cap the
+  // stage's row maximums add up to.
+  const diversenTotal = maxMerkPenalty(merkRows);
+  const merkKeyLetters = merkRows
+    .map((row) => (row.merk || '').trim().toUpperCase())
+    .filter(Boolean);
+  const merkCap = merkRows.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
 
   const columnRange = (rows: StageScoreKeyRow[]): string =>
     rows.length > 0 ? `${rows[0].rowNumber}–${rows[rows.length - 1].rowNumber}` : '';
@@ -315,7 +323,10 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
                   <th className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800">
                     Merk
                   </th>
-                  <th className="py-2 px-1 border-b border-gray-300 text-center font-bold text-sm text-gray-800">
+                  <th
+                    className="py-2 px-1 border-b border-gray-300 text-center font-bold text-sm text-gray-800"
+                    title="The merk column is capped at the sum of these, not row by row"
+                  >
                     Max
                   </th>
                 </tr>
@@ -326,8 +337,8 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
                     <td className="py-1.5 px-1 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center">
                       {row.rowNumber}
                     </td>
-                    <td className="py-1.5 px-2 border-b border-r border-gray-300 text-base text-gray-800">
-                      {(row.merk || '').trim() || '-'}
+                    <td className="py-1.5 px-2 border-b border-r border-gray-300 text-center text-base font-bold text-gray-800">
+                      {(row.merk || '').trim().toUpperCase() || '-'}
                     </td>
                     <td className="py-1.5 px-1 border-b border-gray-300 text-center text-base font-bold text-gray-900">
                       {row.maxPenalty || 0}
@@ -382,10 +393,24 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
           </table>
         </div>
 
-        <p className="text-sm text-gray-600 mt-2">
-          The most a participant can lose on this stage. Diversen is recorded by the officials and
-          does not count towards the standings.
-        </p>
+        <div className="text-sm text-gray-700 mt-2 space-y-0.5">
+          <p>
+            The merk column is scored <span className="font-semibold">vertically</span>: the key
+            asks for{' '}
+            {merkKeyLetters.length > 0 ? (
+              <span className="font-bold">{merkKeyLetters.join(' ')}</span>
+            ) : (
+              'nothing'
+            )}{' '}
+            in any rows, in any order. Every key letter given too few or too many times costs{' '}
+            {PENALTY_PER_ERROR} points, once; a letter that is not in the key never costs anything.
+            {merkCap > 0 && ` The column is capped at ${merkCap}.`}
+          </p>
+          <p className="text-gray-600">
+            The most a participant can lose on this stage. ORC&apos;s, Tijd and Diversen all count
+            towards the standings.
+          </p>
+        </div>
       </div>
     </div>
   );

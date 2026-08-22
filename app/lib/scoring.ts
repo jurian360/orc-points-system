@@ -1,6 +1,7 @@
-// Shared ORC (letter answers) penalty scoring logic for answer sheets. The time
-// (IPT / WPT) part of a sheet is scored in app/lib/timeScoring.ts; a sheet's
-// stored `totalPenalty` is the sum of the two.
+// Shared letter-answer penalty scoring for answer sheets: the ORC's rows first,
+// the merk column at the bottom of this file. The time (IPT / WPT) part of a
+// sheet is scored in app/lib/timeScoring.ts; a sheet's stored `totalPenalty` is
+// the sum of the three.
 //
 // A sheet is scored by comparing its selected letter answers against the
 // stage's answer key (scoreKey). Each wrong, missing, or duplicated correct
@@ -17,7 +18,7 @@
 // stands for — otherwise re-scoring a rally and re-saving a sheet, which are
 // the same computation, would disagree.
 
-const PENALTY_PER_ERROR = 30;
+export const PENALTY_PER_ERROR = 30;
 
 export interface ScoreKeyRow {
   rowNumber: number;
@@ -149,4 +150,179 @@ export function calculateTotalPenalty(
     );
     return total + calculateRowPenalty(scoreKeyRow, participantRow);
   }, 0);
+}
+
+// --- Merk ------------------------------------------------------------------
+//
+// The merk column is the second lettered check of a stage, and unlike the ORC's
+// it is scored *vertically*: one letter per row, 6 rows, and it is the column as
+// a whole — not the row a letter happens to sit on — that is compared with the
+// key. A key of "A, A, C" asks for two A's and a C somewhere in the column, in
+// any rows and in any order.
+//
+// Exactly two things cost 30 points, and no letter of the key can cost them
+// more than once:
+//
+//   - a key letter given fewer times than the key asks for (a missing letter);
+//   - a key letter given more times than the key asks for (a double).
+//
+// A letter that is not in the key at all is ignored, however often it is
+// written — the key decides what is scored here just as it does for the ORC
+// rows. Against the key A, A, C:
+//
+//   A C         -> 30, one A is missing
+//   A A C C     -> 30, C is doubled
+//   B A A C     ->  0, B is not part of this check
+//   A A A C     -> 30, A is doubled
+//   A A A C A   -> 30, still one double of A — never twice for the same letter
+//
+// A sheet with no merk rows is an untyped column, not an unscored one: every
+// letter of the key counts as missing, the same as the blank card it stands
+// for. This is what keeps rescoreRally and a re-saved sheet in agreement.
+
+export interface MerkKeyRow {
+  rowNumber: number;
+  merk?: string;
+  // The merk column has no per-row penalty — the check is vertical. The row
+  // maximums are summed into one cap on the whole column (see merkColumnCap).
+  maxPenalty?: number;
+}
+
+export interface MerkAnswerRow {
+  rowNumber: number;
+  merk?: string;
+}
+
+// What the column made of one row's letter.
+//   'blank'   — nothing written on this row
+//   'ok'      — a key letter, within the number of times the key asks for it
+//   'double'  — a key letter written more often than the key asks for
+//   'ignored' — a letter the key does not use, which never costs anything
+export type MerkRowStatus = 'blank' | 'ok' | 'double' | 'ignored';
+
+export interface ScoredMerkRow {
+  rowNumber: number;
+  merk: string;
+  strafp: number;
+  status: MerkRowStatus;
+}
+
+export interface MerkPenaltyResult {
+  // The merk part of a sheet's penalty: 30 per missing and per doubled key
+  // letter, capped by the column's maximum when the stage sets one.
+  totalPenalty: number;
+  rows: ScoredMerkRow[];
+  // Key letters the column is short of, and key letters it holds too many of.
+  // Each of them is one 30-point error.
+  missing: string[];
+  doubled: string[];
+  // The distinct letters the key asks for, most-asked-for first as written.
+  keyLetters: string[];
+  // The cap that was applied (0 when the stage sets none) and whether it bit.
+  maxPenalty: number;
+  capped: boolean;
+}
+
+// Letters are compared case- and whitespace-insensitively, so a key typed as
+// "a" grades a card typed as "A".
+export function normalizeMerk(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toUpperCase() : '';
+}
+
+function countLetters(values: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  values.forEach((letter) => counts.set(letter, (counts.get(letter) || 0) + 1));
+  return counts;
+}
+
+// The most the merk column of a stage can cost. The key rows carry a maximum
+// each — the merk check has no rows of its own to cap, so they are summed into
+// one cap on the column. 0 (the default) means no cap, exactly as on an ORC row.
+export function merkColumnCap(merkScoreKey: MerkKeyRow[] | undefined): number {
+  return (merkScoreKey || []).reduce((sum, row) => sum + (row?.maxPenalty || 0), 0);
+}
+
+// The worst a participant can do on the merk column: every distinct letter of
+// the key wrong once, bounded by the column's cap. Used for the "max penalty"
+// overviews on the stage form and the stage key card.
+export function maxMerkPenalty(merkScoreKey: MerkKeyRow[] | undefined): number {
+  const distinct = new Set(
+    (merkScoreKey || []).map((row) => normalizeMerk(row?.merk)).filter(Boolean)
+  );
+  const worst = distinct.size * PENALTY_PER_ERROR;
+  const cap = merkColumnCap(merkScoreKey);
+  return cap > 0 ? Math.min(worst, cap) : worst;
+}
+
+// Score the merk column of one sheet against the merk key of its stage.
+export function calculateMerkPenalty(
+  merkScoreKey: MerkKeyRow[] | undefined,
+  merkScores: MerkAnswerRow[] | undefined
+): MerkPenaltyResult {
+  const keyLetterList = (merkScoreKey || [])
+    .map((row) => normalizeMerk(row?.merk))
+    .filter(Boolean);
+  const keyCounts = countLetters(keyLetterList);
+
+  // Rows are read in row order so that, when a letter is written too often, the
+  // points land on the row that made it a double rather than on the first
+  // legitimate one.
+  const given = [...(merkScores || [])].sort(
+    (a, b) => (a?.rowNumber || 0) - (b?.rowNumber || 0)
+  );
+  const givenCounts = countLetters(
+    given.map((row) => normalizeMerk(row?.merk)).filter(Boolean)
+  );
+
+  const seen = new Map<string, number>();
+  const rows: ScoredMerkRow[] = given.map((row) => {
+    const merk = normalizeMerk(row?.merk);
+    const rowNumber = row?.rowNumber || 0;
+
+    if (!merk) return { rowNumber, merk: '', strafp: 0, status: 'blank' };
+
+    const expected = keyCounts.get(merk);
+    if (expected === undefined) {
+      // Not a letter of this check — free, however often it is written.
+      return { rowNumber, merk, strafp: 0, status: 'ignored' };
+    }
+
+    const occurrence = (seen.get(merk) || 0) + 1;
+    seen.set(merk, occurrence);
+
+    if (occurrence <= expected) return { rowNumber, merk, strafp: 0, status: 'ok' };
+
+    // The first surplus occurrence carries the 30 points for the double; the
+    // ones after it are the same error and cost nothing more.
+    return {
+      rowNumber,
+      merk,
+      strafp: occurrence === expected + 1 ? PENALTY_PER_ERROR : 0,
+      status: 'double',
+    };
+  });
+
+  const missing: string[] = [];
+  const doubled: string[] = [];
+  keyCounts.forEach((expected, letter) => {
+    const count = givenCounts.get(letter) || 0;
+    if (count < expected) missing.push(letter);
+    else if (count > expected) doubled.push(letter);
+  });
+  missing.sort();
+  doubled.sort();
+
+  const raw = (missing.length + doubled.length) * PENALTY_PER_ERROR;
+  const maxPenalty = merkColumnCap(merkScoreKey);
+  const capped = maxPenalty > 0 && raw > maxPenalty;
+
+  return {
+    totalPenalty: capped ? maxPenalty : raw,
+    rows,
+    missing,
+    doubled,
+    keyLetters: Array.from(keyCounts.keys()).sort(),
+    maxPenalty,
+    capped,
+  };
 }

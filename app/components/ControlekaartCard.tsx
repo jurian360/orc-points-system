@@ -1,6 +1,6 @@
 import React from 'react';
-import { calculateTotalPenalty } from '../lib/scoring';
-import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
+import { calculateMerkPenalty, calculateTotalPenalty } from '../lib/scoring';
+import type { AnswerRow, MerkKeyRow, ScoreKeyRow } from '../lib/scoring';
 import { timeRowLabel } from '../lib/timeScoring';
 import OrcAnswerGrid from './OrcAnswerGrid';
 
@@ -26,6 +26,10 @@ interface ControlekaartCardProps {
   scoreKey: ScoreKeyRow[];
   answers: AnswerRow[];
   timePenalties?: TimePenaltyRow[];
+  // The stage's merk key and the letters the participant wrote. Like the ORC's,
+  // the merk column is scored here from the key rather than read off the sheet,
+  // so the card always agrees with itself.
+  merkScoreKey?: MerkKeyRow[];
   merkScores?: MerkScoreRow[];
   disqualified?: boolean;
 }
@@ -41,18 +45,22 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
   scoreKey,
   answers,
   timePenalties,
+  merkScoreKey,
   merkScores,
   disqualified = false,
 }) => {
   const timeRows = timePenalties || [];
-  const merkRows = merkScores || [];
 
-  // The ORC total is recomputed from the answer key rather than read from the
-  // sheet's stored total, so it always agrees with the per-row penalties above
-  // it — even if the key was edited after the sheet was submitted.
+  // The ORC and the merk total are recomputed from the stage's keys rather than
+  // read from the sheet's stored totals, so they always agree with the per-row
+  // penalties above them — even if a key was edited after the sheet was
+  // submitted. The time total cannot be recomputed here (it depends on the rest
+  // of the rally), so it is summed from the rows the server stored.
   const orcPenalty = calculateTotalPenalty(scoreKey, answers);
   const tijdTotal = sumStrafp(timeRows);
-  const diversenTotal = sumStrafp(merkRows);
+  const merkResult = calculateMerkPenalty(merkScoreKey, merkScores);
+  const merkRows = merkResult.rows;
+  const diversenTotal = merkResult.totalPenalty;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start p-4">
@@ -120,7 +128,7 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
         )}
       </div>
 
-      {/* Column 4 — Merk (officials) + Totaal Strafpunten */}
+      {/* Column 4 — Merk + Totaal Strafpunten */}
       <div>
         <h3 className="text-sm font-bold mb-1 text-gray-800">Merk</h3>
         {merkRows.length === 0 ? (
@@ -137,14 +145,38 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
               </thead>
               <tbody>
                 {merkRows.map((row, index) => (
-                  <tr key={row.rowNumber} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <tr
+                    key={row.rowNumber}
+                    className={
+                      row.status === 'double'
+                        ? 'bg-red-50'
+                        : index % 2 === 0
+                          ? 'bg-white'
+                          : 'bg-gray-50'
+                    }
+                  >
                     <td className="py-1.5 px-1 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center">
                       {row.rowNumber}
                     </td>
                     <td className="py-1.5 px-2 border-b border-r border-gray-300 text-base text-gray-800">
-                      {row.merk || '-'}
+                      <span className="font-bold">{row.merk || '-'}</span>
+                      {row.status === 'double' && (
+                        <span className="ml-2 text-sm font-semibold text-red-700">double</span>
+                      )}
+                      {row.status === 'ignored' && (
+                        <span
+                          className="ml-2 text-sm text-gray-500"
+                          title="Not a letter of this stage's merk key — it never costs points"
+                        >
+                          not in key
+                        </span>
+                      )}
                     </td>
-                    <td className="py-1.5 px-1 border-b border-gray-300 text-center text-base font-bold text-gray-900">
+                    <td
+                      className={`py-1.5 px-1 border-b border-gray-300 text-center text-base font-bold ${
+                        row.strafp ? 'text-red-700' : 'text-gray-900'
+                      }`}
+                    >
                       {row.strafp || 0}
                     </td>
                   </tr>
@@ -153,6 +185,36 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
             </table>
           </div>
         )}
+
+        {/* The merk check is vertical, so the errors belong to the column, not
+            to a row: a missing letter has no row of its own to sit on. */}
+        <div className="mt-2 text-sm text-gray-700 space-y-0.5">
+          <p>
+            <span className="font-semibold">Key:</span>{' '}
+            {merkResult.keyLetters.length > 0 ? merkResult.keyLetters.join(' ') : '—'}
+            {merkResult.keyLetters.length > 0 && (
+              <span className="text-gray-500"> (in any row, in any order)</span>
+            )}
+          </p>
+          {merkResult.missing.length > 0 && (
+            <p className="text-red-700 font-semibold">
+              Missing: {merkResult.missing.join(' ')} — {merkResult.missing.length * 30} points
+            </p>
+          )}
+          {merkResult.doubled.length > 0 && (
+            <p className="text-red-700 font-semibold">
+              Doubled: {merkResult.doubled.join(' ')} — {merkResult.doubled.length * 30} points
+            </p>
+          )}
+          {merkResult.keyLetters.length > 0 &&
+            merkResult.missing.length === 0 &&
+            merkResult.doubled.length === 0 && (
+              <p className="text-green-700 font-semibold">Column complete — no merk penalty.</p>
+            )}
+          {merkResult.capped && (
+            <p className="text-gray-600">Capped at the stage maximum of {merkResult.maxPenalty}.</p>
+          )}
+        </div>
 
         {/* Totaal Strafpunten overview, like the paper card */}
         <div className="mt-3 border-2 border-gray-800 rounded-lg overflow-hidden shadow-md">
@@ -198,8 +260,8 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
         </div>
 
         <p className="text-sm text-gray-600 mt-2">
-          The standings are scored from ORC&apos;s + Tijd ({orcPenalty + tijdTotal}). Diversen is
-          recorded by the officials and does not count towards the standings.
+          The standings are scored from ORC&apos;s + Tijd + Diversen — every point on this card
+          counts.
         </p>
       </div>
     </div>

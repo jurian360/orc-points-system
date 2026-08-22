@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { calculateTotalPenalty } from '../lib/scoring';
-import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
+import { calculateMerkPenalty, calculateTotalPenalty } from '../lib/scoring';
+import type { AnswerRow, MerkKeyRow, ScoreKeyRow } from '../lib/scoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
 import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
 import ClassificationBadge from './ClassificationBadge';
@@ -19,6 +19,7 @@ interface Stage {
   name: string;
   createdAt: string;
   scoreKey: ScoreKeyRow[];
+  merkScoreKey?: MerkKeyRow[];
 }
 
 interface AnswerSheet {
@@ -199,7 +200,9 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
       merkRows,
       orcPenalty: sheet ? calculateTotalPenalty(stage.scoreKey, sheet.answers) : 0,
       tijdTotal: sumStrafp(timeRows),
-      diversenTotal: sumStrafp(merkRows),
+      diversenTotal: sheet
+        ? calculateMerkPenalty(stage.merkScoreKey, merkRows).totalPenalty
+        : 0,
     };
   });
 
@@ -306,9 +309,12 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
                 Strafpunten
               </p>
-              <p className="text-3xl font-bold text-red-600 mt-1">{orcTotal + tijdTotal}</p>
+              <p className="text-3xl font-bold text-red-600 mt-1">
+                {orcTotal + tijdTotal + diversenTotal}
+              </p>
               <p className="text-sm text-gray-600 mt-1">
-                ORC&apos;s {orcTotal} + Tijd {tijdTotal} — counts for the standings
+                ORC&apos;s {orcTotal} + Tijd {tijdTotal} + Diversen {diversenTotal} — counts for
+                the standings
               </p>
             </div>
             <div className="p-6">
@@ -316,7 +322,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                 Diversen
               </p>
               <p className="text-3xl font-bold text-gray-900 mt-1">{diversenTotal}</p>
-              <p className="text-sm text-gray-600 mt-1">Recorded by the officials</p>
+              <p className="text-sm text-gray-600 mt-1">The merk column of every stage</p>
             </div>
           </div>
         </div>
@@ -334,7 +340,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
             </p>
           </div>
         ) : (
-          entries.map(({ stage, sheet, orcPenalty, tijdTotal: stageTijdTotal }) => {
+          entries.map(({ stage, sheet, orcPenalty, tijdTotal: stageTijdTotal, diversenTotal: stageDiversenTotal }) => {
             if (!sheet) {
               return (
                 <div
@@ -369,9 +375,10 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                   </div>
                   <div className="flex flex-wrap items-center gap-4">
                     <span className="text-lg font-bold text-red-600">
-                      {orcPenalty + stageTijdTotal} penalty points
+                      {orcPenalty + stageTijdTotal + stageDiversenTotal} penalty points
                       <span className="ml-2 text-sm font-semibold text-gray-600">
-                        (ORC&apos;s {orcPenalty} + Tijd {stageTijdTotal})
+                        (ORC&apos;s {orcPenalty} + Tijd {stageTijdTotal} + Diversen{' '}
+                        {stageDiversenTotal})
                       </span>
                     </span>
                     <Link
@@ -400,6 +407,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                   scoreKey={stage.scoreKey}
                   answers={sheet.answers}
                   timePenalties={sheet.timePenalties}
+                  merkScoreKey={stage.merkScoreKey}
                   merkScores={sheet.merkScores}
                   disqualified={sheet.disqualified}
                 />

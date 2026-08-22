@@ -4,11 +4,11 @@ import 'server-only';
 //
 // Both totals on a sheet are denormalised: `totalPenalty` is what the standings
 // read, so it has to be recomputed whenever anything it depends on changes. For
-// the ORC's part that is only the sheet and its stage's answer key, but the time
-// part of a rally is a *chain*: the delta a participant carries out of one stage
-// is the starting point of the next, and whether a stage is the last one — which
-// decides whether a blown finish window is a penalty or a disqualification —
-// changes as soon as a stage is added or deleted.
+// the ORC's and the merk part that is only the sheet and its stage's keys, but
+// the time part of a rally is a *chain*: the delta a participant carries out of
+// one stage is the starting point of the next, and whether a stage is the last
+// one — which decides whether a blown finish window is a penalty or a
+// disqualification — changes as soon as a stage is added or deleted.
 //
 // So a write never rescores a single sheet: it rescores every sheet of the
 // participants it can affect, in stage order, in one bulkWrite.
@@ -16,7 +16,7 @@ import 'server-only';
 import mongoose from 'mongoose';
 
 import { AnswerSheet, Stage } from '../models';
-import { calculateTotalPenalty } from './scoring';
+import { calculateMerkPenalty, calculateTotalPenalty } from './scoring';
 import { scoreRallyTimes, type RallyStageTimeInput, type TimeEntryRow } from './timeScoring';
 
 // The running order of a rally is the order its stages were created in — the
@@ -31,8 +31,9 @@ interface RescoreOptions {
   eqs?: number[];
 }
 
-// Recompute `totalPenalty` (ORC's + time), the per-row time cells and the
-// disqualification flag for a rally, or for just some of its participants.
+// Recompute `totalPenalty` (ORC's + time + merk), the per-row time and merk
+// cells and the disqualification flag for a rally, or for just some of its
+// participants.
 export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {}) {
   const stages = await loadStagesInOrder(rallyId);
 
@@ -84,6 +85,9 @@ export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {
 
       const orcPenalty = stage ? calculateTotalPenalty(stage.scoreKey, sheet.answers) : 0;
       const timePenalty = timeResult ? timeResult.totalPenalty : 0;
+      // The merk column is scored against the stage's merk key, vertically: an
+      // untyped column costs every letter of the key, exactly like a blank card.
+      const merkResult = calculateMerkPenalty(stage?.merkScoreKey, sheet.merkScores);
 
       operations.push({
         updateOne: {
@@ -103,10 +107,18 @@ export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {
                   }))
                 : sheet.timePenalties,
               timePenalty,
+              // The officials' letters are kept; only the derived penalty of a
+              // row — the 30 points it made a double — is (re)written.
+              merkScores: merkResult.rows.map((row) => ({
+                rowNumber: row.rowNumber,
+                merk: row.merk,
+                strafp: row.strafp,
+              })),
+              merkPenalty: merkResult.totalPenalty,
               disqualified: timeResult ? timeResult.disqualified : false,
               startDelta: timeResult ? timeResult.startDelta : 0,
               endDelta: timeResult ? timeResult.endDelta : 0,
-              totalPenalty: orcPenalty + timePenalty,
+              totalPenalty: orcPenalty + timePenalty + merkResult.totalPenalty,
             },
           },
         },
