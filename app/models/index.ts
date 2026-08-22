@@ -93,13 +93,17 @@ const StageSchema = new mongoose.Schema({
     finishLateWindow: { type: Number, default: 60 },
     outOfWindowPenalty: { type: Number, default: 60 },
   },
-  // Merk key of the stage, 6 rows: one letter per row. The merk column is
-  // scored vertically — the column as a whole is compared with the key, not row
-  // by row (see app/lib/scoring.ts) — so `maxPenalty` is not a row cap: the row
-  // maximums are summed into one cap on the whole column.
+  // Merk key of the stage, 6 rows: one correct letter and one explicitly false
+  // letter per row. The merk column is scored vertically — the column as a whole
+  // is compared with the key, not row by row (see app/lib/scoring.ts) — so both
+  // letter lists are read as sets over the whole column, and `maxPenalty` is not
+  // a row cap: the row maximums are summed into one cap on the whole column.
   merkScoreKey: [{
     rowNumber: Number,
     merk: String,
+    // A letter that costs 30 points wherever in the column it is written, the
+    // merk counterpart of an ORC row's falseAnswers.
+    falseMerk: String,
     maxPenalty: {
       type: Number,
       default: 0
@@ -205,8 +209,8 @@ const AnswerSheetSchema = new mongoose.Schema({
   // Merk rows, 6 of them. Officials type only the `merk` letter the participant
   // wrote; `strafp` is computed server-side from the stage's merk key, like the
   // time rows. The column is scored vertically, so a row's `strafp` is the 30
-  // points that row's letter made a double — the points for a *missing* letter
-  // belong to no row and live in `merkPenalty` only.
+  // points that row's letter cost as a double or as a false merk — the points
+  // for a *missing* letter belong to no row and live in `merkPenalty` only.
   merkScores: [{
     rowNumber: Number,
     merk: String,

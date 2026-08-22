@@ -24,6 +24,8 @@ interface Stage {
   merkScoreKey?: {
     rowNumber: number;
     merk: string;
+    // The letter this key rules out anywhere in the merk column.
+    falseMerk?: string;
     maxPenalty?: number;
   }[];
   timeConfig?: {

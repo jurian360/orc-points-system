@@ -1,5 +1,5 @@
 import React from 'react';
-import { maxMerkPenalty, PENALTY_PER_ERROR } from '../lib/scoring';
+import { maxMerkPenalty, merkFalseLetters, PENALTY_PER_ERROR } from '../lib/scoring';
 import {
   maxStageTimePenalty,
   resolveTimeConfig,
@@ -21,6 +21,9 @@ export interface StageScoreKeyRow {
 export interface StageMerkKeyRow {
   rowNumber: number;
   merk?: string;
+  // A letter the key rules out; read as part of the column-wide false set, like
+  // `merk` is read as part of the correct one.
+  falseMerk?: string;
   maxPenalty?: number;
 }
 
@@ -59,12 +62,15 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
   const orcTotal = sortedRows.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
   const tijdTotal = maxStageTimePenalty(timeRows, config, isFinalStage);
   // The merk column is scored vertically, so its maximum is not the sum of the
-  // rows: it is one error per distinct letter of the key, bounded by the cap the
-  // stage's row maximums add up to.
+  // rows: it is one error per distinct letter of the key and one per letter it
+  // rules out, bounded by the cap the stage's row maximums add up to.
   const diversenTotal = maxMerkPenalty(merkRows);
   const merkKeyLetters = merkRows
     .map((row) => (row.merk || '').trim().toUpperCase())
     .filter(Boolean);
+  // The false letters are a set over the whole column, so they are shown as one
+  // list rather than as something belonging to the row they were typed on.
+  const merkFalse = merkFalseLetters(merkRows);
   const merkCap = merkRows.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
 
   const columnRange = (rows: StageScoreKeyRow[]): string =>
@@ -324,6 +330,12 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
                     Merk
                   </th>
                   <th
+                    className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800"
+                    title="Writing this letter anywhere in the column costs one error"
+                  >
+                    Fout
+                  </th>
+                  <th
                     className="py-2 px-1 border-b border-gray-300 text-center font-bold text-sm text-gray-800"
                     title="The merk column is capped at the sum of these, not row by row"
                   >
@@ -337,8 +349,11 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
                     <td className="py-1.5 px-1 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center">
                       {row.rowNumber}
                     </td>
-                    <td className="py-1.5 px-2 border-b border-r border-gray-300 text-center text-base font-bold text-gray-800">
+                    <td className="py-1.5 px-2 border-b border-r border-gray-300 text-center text-base font-bold text-green-700">
                       {(row.merk || '').trim().toUpperCase() || '-'}
+                    </td>
+                    <td className="py-1.5 px-2 border-b border-r border-gray-300 text-center text-base font-bold text-red-700">
+                      {(row.falseMerk || '').trim().toUpperCase() || '-'}
                     </td>
                     <td className="py-1.5 px-1 border-b border-gray-300 text-center text-base font-bold text-gray-900">
                       {row.maxPenalty || 0}
@@ -403,7 +418,14 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
               'nothing'
             )}{' '}
             in any rows, in any order. Every key letter given too few or too many times costs{' '}
-            {PENALTY_PER_ERROR} points, once; a letter that is not in the key never costs anything.
+            {PENALTY_PER_ERROR} points, once. The letters it rules out —{' '}
+            {merkFalse.length > 0 ? (
+              <span className="font-bold text-red-700">{merkFalse.join(' ')}</span>
+            ) : (
+              'none'
+            )}{' '}
+            — cost {PENALTY_PER_ERROR} points each wherever in the column they are written, however
+            often. A letter in neither list never costs anything.
             {merkCap > 0 && ` The column is capped at ${merkCap}.`}
           </p>
           <p className="text-gray-600">

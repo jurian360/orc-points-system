@@ -160,19 +160,26 @@ export function calculateTotalPenalty(
 // key. A key of "A, A, C" asks for two A's and a C somewhere in the column, in
 // any rows and in any order.
 //
-// Exactly two things cost 30 points, and no letter of the key can cost them
-// more than once:
+// Exactly three things cost 30 points, and no letter can cost them more than
+// once:
 //
 //   - a key letter given fewer times than the key asks for (a missing letter);
-//   - a key letter given more times than the key asks for (a double).
+//   - a key letter given more times than the key asks for (a double);
+//   - a letter the key explicitly rules out (a false merk), however often it is
+//     written.
 //
-// A letter that is not in the key at all is ignored, however often it is
-// written — the key decides what is scored here just as it does for the ORC
-// rows. Against the key A, A, C:
+// The false letters are the merk counterpart of an ORC row's `falseAnswers`:
+// officials type them next to the correct ones, and — because this check is
+// vertical — they are read as one set over the whole column, not per row. A
+// letter that is in neither list is ignored, however often it is written — the
+// key decides what is scored here just as it does for the ORC rows. Against the
+// key A, A, C with B ruled out as false:
 //
 //   A C         -> 30, one A is missing
 //   A A C C     -> 30, C is doubled
-//   B A A C     ->  0, B is not part of this check
+//   B A A C     -> 30, B is ruled out by the key
+//   B B A A C   -> 30, still one B — never twice for the same letter
+//   D A A C     ->  0, D is part of neither list
 //   A A A C     -> 30, A is doubled
 //   A A A C A   -> 30, still one double of A — never twice for the same letter
 //
@@ -183,6 +190,10 @@ export function calculateTotalPenalty(
 export interface MerkKeyRow {
   rowNumber: number;
   merk?: string;
+  // The letter this row rules out. Like the correct letters, the false ones are
+  // read as a set over the whole column (see merkFalseLetters) — the row a
+  // false letter is typed on is only where the official happened to write it.
+  falseMerk?: string;
   // The merk column has no per-row penalty — the check is vertical. The row
   // maximums are summed into one cap on the whole column (see merkColumnCap).
   maxPenalty?: number;
@@ -197,8 +208,10 @@ export interface MerkAnswerRow {
 //   'blank'   — nothing written on this row
 //   'ok'      — a key letter, within the number of times the key asks for it
 //   'double'  — a key letter written more often than the key asks for
-//   'ignored' — a letter the key does not use, which never costs anything
-export type MerkRowStatus = 'blank' | 'ok' | 'double' | 'ignored';
+//   'false'   — a letter the key explicitly rules out
+//   'ignored' — a letter the key does not use either way, which never costs
+//               anything
+export type MerkRowStatus = 'blank' | 'ok' | 'double' | 'false' | 'ignored';
 
 export interface ScoredMerkRow {
   rowNumber: number;
@@ -208,16 +221,22 @@ export interface ScoredMerkRow {
 }
 
 export interface MerkPenaltyResult {
-  // The merk part of a sheet's penalty: 30 per missing and per doubled key
-  // letter, capped by the column's maximum when the stage sets one.
+  // The merk part of a sheet's penalty: 30 per missing key letter, per doubled
+  // key letter and per false letter given, capped by the column's maximum when
+  // the stage sets one.
   totalPenalty: number;
   rows: ScoredMerkRow[];
   // Key letters the column is short of, and key letters it holds too many of.
   // Each of them is one 30-point error.
   missing: string[];
   doubled: string[];
-  // The distinct letters the key asks for, most-asked-for first as written.
+  // The false letters this column actually holds — one 30-point error each,
+  // however often each of them was written.
+  falseGiven: string[];
+  // The distinct letters the key asks for and the distinct letters it rules
+  // out, both sorted.
   keyLetters: string[];
+  falseLetters: string[];
   // The cap that was applied (0 when the stage sets none) and whether it bit.
   maxPenalty: number;
   capped: boolean;
@@ -242,14 +261,35 @@ export function merkColumnCap(merkScoreKey: MerkKeyRow[] | undefined): number {
   return (merkScoreKey || []).reduce((sum, row) => sum + (row?.maxPenalty || 0), 0);
 }
 
+// The distinct letters a stage's merk key rules out, as one set over the whole
+// column — the row a false letter was typed on carries no meaning, exactly as
+// for the correct ones.
+//
+// A letter the key also asks for is not a false answer: the correct key wins, so
+// a key that contradicts itself never charges a participant for writing what it
+// asked for.
+export function merkFalseLetters(merkScoreKey: MerkKeyRow[] | undefined): string[] {
+  const correct = new Set(
+    (merkScoreKey || []).map((row) => normalizeMerk(row?.merk)).filter(Boolean)
+  );
+  const falseLetters = new Set(
+    (merkScoreKey || [])
+      .map((row) => normalizeMerk(row?.falseMerk))
+      .filter((letter) => letter && !correct.has(letter))
+  );
+  return Array.from(falseLetters).sort();
+}
+
 // The worst a participant can do on the merk column: every distinct letter of
-// the key wrong once, bounded by the column's cap. Used for the "max penalty"
-// overviews on the stage form and the stage key card.
+// the key missing and every letter it rules out written, one error each,
+// bounded by the column's cap. Used for the "max penalty" overviews on the
+// stage form and the stage key card.
 export function maxMerkPenalty(merkScoreKey: MerkKeyRow[] | undefined): number {
   const distinct = new Set(
     (merkScoreKey || []).map((row) => normalizeMerk(row?.merk)).filter(Boolean)
   );
-  const worst = distinct.size * PENALTY_PER_ERROR;
+  const worst =
+    (distinct.size + merkFalseLetters(merkScoreKey).length) * PENALTY_PER_ERROR;
   const cap = merkColumnCap(merkScoreKey);
   return cap > 0 ? Math.min(worst, cap) : worst;
 }
@@ -263,6 +303,8 @@ export function calculateMerkPenalty(
     .map((row) => normalizeMerk(row?.merk))
     .filter(Boolean);
   const keyCounts = countLetters(keyLetterList);
+  const falseLetters = merkFalseLetters(merkScoreKey);
+  const falseSet = new Set(falseLetters);
 
   // Rows are read in row order so that, when a letter is written too often, the
   // points land on the row that made it a double rather than on the first
@@ -275,15 +317,29 @@ export function calculateMerkPenalty(
   );
 
   const seen = new Map<string, number>();
+  const seenFalse = new Map<string, number>();
   const rows: ScoredMerkRow[] = given.map((row) => {
     const merk = normalizeMerk(row?.merk);
     const rowNumber = row?.rowNumber || 0;
 
     if (!merk) return { rowNumber, merk: '', strafp: 0, status: 'blank' };
 
+    if (falseSet.has(merk)) {
+      // A letter the key rules out. Like a double, it costs 30 points once: the
+      // first row that holds it carries them, the repeats are the same error.
+      const occurrence = (seenFalse.get(merk) || 0) + 1;
+      seenFalse.set(merk, occurrence);
+      return {
+        rowNumber,
+        merk,
+        strafp: occurrence === 1 ? PENALTY_PER_ERROR : 0,
+        status: 'false',
+      };
+    }
+
     const expected = keyCounts.get(merk);
     if (expected === undefined) {
-      // Not a letter of this check — free, however often it is written.
+      // In neither list — free, however often it is written.
       return { rowNumber, merk, strafp: 0, status: 'ignored' };
     }
 
@@ -312,7 +368,11 @@ export function calculateMerkPenalty(
   missing.sort();
   doubled.sort();
 
-  const raw = (missing.length + doubled.length) * PENALTY_PER_ERROR;
+  // One error per false letter the column holds, however often it was written.
+  const falseGiven = falseLetters.filter((letter) => (givenCounts.get(letter) || 0) > 0);
+
+  const raw =
+    (missing.length + doubled.length + falseGiven.length) * PENALTY_PER_ERROR;
   const maxPenalty = merkColumnCap(merkScoreKey);
   const capped = maxPenalty > 0 && raw > maxPenalty;
 
@@ -321,7 +381,9 @@ export function calculateMerkPenalty(
     rows,
     missing,
     doubled,
+    falseGiven,
     keyLetters: Array.from(keyCounts.keys()).sort(),
+    falseLetters,
     maxPenalty,
     capped,
   };
