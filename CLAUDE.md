@@ -36,7 +36,7 @@ in code and UI — do not "translate" them:
 | **IPT 0** | The stage timetable as written for participant 0. Participant `eq` passes `eq` minutes later. |
 | **GTC** | "Geheime Tijds Controle" — a secret time control, rows 2-9 of the time column. Participants do not know its ideal time beforehand. A stage uses as many as it needs (2, 4, ...); a row without an IPT 0 is not a checkpoint. |
 | **Delta** | How many minutes a participant is off their own schedule. It runs from the start of the rally to the last stage. |
-| **Merk** | Marker/sign rows, 6 rows, one letter each. Scored *vertically* against the stage's merk key. |
+| **Merk** | Marker/sign rows, 6 rows, one letter each. Scored *vertically* against the stage's merk key, which holds the correct letters and the letters it rules out. |
 | **Diversen** | The merk part of a sheet's penalty, the third line of TOTAAL STRAFPUNTEN next to ORC's and Tijd. |
 
 ## Data model (`app/models/index.ts`)
@@ -55,8 +55,10 @@ Rally ──< Stage ──< AnswerSheet
   `timeScoreKey` (10 rows) holds the stage timetable — `ipt` is the ideal
   passage time of participant 0 — and `timeConfig` its time-penalty settings
   (windows, maximum, break after the stage). `merkScoreKey` (6 rows) holds one
-  letter per row; because the merk check is vertical, its `maxPenalty` fields are
-  not row caps — they are summed into one cap on the whole column.
+  correct letter (`merk`) and one letter the key rules out (`falseMerk`) per row;
+  because the merk check is vertical, both are read as sets over the whole column
+  and its `maxPenalty` fields are not row caps — they are summed into one cap on
+  the whole column.
 - `AnswerSheet` — `{ eq, rallyId, stageId, answers[], timePenalties[], merkScores[],
   totalPenalty, timePenalty, merkPenalty, disqualified, startDelta, endDelta }`.
   On a time row officials type only the `wpt`; `ipt`, `plusMinus` and `strafp` are
@@ -166,21 +168,29 @@ run with different limits; `DEFAULT_TIME_CONFIG` holds the standard ones.
 The merk column is the second lettered check of a stage: 6 rows, **one letter per
 row**, and it is scored **vertically** — the column as a whole is compared with
 the stage's `merkScoreKey`, so which row a letter was written on and in what
-order do not matter. Two things cost 30 points, and no letter of the key can cost
-them more than once:
+order do not matter. A key row holds the correct letter *and* a letter the key
+rules out (`falseMerk`, the merk counterpart of an ORC row's `falseAnswers`);
+because the check is vertical, both lists count for the whole column, not for the
+row they were typed on. Three things cost 30 points, and no letter can cost them
+more than once:
 
 1. a key letter given **fewer** times than the key asks for (a missing letter);
-2. a key letter given **more** times than the key asks for (a double).
+2. a key letter given **more** times than the key asks for (a double);
+3. a letter the key **rules out**, however often it is written.
 
-A letter that is **not in the key** is ignored, however often it is written — the
-key decides what is scored here, exactly as it does for the ORC rows. Against the
-key `A A C`:
+A letter in **neither list** is ignored, however often it is written — the key
+decides what is scored here, exactly as it does for the ORC rows. A letter in
+*both* lists is a key that contradicts itself: the correct list wins, so a
+participant is never charged for writing what the key asked for. Against the key
+`A A C` with `B` ruled out:
 
 | Given | Costs | Why |
 | --- | --- | --- |
 | `A C` | 30 | one `A` missing |
 | `A A C C` | 30 | `C` doubled |
-| `B A A C` | 0 | `B` is not part of this check |
+| `B A A C` | 30 | `B` is ruled out by the key |
+| `B B A A C` | 30 | still one `B` — never twice for the same letter |
+| `D A A C` | 0 | `D` is in neither list |
 | `A A A C` | 30 | `A` doubled |
 | `A A A C A` | 30 | still one double of `A` — never twice for the same letter |
 
@@ -192,7 +202,8 @@ missing, the same as the blank card it stands for.
 The merk penalty is the **Diversen** line of TOTAAL STRAFPUNTEN and **is** part
 of `totalPenalty` and of the standings. It is stored on the sheet as
 `merkPenalty`; the per-row `strafp` only carries the 30 points a row's letter cost
-as a double, because a *missing* letter belongs to no row.
+as a double or as a ruled-out letter, because a *missing* letter belongs to no
+row.
 
 Because the delta chains, **a sheet cannot be scored on its own**: writing a
 sheet re-scores that participant's whole rally (`rescoreParticipants`), and
@@ -331,7 +342,7 @@ Do not regress them.**
   `fetch`; there are no Server Components reading the DB yet. Route params
   arrive as `Promise` (Next 15) — `await`/resolve them.
 - Fixed grid sizes: **30 answer rows × 4 letter columns, 10 time rows (start,
-  8 GTC's, finish), 6 merk rows × 1 letter**. If you change a count, change the form constants
+  8 GTC's, finish), 6 merk rows × 1 correct + 1 false letter**. If you change a count, change the form constants
   (`AnswerSheetForm.tsx`), `StageForm.tsx`, and the caps in
   `app/lib/validation.ts` (which keep headroom above the form's counts).
 - Entry grids support arrow-key / auto-advance navigation via `data-grid`,

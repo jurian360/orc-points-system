@@ -148,7 +148,7 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                   <tr
                     key={row.rowNumber}
                     className={
-                      row.status === 'double'
+                      row.status === 'double' || row.status === 'false'
                         ? 'bg-red-50'
                         : index % 2 === 0
                           ? 'bg-white'
@@ -163,10 +163,18 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                       {row.status === 'double' && (
                         <span className="ml-2 text-sm font-semibold text-red-700">double</span>
                       )}
+                      {row.status === 'false' && (
+                        <span
+                          className="ml-2 text-sm font-semibold text-red-700"
+                          title="A letter this stage's merk key rules out"
+                        >
+                          fout
+                        </span>
+                      )}
                       {row.status === 'ignored' && (
                         <span
                           className="ml-2 text-sm text-gray-500"
-                          title="Not a letter of this stage's merk key — it never costs points"
+                          title="In neither list of this stage's merk key — it never costs points"
                         >
                           not in key
                         </span>
@@ -196,6 +204,15 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
               <span className="text-gray-500"> (in any row, in any order)</span>
             )}
           </p>
+          {merkResult.falseLetters.length > 0 && (
+            <p>
+              <span className="font-semibold">Ruled out:</span>{' '}
+              <span className="text-red-700 font-bold">
+                {merkResult.falseLetters.join(' ')}
+              </span>
+              <span className="text-gray-500"> (30 points each, in any row)</span>
+            </p>
+          )}
           {merkResult.missing.length > 0 && (
             <p className="text-red-700 font-semibold">
               Missing: {merkResult.missing.join(' ')} — {merkResult.missing.length * 30} points
@@ -206,9 +223,15 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
               Doubled: {merkResult.doubled.join(' ')} — {merkResult.doubled.length * 30} points
             </p>
           )}
-          {merkResult.keyLetters.length > 0 &&
+          {merkResult.falseGiven.length > 0 && (
+            <p className="text-red-700 font-semibold">
+              False: {merkResult.falseGiven.join(' ')} — {merkResult.falseGiven.length * 30} points
+            </p>
+          )}
+          {(merkResult.keyLetters.length > 0 || merkResult.falseLetters.length > 0) &&
             merkResult.missing.length === 0 &&
-            merkResult.doubled.length === 0 && (
+            merkResult.doubled.length === 0 &&
+            merkResult.falseGiven.length === 0 && (
               <p className="text-green-700 font-semibold">Column complete — no merk penalty.</p>
             )}
           {merkResult.capped && (

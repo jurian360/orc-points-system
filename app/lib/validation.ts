@@ -135,7 +135,12 @@ export interface NormalizedScoreKey {
     plusMinus: string;
     maxPenalty: number;
   }[];
-  merkScoreKey: { rowNumber: number; merk: string; maxPenalty: number }[];
+  merkScoreKey: {
+    rowNumber: number;
+    merk: string;
+    falseMerk: string;
+    maxPenalty: number;
+  }[];
   timeConfig: StageTimeConfig;
 }
 
@@ -202,6 +207,9 @@ export function processScoreKey(body: Record<string, unknown>): NormalizedScoreK
     return {
       rowNumber: num(r.rowNumber),
       merk: str(r.merk),
+      // The letter this row rules out; read as part of the column-wide false
+      // set, exactly like `merk` is read as part of the correct one.
+      falseMerk: str(r.falseMerk),
       maxPenalty: num(r.maxPenalty),
     };
   });

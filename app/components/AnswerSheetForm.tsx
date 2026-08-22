@@ -759,7 +759,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
                     <tr
                       key={row.rowNumber}
                       className={
-                        scored?.status === 'double'
+                        scored?.status === 'double' || scored?.status === 'false'
                           ? 'bg-red-50'
                           : rowIndex % 2 === 0
                             ? 'bg-white'
@@ -782,10 +782,18 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
                           onChange={(e) => handleMerkChange(rowIndex, e.target.value)}
                           aria-label={`Merk letter for row ${row.rowNumber}`}
                         />
+                        {scored?.status === 'false' && (
+                          <span
+                            className="ml-1 text-[10px] font-semibold text-red-700"
+                            title="A letter this stage's merk key rules out"
+                          >
+                            fout
+                          </span>
+                        )}
                         {scored?.status === 'ignored' && (
                           <span
                             className="ml-1 text-[10px] text-gray-500"
-                            title="Not a letter of this stage's merk key — it never costs points"
+                            title="In neither list of this stage's merk key — it never costs points"
                           >
                             not in key
                           </span>
@@ -815,6 +823,15 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
                 <span className="text-gray-500"> · any row, any order</span>
               )}
             </p>
+            {merkResult.falseLetters.length > 0 && (
+              <p>
+                <span className="font-semibold">Fout:</span>{' '}
+                <span className="text-red-700 font-bold">
+                  {merkResult.falseLetters.join(' ')}
+                </span>
+                <span className="text-gray-500"> · {PENALTY_PER_ERROR} each, any row</span>
+              </p>
+            )}
             {merkResult.missing.length > 0 && (
               <p className="text-red-700 font-semibold">
                 Missing: {merkResult.missing.join(' ')} —{' '}
@@ -827,9 +844,16 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
                 {merkResult.doubled.length * PENALTY_PER_ERROR}
               </p>
             )}
-            {merkResult.keyLetters.length > 0 &&
+            {merkResult.falseGiven.length > 0 && (
+              <p className="text-red-700 font-semibold">
+                False: {merkResult.falseGiven.join(' ')} —{' '}
+                {merkResult.falseGiven.length * PENALTY_PER_ERROR}
+              </p>
+            )}
+            {(merkResult.keyLetters.length > 0 || merkResult.falseLetters.length > 0) &&
               merkResult.missing.length === 0 &&
-              merkResult.doubled.length === 0 && (
+              merkResult.doubled.length === 0 &&
+              merkResult.falseGiven.length === 0 && (
                 <p className="text-green-700 font-semibold">Column complete — no merk penalty.</p>
               )}
             {merkResult.capped && (
