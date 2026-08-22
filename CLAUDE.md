@@ -36,7 +36,8 @@ in code and UI — do not "translate" them:
 | **IPT 0** | The stage timetable as written for participant 0. Participant `eq` passes `eq` minutes later. |
 | **GTC** | "Geheime Tijds Controle" — a secret time control, rows 2-9 of the time column. Participants do not know its ideal time beforehand. A stage uses as many as it needs (2, 4, ...); a row without an IPT 0 is not a checkpoint. |
 | **Delta** | How many minutes a participant is off their own schedule. It runs from the start of the rally to the last stage. |
-| **Merk** | Marker/sign rows, 6 rows, scored by officials. |
+| **Merk** | Marker/sign rows, 6 rows, one letter each. Scored *vertically* against the stage's merk key. |
+| **Diversen** | The merk part of a sheet's penalty, the third line of TOTAAL STRAFPUNTEN next to ORC's and Tijd. |
 
 ## Data model (`app/models/index.ts`)
 
@@ -53,12 +54,14 @@ Rally ──< Stage ──< AnswerSheet
   columns hold single values and have no order.
   `timeScoreKey` (10 rows) holds the stage timetable — `ipt` is the ideal
   passage time of participant 0 — and `timeConfig` its time-penalty settings
-  (windows, maximum, break after the stage). `merkScoreKey` (6 rows) stays an
-  officials' reference.
+  (windows, maximum, break after the stage). `merkScoreKey` (6 rows) holds one
+  letter per row; because the merk check is vertical, its `maxPenalty` fields are
+  not row caps — they are summed into one cap on the whole column.
 - `AnswerSheet` — `{ eq, rallyId, stageId, answers[], timePenalties[], merkScores[],
-  totalPenalty, timePenalty, disqualified, startDelta, endDelta }`. On a time row
-  officials type only the `wpt`; `ipt`, `plusMinus` and `strafp` are computed
-  server-side.
+  totalPenalty, timePenalty, merkPenalty, disqualified, startDelta, endDelta }`.
+  On a time row officials type only the `wpt`; `ipt`, `plusMinus` and `strafp` are
+  computed server-side. On a merk row they type only the `merk` letter; its
+  `strafp` is computed too.
 - **Unique index `{ stageId, eq }`** — one sheet per participant per stage. The
   pre-insert `findOne` check is a nicety; the index is the real guard, and the
   `11000` duplicate-key error is mapped to a 409.
@@ -74,7 +77,8 @@ Rally ──< Stage ──< AnswerSheet
   their sheets in that rally. `POST .../participants/import` writes a whole entry
   list in one `bulkWrite` of upserts — see the import section below.
 - `totalPenalty` is **denormalised** on the sheet: the ORC's penalty plus the
-  time penalty, computed server-side at write time. Standings read this field.
+  time penalty plus the merk penalty, computed server-side at write time.
+  Standings read this field.
   Re-scoring goes through `app/lib/rescore.ts` (`rescoreRally` /
   `rescoreParticipants`, one `bulkWrite`) because the time part is a chain — see
   the scoring rules below.
@@ -113,15 +117,12 @@ for the order, `N` alone costs 30 for the missing `W` and nothing more, and on
 the key `BAC` both `CA` and `AB` cost 60 — 30 for the missing letter and 30 for
 the order, because two letters do show an order.
 
-Sheet total = ORC's rows + the stage's time penalty. Rally total = sum of a
-participant's sheet totals; standings sort ascending, ties broken by EQ, with
-disqualified participants last. A standings entry carries the two parts as well
-(`orcPenalty` / `timePenalty`, the ORC's part being the stored total minus the
-stored time part), so the table shows an ORC's, a Tijd and a Total column.
-
-Merk penalties are typed in **by officials** — they are not derived from a key,
-and they are shown and summed in the card view but are **not** part of
-`totalPenalty` or of the standings.
+Sheet total = ORC's rows + the stage's time penalty + the stage's merk penalty.
+Rally total = sum of a participant's sheet totals; standings sort ascending, ties
+broken by EQ, with disqualified participants last. A standings entry carries the
+three parts as well (`orcPenalty` / `timePenalty` / `merkPenalty`, the ORC's part
+being the stored total minus the stored time and merk parts), so the table shows
+an ORC's, a Tijd, a Diversen and a Total column.
 
 This module is shared by the API and the React views on purpose: the scoring
 detail must agree with the stored total. **If you change a rule, change it
@@ -159,6 +160,39 @@ minutes. Officials type the WPT; the delta is `WPT - IPT` in minutes.
 
 Windows, the maximum and the break live in `Stage.timeConfig` so an event can be
 run with different limits; `DEFAULT_TIME_CONFIG` holds the standard ones.
+
+## Merk scoring rules (`app/lib/scoring.ts`)
+
+The merk column is the second lettered check of a stage: 6 rows, **one letter per
+row**, and it is scored **vertically** — the column as a whole is compared with
+the stage's `merkScoreKey`, so which row a letter was written on and in what
+order do not matter. Two things cost 30 points, and no letter of the key can cost
+them more than once:
+
+1. a key letter given **fewer** times than the key asks for (a missing letter);
+2. a key letter given **more** times than the key asks for (a double).
+
+A letter that is **not in the key** is ignored, however often it is written — the
+key decides what is scored here, exactly as it does for the ORC rows. Against the
+key `A A C`:
+
+| Given | Costs | Why |
+| --- | --- | --- |
+| `A C` | 30 | one `A` missing |
+| `A A C C` | 30 | `C` doubled |
+| `B A A C` | 0 | `B` is not part of this check |
+| `A A A C` | 30 | `A` doubled |
+| `A A A C A` | 30 | still one double of `A` — never twice for the same letter |
+
+The column total is capped at the sum of the key rows' `maxPenalty` when that sum
+is > 0 (the merk check has no rows of its own to cap). A sheet with no merk rows
+is an untyped column, not an unscored one: every letter of the key counts as
+missing, the same as the blank card it stands for.
+
+The merk penalty is the **Diversen** line of TOTAAL STRAFPUNTEN and **is** part
+of `totalPenalty` and of the standings. It is stored on the sheet as
+`merkPenalty`; the per-row `strafp` only carries the 30 points a row's letter cost
+as a double, because a *missing* letter belongs to no row.
 
 Because the delta chains, **a sheet cannot be scored on its own**: writing a
 sheet re-scores that participant's whole rally (`rescoreParticipants`), and
@@ -297,7 +331,7 @@ Do not regress them.**
   `fetch`; there are no Server Components reading the DB yet. Route params
   arrive as `Promise` (Next 15) — `await`/resolve them.
 - Fixed grid sizes: **30 answer rows × 4 letter columns, 10 time rows (start,
-  8 GTC's, finish), 6 merk rows**. If you change a count, change the form constants
+  8 GTC's, finish), 6 merk rows × 1 letter**. If you change a count, change the form constants
   (`AnswerSheetForm.tsx`), `StageForm.tsx`, and the caps in
   `app/lib/validation.ts` (which keep headroom above the form's counts).
 - Entry grids support arrow-key / auto-advance navigation via `data-grid`,
@@ -324,14 +358,15 @@ Do not regress them.**
 ## Gotchas
 
 - Editing a stage's key **re-scores** existing sheets. Any new write path that
-  changes a key, a stage's place in the running order or a sheet's WPT must call
-  `rescoreRally` / `rescoreParticipants`, or standings silently drift. A time
+  changes a key, a stage's place in the running order, a sheet's WPT or a sheet's
+  merk letters must call `rescoreRally` / `rescoreParticipants`, or standings
+  silently drift. A time
   change never affects one sheet only: it moves the delta of every later stage of
   that participant.
-- `ControlekaartCard` recomputes the ORC total from the key rather than reading
-  `totalPenalty`, and sums the time penalties stored on the sheet's rows (it
-  cannot recompute them without the rest of the rally). Standings use the stored
-  field. Both are intentional — keep them consistent by keeping re-scoring
+- `ControlekaartCard` recomputes the ORC and the merk total from the stage's keys
+  rather than reading `totalPenalty`, and sums the time penalties stored on the
+  sheet's rows (it cannot recompute them without the rest of the rally).
+  Standings use the stored field. Both are intentional — keep them consistent by keeping re-scoring
   correct.
 - The rate limiter is in-memory and per-process; it is only correct for the
   single-container deployment. Scaling out needs a shared store.

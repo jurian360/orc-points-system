@@ -3,7 +3,7 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../lib/mongodb';
 import { AnswerSheet, Stage } from '../../models';
-import { calculateTotalPenalty } from '../../lib/scoring';
+import { calculateMerkPenalty, calculateTotalPenalty } from '../../lib/scoring';
 import { readBody, requireSession } from '../../lib/api-guard';
 import { rescoreParticipants } from '../../lib/rescore';
 import {
@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
   }
 
   const answers = parseAnswerRows(body.answers);
+  const merkScores = parseMerkScores(body.merkScores);
 
   try {
     await dbConnect();
@@ -115,15 +116,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const merkPenalty = calculateMerkPenalty(stage.merkScoreKey, merkScores).totalPenalty;
+
     const answerSheet = new AnswerSheet({
       eq,
       rallyId: stage.rallyId,
       stageId,
       answers,
       timePenalties: parseTimePenalties(body.timePenalties),
-      merkScores: parseMerkScores(body.merkScores),
-      // ORC's part only; rescoreParticipants adds the time part below.
-      totalPenalty: calculateTotalPenalty(stage.scoreKey, answers),
+      merkScores,
+      merkPenalty,
+      // ORC's + merk; rescoreParticipants adds the time part below.
+      totalPenalty: calculateTotalPenalty(stage.scoreKey, answers) + merkPenalty,
     });
 
     const savedSheet = await answerSheet.save();

@@ -18,6 +18,8 @@ interface Stage {
   // letters are scored on their order too.
   scoreKey?: { rowNumber: number; orderMatters?: boolean }[];
   timeScoreKey?: { rowNumber: number; ipt?: string }[];
+  // The merk key: the entry form scores the merk column live against it.
+  merkScoreKey?: { rowNumber: number; merk?: string; maxPenalty?: number }[];
   timeConfig?: Record<string, number>;
 }
 

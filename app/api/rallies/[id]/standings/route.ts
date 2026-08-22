@@ -10,8 +10,8 @@ import mongoose from 'mongoose';
 // penalty summed across all of that participant's answer sheets in the rally.
 // Ranked ascending — the lowest total penalty is the winner.
 //
-// Each entry splits its total into the ORC's (letters) and the Tijd (time) part,
-// so the standings show where a crew lost their points.
+// Each entry splits its total into the ORC's (letters), the Tijd (time) and the
+// Diversen (merk) part, so the standings show where a crew lost their points.
 //
 // Each entry also carries the participant's class and crew names when they have
 // been recorded, so the table can show who an EQ is. Only participants with
@@ -48,10 +48,11 @@ export async function GET(
     >(participants.map((participant) => [participant.eq, participant]));
 
     // Aggregate penalties per participant. `totalPenalty` on a sheet already
-    // covers the ORC's and the time part; both parts are carried separately so
-    // the table can show where the points came from. The ORC's part is what is
-    // left of the stored total after the stored time part — the two are written
-    // together by app/lib/rescore.ts, so no sheet has to be re-scored here.
+    // covers the ORC's, the time and the merk part; all three are carried
+    // separately so the table can show where the points came from. The ORC's
+    // part is what is left of the stored total after the stored time and merk
+    // parts — they are written together by app/lib/rescore.ts, so no sheet has
+    // to be re-scored here.
     const byParticipant = new Map<
       number,
       {
@@ -59,6 +60,7 @@ export async function GET(
         totalPenalty: number;
         orcPenalty: number;
         timePenalty: number;
+        merkPenalty: number;
         sheetsSubmitted: number;
         disqualified: boolean;
       }
@@ -70,14 +72,17 @@ export async function GET(
         totalPenalty: 0,
         orcPenalty: 0,
         timePenalty: 0,
+        merkPenalty: 0,
         sheetsSubmitted: 0,
         disqualified: false,
       };
       const totalPenalty = sheet.totalPenalty || 0;
       const timePenalty = sheet.timePenalty || 0;
+      const merkPenalty = sheet.merkPenalty || 0;
       existing.totalPenalty += totalPenalty;
-      existing.orcPenalty += totalPenalty - timePenalty;
+      existing.orcPenalty += totalPenalty - timePenalty - merkPenalty;
       existing.timePenalty += timePenalty;
+      existing.merkPenalty += merkPenalty;
       existing.sheetsSubmitted += 1;
       existing.disqualified = existing.disqualified || Boolean(sheet.disqualified);
       byParticipant.set(sheet.eq, existing);

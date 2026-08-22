@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ClassificationBadge from './ClassificationBadge';
 import { crewLabel, type ClassificationValue } from '../lib/participants';
+import { calculateMerkPenalty, PENALTY_PER_ERROR, type MerkKeyRow } from '../lib/scoring';
 import {
   scoreRallyTimes,
   timeRowLabel,
@@ -19,6 +20,11 @@ interface Stage {
   scoreKey?: { rowNumber: number; orderMatters?: boolean }[];
   timeScoreKey?: TimeKeyRow[];
   timeConfig?: Partial<StageTimeConfig>;
+  // The merk key, unlike the ORC key, *is* read here: the merk column is scored
+  // from the sheet alone (it does not chain across stages), so the card can show
+  // the official what the column costs while they type it — the same module the
+  // server scores it with.
+  merkScoreKey?: MerkKeyRow[];
 }
 
 // A sheet this participant already has for another stage of the same rally. The
@@ -52,10 +58,11 @@ interface TimePenaltyRow {
   wpt: string;
 }
 
+// Only the letter is typed on a merk row; the penalty is scored from the
+// stage's merk key.
 interface MerkRow {
   rowNumber: number;
   merk: string;
-  strafp: string;
 }
 
 // An existing sheet being corrected. Rows are keyed by their row number, so a
@@ -80,7 +87,7 @@ interface AnswerSheetFormProps {
       plusMinus: string;
       strafp: number;
     }[];
-    merkScores: { rowNumber: number; merk: string; strafp: number }[];
+    merkScores: { rowNumber: number; merk: string }[];
   }) => void;
   stages: Stage[];
   // Every sheet already entered for this rally; used to carry the participant's
@@ -101,7 +108,7 @@ interface AnswerSheetFormProps {
 const ANSWER_ROWS = 30; // ORC's letters (was 40)
 const LETTER_COLUMNS = 4;
 const TIME_ROWS = 10; // IPT / WPT / +/- / strafp
-const MERK_ROWS = 6; // Merk (officials)
+const MERK_ROWS = 6; // Merk letters, scored vertically against the stage key
 
 const ORC_HALF = Math.ceil(ANSWER_ROWS / 2); // rows per ORC column
 
@@ -114,7 +121,7 @@ const GRID_DIMS: Record<GridName, { rows: number; cols: number }> = {
   'orc-left': { rows: ORC_HALF, cols: LETTER_COLUMNS + 1 },
   'orc-right': { rows: ANSWER_ROWS - ORC_HALF, cols: LETTER_COLUMNS + 1 },
   time: { rows: TIME_ROWS, cols: 1 }, // wpt only — the rest is computed
-  merk: { rows: MERK_ROWS, cols: 2 }, // merk, strafp
+  merk: { rows: MERK_ROWS, cols: 1 }, // merk letter only — the rest is computed
 };
 
 const toNumber = (value: string): number => {
@@ -271,13 +278,9 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
   const [merkScores, setMerkScores] = useState<MerkRow[]>(() =>
     fillRows<MerkRow>(
       MERK_ROWS,
-      (rowNumber) => ({ rowNumber, merk: '', strafp: '' }),
+      (rowNumber) => ({ rowNumber, merk: '' }),
       initialData?.merkScores,
-      (row, stored) => ({
-        ...row,
-        merk: stored.merk || '',
-        strafp: stored.strafp ? String(stored.strafp) : '',
-      })
+      (row, stored) => ({ ...row, merk: stored.merk || '' })
     )
   );
 
@@ -314,10 +317,10 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     });
   };
 
-  const handleMerkChange = (rowIndex: number, field: 'merk' | 'strafp', value: string) => {
+  const handleMerkChange = (rowIndex: number, value: string) => {
     setMerkScores((prev) => {
       const next = [...prev];
-      next[rowIndex] = { ...next[rowIndex], [field]: value };
+      next[rowIndex] = { ...next[rowIndex], merk: value.toUpperCase() };
       return next;
     });
   };
@@ -374,10 +377,19 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
         free: false,
       }));
 
+  // Live merk scoring for the sheet being typed. The merk column is scored on
+  // its own — it does not chain across stages the way the time does — so the
+  // whole result can be shown while the official types it, from the same module
+  // the server scores it with.
+  const merkResult = useMemo(() => {
+    const stage = stages.find((candidate) => candidate._id === stageId);
+    return calculateMerkPenalty(stage?.merkScoreKey, merkScores);
+  }, [stages, stageId, merkScores]);
+
   // Penalty totals for the "Totaal Strafpunten" overview
   const orcTotal = answers.reduce((sum, row) => sum + toNumber(row.strafp), 0);
   const tijdTotal = timeResult ? timeResult.totalPenalty : 0;
-  const diversenTotal = merkScores.reduce((sum, row) => sum + toNumber(row.strafp), 0);
+  const diversenTotal = merkResult.totalPenalty;
   const grandTotal = orcTotal + tijdTotal + diversenTotal;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -411,10 +423,11 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
       strafp: row.strafp,
     }));
 
+    // Only the letters are sent; the server scores the column against the merk
+    // key, exactly as the preview above does.
     const processedMerkScores = merkScores.map((row) => ({
       rowNumber: row.rowNumber,
-      merk: row.merk.trim(),
-      strafp: toNumber(row.strafp),
+      merk: row.merk.trim().toUpperCase(),
     }));
 
     onSubmit({
@@ -740,45 +753,88 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {merkScores.map((row, rowIndex) => (
-                  <tr
-                    key={row.rowNumber}
-                    className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                  >
-                    <td className="py-0.5 px-1 border-b border-r border-gray-300 font-bold text-sm text-gray-800 text-center">
-                      {row.rowNumber}
-                    </td>
-                    <td className="py-0.5 px-0.5 border-b border-r border-gray-300 text-center">
-                      <input
-                        type="text"
-                        className="w-full min-w-[6rem] h-8 p-1 border border-gray-400 rounded text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-200 text-gray-700"
-                        value={row.merk}
-                        data-grid="merk"
-                        data-row={rowIndex}
-                        data-col={0}
-                        onKeyDown={handleCellKeyDown}
-                        onChange={(e) => handleMerkChange(rowIndex, 'merk', e.target.value)}
-                        aria-label={`Merk for row ${row.rowNumber}`}
-                      />
-                    </td>
-                    <td className="py-0.5 px-0.5 border-b border-gray-300 text-center">
-                      <input
-                        type="number"
-                        min={0}
-                        className="w-12 h-8 p-0.5 border border-gray-400 rounded text-center text-sm font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
-                        value={row.strafp}
-                        data-grid="merk"
-                        data-row={rowIndex}
-                        data-col={1}
-                        onKeyDown={handleCellKeyDown}
-                        onChange={(e) => handleMerkChange(rowIndex, 'strafp', e.target.value)}
-                        aria-label={`Strafpunten for merk row ${row.rowNumber}`}
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {merkScores.map((row, rowIndex) => {
+                  const scored = merkResult.rows[rowIndex];
+                  return (
+                    <tr
+                      key={row.rowNumber}
+                      className={
+                        scored?.status === 'double'
+                          ? 'bg-red-50'
+                          : rowIndex % 2 === 0
+                            ? 'bg-white'
+                            : 'bg-gray-50'
+                      }
+                    >
+                      <td className="py-0.5 px-1 border-b border-r border-gray-300 font-bold text-sm text-gray-800 text-center">
+                        {row.rowNumber}
+                      </td>
+                      <td className="py-0.5 px-0.5 border-b border-r border-gray-300 text-center">
+                        <input
+                          type="text"
+                          maxLength={1}
+                          className="w-10 h-8 p-0.5 border border-gray-400 rounded text-center text-sm font-bold uppercase focus:border-orange-500 focus:ring-1 focus:ring-orange-200 text-gray-700"
+                          value={row.merk}
+                          data-grid="merk"
+                          data-row={rowIndex}
+                          data-col={0}
+                          onKeyDown={handleCellKeyDown}
+                          onChange={(e) => handleMerkChange(rowIndex, e.target.value)}
+                          aria-label={`Merk letter for row ${row.rowNumber}`}
+                        />
+                        {scored?.status === 'ignored' && (
+                          <span
+                            className="ml-1 text-[10px] text-gray-500"
+                            title="Not a letter of this stage's merk key — it never costs points"
+                          >
+                            not in key
+                          </span>
+                        )}
+                      </td>
+                      <td
+                        className={`py-0.5 px-0.5 border-b border-gray-300 text-center text-sm font-bold ${
+                          scored?.strafp ? 'text-red-700' : 'text-gray-900'
+                        }`}
+                      >
+                        {scored?.strafp || 0}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+
+          {/* The merk check is vertical: the column as a whole is compared with
+              the key, so a missing letter belongs to no row. */}
+          <div className="mt-1 text-[11px] leading-tight text-gray-700 space-y-0.5">
+            <p>
+              <span className="font-semibold">Key:</span>{' '}
+              {merkResult.keyLetters.length > 0 ? merkResult.keyLetters.join(' ') : '—'}
+              {merkResult.keyLetters.length > 0 && (
+                <span className="text-gray-500"> · any row, any order</span>
+              )}
+            </p>
+            {merkResult.missing.length > 0 && (
+              <p className="text-red-700 font-semibold">
+                Missing: {merkResult.missing.join(' ')} —{' '}
+                {merkResult.missing.length * PENALTY_PER_ERROR}
+              </p>
+            )}
+            {merkResult.doubled.length > 0 && (
+              <p className="text-red-700 font-semibold">
+                Doubled: {merkResult.doubled.join(' ')} —{' '}
+                {merkResult.doubled.length * PENALTY_PER_ERROR}
+              </p>
+            )}
+            {merkResult.keyLetters.length > 0 &&
+              merkResult.missing.length === 0 &&
+              merkResult.doubled.length === 0 && (
+                <p className="text-green-700 font-semibold">Column complete — no merk penalty.</p>
+              )}
+            {merkResult.capped && (
+              <p className="text-gray-600">Capped at the stage maximum of {merkResult.maxPenalty}.</p>
+            )}
           </div>
 
           {/* Totaal Strafpunten overview */}

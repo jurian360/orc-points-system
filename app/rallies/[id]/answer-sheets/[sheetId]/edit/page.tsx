@@ -15,6 +15,8 @@ interface Stage {
   // letters are scored on their order too.
   scoreKey?: { rowNumber: number; orderMatters?: boolean }[];
   timeScoreKey?: TimeKeyRow[];
+  // The merk key: the entry form scores the merk column live against it.
+  merkScoreKey?: { rowNumber: number; merk?: string; maxPenalty?: number }[];
   timeConfig?: Partial<StageTimeConfig>;
 }
 
@@ -106,7 +108,7 @@ export default function EditAnswerSheetPage({
     stageId: string;
     answers: { rowNumber: number; selectedAnswers: string[]; strafp: number }[];
     timePenalties: { rowNumber: number; wpt: string }[];
-    merkScores: { rowNumber: number; merk: string; strafp: number }[];
+    merkScores: { rowNumber: number; merk: string }[];
   }) => {
     setSubmitting(true);
     setError(null);

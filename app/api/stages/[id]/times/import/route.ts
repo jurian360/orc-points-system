@@ -207,9 +207,9 @@ export async function POST(
         continue;
       }
 
-      // A sheet that only holds a time: no ORC's have been typed yet, so the
-      // card scores as an empty one — every letter of the key missing — until
-      // an official types it (see app/lib/scoring.ts).
+      // A sheet that only holds a time: no ORC's and no merk letters have been
+      // typed yet, so the card scores as an empty one — every letter of both
+      // keys missing — until an official types it (see app/lib/scoring.ts).
       created++;
       operations.push({
         insertOne: {
@@ -220,8 +220,10 @@ export async function POST(
             answers: [],
             timePenalties: timeRowsWith([], wpt),
             merkScores: [],
+            // rescoreParticipants below fills these in from the stage's keys.
             totalPenalty: 0,
             timePenalty: 0,
+            merkPenalty: 0,
             disqualified: false,
             startDelta: 0,
             endDelta: 0,
