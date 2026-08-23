@@ -112,8 +112,12 @@ export async function ensureRallyCode(rally: {
     const candidate =
       attempt === 0 ? base : `${base}-${randomCode().slice(0, 4)}`;
 
-    const taken = await Rally.findOne({ code: candidate, _id: { $ne: rally._id } });
-    if (taken) continue;
+    // No `$ne` on the id here: `sanitizeFilter` is on globally
+    // (app/lib/mongodb.ts) and would wrap the operator in `$eq`, which casts to
+    // an ObjectId and throws. The rally that already holds this code is ruled
+    // out in JS instead.
+    const taken = await Rally.findOne({ code: candidate });
+    if (taken && String(taken._id) !== String(rally._id)) continue;
 
     rally.code = candidate;
     try {
