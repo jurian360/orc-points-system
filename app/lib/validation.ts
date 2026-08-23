@@ -31,6 +31,11 @@ export const MAX_MERK_ROWS = 20; // forms send 6
 export const MAX_COLUMNS = 8; // forms send 4
 export const MAX_FIELD_LENGTH = 64;
 export const MAX_NAME_LENGTH = 200;
+// The controlekaart the Android app renders: 30 ORC rows, then the 6 merk rows.
+// A submission is bounded by the card, not by the generous caps above.
+export const APP_ORC_ROWS = 30;
+export const APP_MERK_ROWS = 6;
+export const APP_CARD_ROWS = APP_ORC_ROWS + APP_MERK_ROWS;
 // A rally is numbered 1..100, so an entry list cannot hold more crews than that.
 export const MAX_IMPORT_PARTICIPANTS = 100;
 // A time control hands in at most one time per participant, so the same bound
@@ -261,4 +266,74 @@ export function parseMerkScores(value: unknown) {
       strafp: 0,
     };
   });
+}
+
+// --- Cards handed in by the Android app ------------------------------------
+
+export interface ParsedCardRows {
+  answers: { rowNumber: number; selectedAnswers: string[]; strafp: number }[];
+  // Only present when the app sent the merk rows: a card that carries no merk
+  // column must not blank the letters an official already typed.
+  merkScores: { rowNumber: number; merk: string; strafp: number }[] | null;
+}
+
+// One letter of a card cell. The app sends a single upper-case character per
+// column, or an empty string for a cell the participant left blank.
+function cardLetter(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const letter = value.trim().toUpperCase();
+  return /^[A-Z0-9]$/.test(letter) ? letter : '';
+}
+
+// The rows of a finalised card, as `{id, col1..col4}` objects.
+//
+// Rows 1-30 are the ORC rows; rows 31-36, if the app sends them, are the merk
+// column, whose single letter is the row's first column. A row the app does not
+// send is a row the participant left blank — the key decides what is scored,
+// not the sheet (see app/lib/scoring.ts) — so the ORC rows are built for the
+// whole card rather than only for what arrived.
+//
+// Returns null for anything that is not an array of row objects: a malformed
+// card is refused, never silently stored as an empty one.
+export function parseAppCardRows(value: unknown): ParsedCardRows | null {
+  if (!Array.isArray(value)) return null;
+
+  const orc = new Map<number, string[]>();
+  const merk = new Map<number, string>();
+  let sawMerkRow = false;
+
+  for (const entry of value.slice(0, APP_CARD_ROWS)) {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    const row = entry as Record<string, unknown>;
+
+    const id = typeof row.id === 'number' ? row.id : Number(row.id);
+    if (!Number.isInteger(id) || id < 1 || id > APP_CARD_ROWS) return null;
+
+    const letters = [row.col1, row.col2, row.col3, row.col4].map(cardLetter);
+
+    if (id <= APP_ORC_ROWS) {
+      orc.set(id, letters.filter((letter) => letter !== ''));
+    } else {
+      sawMerkRow = true;
+      // The merk column holds one letter per row; the app only ever fills the
+      // first column of those rows.
+      merk.set(id - APP_ORC_ROWS, letters[0]);
+    }
+  }
+
+  const answers = Array.from({ length: APP_ORC_ROWS }, (_, index) => ({
+    rowNumber: index + 1,
+    selectedAnswers: orc.get(index + 1) || [],
+    strafp: 0,
+  }));
+
+  const merkScores = sawMerkRow
+    ? Array.from({ length: APP_MERK_ROWS }, (_, index) => ({
+        rowNumber: index + 1,
+        merk: merk.get(index + 1) || '',
+        strafp: 0,
+      }))
+    : null;
+
+  return { answers, merkScores };
 }

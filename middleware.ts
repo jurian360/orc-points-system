@@ -8,6 +8,11 @@ import { clientIp, rateLimit } from './app/lib/rate-limit';
 const PUBLIC_PATHS = ['/login'];
 const PUBLIC_API_PREFIX = '/api/auth/';
 
+// The two endpoints the participants' Android app calls. They are public
+// because a participant has no account: the code behind the QR they scanned is
+// the whole credential (see app/api/app/card/route.ts).
+const PUBLIC_APP_PREFIX = '/api/app/';
+
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 // Coarse per-IP ceiling across the whole API, on top of the stricter
@@ -46,11 +51,17 @@ function isSameOrigin(request: NextRequest): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname.startsWith('/api/');
+  const isAppApi = pathname.startsWith(PUBLIC_APP_PREFIX);
 
   // CSRF defense in depth. The session cookie is SameSite=Lax, which already
   // blocks cross-site form posts, but `request.json()` parses any content type,
   // so a Lax-exempt request should still be refused.
-  if (UNSAFE_METHODS.has(request.method) && !isSameOrigin(request)) {
+  //
+  // The app endpoints are exempt: they are cross-origin by nature (a phone, not
+  // a page on this site) and there is no ambient authority for a forged request
+  // to ride on — they carry no session cookie and authorise on the scanned code
+  // alone.
+  if (UNSAFE_METHODS.has(request.method) && !isAppApi && !isSameOrigin(request)) {
     return NextResponse.json({ error: 'Cross-origin request blocked' }, { status: 403 });
   }
 
@@ -69,7 +80,8 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  const isPublic = pathname.startsWith(PUBLIC_API_PREFIX) || PUBLIC_PATHS.includes(pathname);
+  const isPublic =
+    pathname.startsWith(PUBLIC_API_PREFIX) || isAppApi || PUBLIC_PATHS.includes(pathname);
 
   if (!isPublic) {
     const authenticated = await verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value);

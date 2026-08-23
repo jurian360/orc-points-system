@@ -2,7 +2,7 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
-import { Stage, AnswerSheet } from '../../../models';
+import { Stage, AnswerSheet, CardAccess } from '../../../models';
 import { readBody, requireSession } from '../../../lib/api-guard';
 import { parseName, processScoreKey } from '../../../lib/validation';
 import { rescoreRally } from '../../../lib/rescore';
@@ -112,8 +112,12 @@ export async function DELETE(
       return NextResponse.json({ error: 'Stage not found' }, { status: 404 });
     }
 
-    // Cascade: remove all answer sheets submitted for this stage.
-    await AnswerSheet.deleteMany({ stageId: id });
+    // Cascade: remove all answer sheets submitted for this stage, and the QR
+    // codes that were printed for it — a code outlives nothing.
+    await Promise.all([
+      AnswerSheet.deleteMany({ stageId: id }),
+      CardAccess.deleteMany({ stageId: id }),
+    ]);
 
     // The rally is one stage shorter: the time chain, and which finish is the
     // disqualifying one, both move.
