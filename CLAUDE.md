@@ -315,11 +315,11 @@ local Room database and talks to this app exactly twice.
   scanned code; the code alone is what a participant types when a camera will
   not focus, which is why the alphabet has no `I`, `L`, `O`, `U`, `0` or `1`
   (`app/lib/appCards.ts`).
-- **Two public endpoints**, `app/api/app/card` (scan) and `app/api/app/submit`
-  (hand in). They are the only routes in this app without `requireSession()`,
-  because a participant has no account: the scanned code is the whole
-  credential. Both are rate limited per IP, an unknown code is a 404 whether it
-  is malformed or simply wrong, and a submission has to resolve to a
+- **Two public endpoints**, `GET /api/app/card?code=…` (scan) and
+  `POST /api/app/submit` (hand in). They are the only routes in this app without
+  `requireSession()`, because a participant has no account: the scanned code is
+  the whole credential. Both are rate limited per IP, an unknown code is a 404
+  whether it is malformed or simply wrong, and a submission has to resolve to a
   `{rally, stage, eq}` an official actually printed a code for.
 - **A card is handed in once.** `CardAccess.submittedAt` is set on success and a
   second submission is a 409, so somebody who guesses a rally code and an EQ
@@ -331,11 +331,11 @@ local Room database and talks to this app exactly twice.
   them); the totals are computed here and the participant's rally is re-scored,
   exactly as when an official saves a sheet. A card that lands on a sheet a time
   import already created keeps that sheet's WPT's.
-- **The paths look like Umbraco** (`/umbraco/surface/controlekaart/...`) because
-  the app used to talk to the organisation's Umbraco backend and an installed
-  APK can only be pointed at a new host, not a new URL shape. Those two route
-  files re-export the real handlers under `/api/app` and exist for that reason
-  alone; a new version of the app should call `/api/app` directly.
+- **The app used to call an Umbraco backend** at
+  `/umbraco/surface/controlekaart/...`, which is where the Dutch field names of
+  the two payloads come from. The paths themselves are gone: the app now calls
+  `/api/app` directly, and its addresses live in one `ApiConfig` object so the
+  next move is a one-line change.
 
 `app/lib/qrcode.ts` is the QR encoder: byte mode, error-correction level M,
 versions 1-10, no dependency — the same trade-off `app/lib/spreadsheet.ts` makes
@@ -364,8 +364,6 @@ app/
   rallies/...     pages (rally dashboard, stages, answer sheets, participant view,
                   stages/[stageId]/qr-codes: the printable sheet of QR codes)
   time-import/    the time import wizard (rally -> stage -> control -> file)
-  umbraco/...     the two paths the installed Android app calls; they re-export
-                  the handlers under api/app and exist for compatibility only
   types/          shared TS interfaces
 middleware.ts     auth + rate limit + CSRF at the edge
 scripts/          generate-secret.mjs, hash-password.mjs
@@ -398,10 +396,9 @@ Do not regress them.**
   `readBody()` (256 KB cap, object-only JSON). `middleware.ts` also blocks
   unauthenticated requests — the per-handler guard is deliberate defence in
   depth, keep both. **The two Android-app endpoints are the only exception**
-  (`/api/app/*` and the `/umbraco/...` paths that forward to them): they are
-  public by design, and they pay for it with a scanned-code check, a per-IP rate
-  limit and a one-submission lock. Do not add a third public route without the
-  same three.
+  (`/api/app/*`): they are public by design, and they pay for it with a
+  scanned-code check, a per-IP rate limit and a one-submission lock. Do not add
+  a third public route without the same three.
 - **Never interpolate an unvalidated value into a Mongoose query.** Ids go
   through `mongoose.Types.ObjectId.isValid`, `eq` through
   `parseEq` / `parseEqParam`, names through `parseName`, arrays through the

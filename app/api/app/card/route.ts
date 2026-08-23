@@ -15,9 +15,9 @@ import { ensureRallyCode, ensureStageCardId, parseAppCode } from '../../../lib/a
 // (app/lib/appCards.ts) rather than derived from the EQ number, and why this
 // handler is rate limited hard enough that codes cannot be enumerated.
 //
-// The response shape is the one the app already reads — see
-// app/umbraco/surface/controlekaart/getEquipeByAppCode/route.ts for why the
-// field names look the way they do.
+// The field names of the response are the app's own vocabulary: it stores them
+// in its local database and sends them back when the card is handed in, so they
+// are named for what the app calls them rather than for the models here.
 
 // A participant scans once and, at worst, retypes a code a few times.
 const CARD_RATE_LIMIT = 20;
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
-  const code = parseAppCode(searchParams.get('appcode'));
+  const code = parseAppCode(searchParams.get('code'));
 
   // A malformed code and an unknown one get the same answer: a wrong code is a
   // wrong code, and saying which is which helps nobody but a guesser.

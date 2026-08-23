@@ -10,10 +10,8 @@ const PUBLIC_API_PREFIX = '/api/auth/';
 
 // The two endpoints the participants' Android app calls. They are public
 // because a participant has no account: the code behind the QR they scanned is
-// the whole credential (see app/api/app/card/route.ts). Both prefixes are
-// listed because the app calls the old Umbraco paths, which forward to the real
-// handlers under /api/app — a request to either has to get through.
-const PUBLIC_APP_PREFIXES = ['/api/app/', '/umbraco/surface/controlekaart/'];
+// the whole credential (see app/api/app/card/route.ts).
+const PUBLIC_APP_PREFIX = '/api/app/';
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -53,7 +51,7 @@ function isSameOrigin(request: NextRequest): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname.startsWith('/api/');
-  const isAppApi = PUBLIC_APP_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  const isAppApi = pathname.startsWith(PUBLIC_APP_PREFIX);
 
   // CSRF defense in depth. The session cookie is SameSite=Lax, which already
   // blocks cross-site form posts, but `request.json()` parses any content type,
@@ -67,7 +65,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: 'Cross-origin request blocked' }, { status: 403 });
   }
 
-  if (isApi || isAppApi) {
+  if (isApi) {
     const { ok, retryAfter } = rateLimit(
       `api:${clientIp(request)}`,
       API_RATE_LIMIT,
