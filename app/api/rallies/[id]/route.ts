@@ -5,6 +5,7 @@ import dbConnect from '../../../lib/mongodb';
 import { Rally, Stage, AnswerSheet, Participant, CardAccess } from '../../../models';
 import { readBody, requireSession } from '../../../lib/api-guard';
 import { parseName } from '../../../lib/validation';
+import { parseRallyCode } from '../../../lib/rallyCodes';
 import mongoose from 'mongoose';
 
 export async function GET(
@@ -54,6 +55,19 @@ export async function PUT(
     );
   }
 
+  // The code is optional in the body so a caller that only renames the rally
+  // cannot accidentally clear it — a rally with no code cannot be scanned into
+  // the app at all. Omitting it leaves the stored one alone.
+  const changesCode = parsed.body.code !== undefined;
+  const code = changesCode ? parseRallyCode(parsed.body.code) : null;
+
+  if (changesCode && !code) {
+    return NextResponse.json(
+      { error: 'Rally code must be letters, digits and dashes (up to 32 characters)' },
+      { status: 400 }
+    );
+  }
+
   try {
     await dbConnect();
 
@@ -65,7 +79,7 @@ export async function PUT(
 
     const updatedRally = await Rally.findByIdAndUpdate(
       id,
-      { name },
+      code ? { name, code } : { name },
       { new: true, runValidators: true }
     );
 
@@ -75,6 +89,15 @@ export async function PUT(
 
     return NextResponse.json(updatedRally);
   } catch (error) {
+    // Two rallies answering to one code would make a submission from the app
+    // ambiguous, so the unique index refuses it.
+    if (error instanceof Error && 'code' in error && error.code === 11000) {
+      return NextResponse.json(
+        { error: 'Another rally already uses that code' },
+        { status: 409 }
+      );
+    }
+
     console.error('Failed to update rally:', error);
     return NextResponse.json({ error: 'Failed to update rally' }, { status: 500 });
   }

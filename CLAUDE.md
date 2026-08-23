@@ -45,7 +45,7 @@ in code and UI — do not "translate" them:
 | **Merk** | Marker/sign rows, 6 rows, one letter each. Scored *vertically* against the stage's merk key, which holds the correct letters and the letters it rules out. |
 | **Diversen** | The merk part of a sheet's penalty, the third line of TOTAAL STRAFPUNTEN next to ORC's and Tijd. |
 | **App code** | The 8-character code behind the QR a participant scans. It stands for exactly one card — one `{rally, stage, eq}` — and is the crew's only credential. |
-| **Rally code** | A rally's short public identifier (`Rally.code`), e.g. `SARKNAJAAR`. The app shows it and sends it back with a finalised card. |
+| **Rally code** | A rally's short public identifier (`Rally.code`), e.g. `SARKNAJAAR`. Officials name it when they create the rally; the app shows it and sends it back with a finalised card. |
 | **Card number** | A stage's `cardId`: its stable number within the rally, which a submission is resolved by. Unlike the place in the running order, it does not move when a stage is deleted. |
 
 ## Data model (`app/models/index.ts`)
@@ -94,9 +94,15 @@ Rally ──< Stage ──< AnswerSheet
   code stores one card, and a second submission is refused until an official
   reopens it. See the Android app section below.
 - `Rally.code` and `Stage.cardId` are what a submission from the app is resolved
-  by. Both are generated on first use (`app/lib/appCards.ts`) rather than at
-  creation, so rallies that pre-date the app integration get one the moment
-  their first QR code is printed.
+  by. A rally gets its code when an official creates it — they type it, starting
+  from a suggestion derived from the name (`app/lib/rallyCodes.ts`, pure and
+  shared with the browser so the form and the server agree). `Stage.cardId`, and
+  the code of a rally that pre-dates this, are generated on first use
+  (`app/lib/appCards.ts`), so an older rally gets one the moment its first QR
+  code is printed. Both `POST /api/rallies` and `PUT /api/rallies/[id]` map the
+  unique index's `11000` to a 409: two rallies answering to one code would make
+  a submission ambiguous. A `PUT` that sends no `code` keeps the stored one —
+  a rally without a code cannot be scanned into the app at all.
 - `totalPenalty` is **denormalised** on the sheet: the ORC's penalty plus the
   time penalty plus the merk penalty, computed server-side at write time.
   Standings read this field.
@@ -359,9 +365,11 @@ app/
                   api-guard, participants (class letters, shared client + server),
                   spreadsheet + columnMapping + participantImport + timeImport
                   (entry-list and time imports, browser side),
+                  rallyCodes (a rally's public code, shared client + server),
                   appCards (codes and identifiers of the Android app) + qrcode
   models/         Mongoose schemas
-  rallies/...     pages (rally dashboard, stages, answer sheets, participant view,
+  rallies/...     pages (rally dashboard, rallies/[id]/edit for its name and
+                  code, stages, answer sheets, participant view,
                   stages/[stageId]/qr-codes: the printable sheet of QR codes)
   time-import/    the time import wizard (rally -> stage -> control -> file)
   types/          shared TS interfaces
@@ -428,6 +436,14 @@ Do not regress them.**
   `ParticipantsPanel` on the rally dashboard (add / edit / delete) and by the
   per-participant view — so the add and the edit path cannot drift apart.
   `ClassificationBadge` renders the class letter everywhere it is shown.
+  A rally's own name and code follow the same rule: `RallyDetailsForm` is shared
+  by `/rallies/new` and `/rallies/[id]/edit`. While a rally is being created the
+  code field follows the name until an official types in it; on an existing
+  rally it never does, because renaming a rally must not silently change what
+  the printed sheets say. The form warns before a code change, which is the one
+  edit with a cost: a card already pulled into a phone carries the old code and
+  is refused when it is handed in, so that crew has to scan again. Cards already
+  handed in, and QR codes not yet scanned, are unaffected.
 - `ControlekaartCard` is the shared read-only rendering of a scored sheet
   (single-sheet view and per-participant view). Prefer extending it over adding
   a parallel layout. `StageKeyCard` is its counterpart for a stage *key* — the
