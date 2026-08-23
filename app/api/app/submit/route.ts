@@ -9,7 +9,8 @@ import { clientIp, rateLimit } from '../../../lib/rate-limit';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../../../lib/scoring';
 import { rescoreParticipants } from '../../../lib/rescore';
 import { parseAppCardRows, parseEq } from '../../../lib/validation';
-import { parseCardId, parseRallyCode, resolveCard } from '../../../lib/appCards';
+import { parseCardId, resolveCard } from '../../../lib/appCards';
+import { parseRallyCode } from '../../../lib/rallyCodes';
 
 // A finalised card, handed in from the Android app.
 //

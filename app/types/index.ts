@@ -146,6 +146,10 @@ export interface StandingsEntry {
 // Form submission types
 export interface RallyFormData {
   name: string;
+  // The rally's public code. Officials choose it when they create the rally;
+  // left out of a PUT it keeps the code it has, because a rally with no code
+  // cannot be scanned into the app at all.
+  code?: string;
 }
 
 export interface StageFormData {

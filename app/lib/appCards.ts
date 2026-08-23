@@ -22,6 +22,7 @@ import 'server-only';
 // than the ObjectIds they stand for.
 
 import { CardAccess, Rally, Stage } from '../models';
+import { slugFromName } from './rallyCodes';
 
 // Unambiguous characters only: no I/L/O/U, no 0/1. The code is printed under
 // the QR so a participant whose camera will not focus can type it in.
@@ -66,15 +67,6 @@ export function parseAppCode(value: unknown): string | null {
   return normalized;
 }
 
-// The rally code the app is handed. Short, upper-case and alphanumeric, because
-// a participant may have to read it off a printed sheet.
-export function parseRallyCode(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const normalized = value.trim().toUpperCase();
-  if (!/^[A-Z0-9-]{1,32}$/.test(normalized)) return null;
-  return normalized;
-}
-
 // The stage's card number as the app sends it back.
 export function parseCardId(value: unknown): number | null {
   const numeric = typeof value === 'string' ? Number(value) : value;
@@ -84,14 +76,6 @@ export function parseCardId(value: unknown): number | null {
 }
 
 // --- Rally code ------------------------------------------------------------
-
-function slugFromName(name: string): string {
-  const slug = name
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '')
-    .slice(0, 10);
-  return slug || 'RALLY';
-}
 
 // The rally's public code, generated on first use. Rallies created before this
 // existed have none, so every path that hands a code to the app goes through

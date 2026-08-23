@@ -10,6 +10,9 @@ import { crewLabel, CLASSIFICATIONS, type ClassificationValue } from '../../lib/
 interface Rally {
   _id: string;
   name: string;
+  // The rally's public code, shown to the crews and printed under every QR
+  // code. Missing on a rally created before codes existed.
+  code?: string;
   createdAt: string;
 }
 
@@ -264,7 +267,19 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
               >
                 &larr; Rallies
               </Link>
-              <h1 className="text-2xl font-bold text-gray-900 truncate">{rally.name}</h1>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h1 className="text-2xl font-bold text-gray-900 truncate">{rally.name}</h1>
+                {/* The code the crews and their app see, so an official does not
+                    have to open a QR page to find out what it is. */}
+                {rally.code && (
+                  <span
+                    className="font-mono text-base font-semibold tracking-wider text-gray-600 bg-gray-100 border border-gray-200 rounded px-2 py-0.5"
+                    title="The rally code the crews see in the control-card app"
+                  >
+                    {rally.code}
+                  </span>
+                )}
+              </div>
               <p className="text-gray-500 text-sm">
                 Created {formatDate(rally.createdAt)} · {stages.length} stage
                 {stages.length === 1 ? '' : 's'} · {standings.length} crew
@@ -292,6 +307,13 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   Open EQ
                 </button>
               </form>
+              <Link
+                href={`/rallies/${rally._id}/edit`}
+                className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 font-medium border border-gray-300"
+                title="Change the name or the code of this rally"
+              >
+                Edit Rally
+              </Link>
               <Link
                 href={`/time-import?rallyId=${rally._id}`}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm"
