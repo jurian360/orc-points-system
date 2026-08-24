@@ -132,6 +132,23 @@ const StageSchema = new mongoose.Schema({
       default: 0
     }
   }],
+  // Anti-cheat settings for the route QR codes of this stage (see
+  // app/lib/scanLocations.ts). A crew's phone records where it was when it
+  // scanned a letter into a row; a scan farther than `radiusMeters` from where
+  // that sign really stands is a crew that was not at the sign.
+  locationConfig: {
+    radiusMeters: { type: Number, default: 100 },
+  },
+  // Where the route signs of this stage actually stand, when an official has
+  // pinned them. Optional: without a pin the check falls back to the consensus
+  // of the scans themselves, which is what makes the feature work on a stage
+  // nobody surveyed. One entry per sign, a sign being one {rowNumber, letter}.
+  scanReferences: [{
+    rowNumber: Number,
+    letter: String,
+    latitude: Number,
+    longitude: Number,
+  }],
 });
 
 // A participant of a rally: the crew riding under an EQ number. Optional —
@@ -243,6 +260,37 @@ const AnswerSheetSchema = new mongoose.Schema({
       type: Number,
       default: 0
     }
+  }],
+  // Where the crew's phone was when it scanned each route QR code into a row.
+  // Recorded by the Android app and sent with the finalised card; it is
+  // evidence, never scoring input — nothing here touches a penalty. A scan the
+  // phone could not locate (permission refused, no fix) is still stored, with
+  // `latitude` and `longitude` null, because a crew that hands in a card
+  // without a single location is exactly what an official wants to see.
+  scanLocations: [{
+    // The ORC row the letter landed on, and the cell within it.
+    rowNumber: Number,
+    column: Number,
+    // The letter the QR code carried; a sign is one {rowNumber, letter}.
+    letter: String,
+    latitude: {
+      type: Number,
+      default: null,
+    },
+    longitude: {
+      type: Number,
+      default: null,
+    },
+    // Radius of the fix in metres, as the phone reported it. 0 is "unknown".
+    accuracy: {
+      type: Number,
+      default: 0,
+    },
+    // When the phone scanned the code — its own clock, not the server's.
+    scannedAt: {
+      type: Date,
+      default: null,
+    },
   }],
   submittedAt: {
     type: Date,

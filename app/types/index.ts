@@ -1,5 +1,6 @@
 import type { StageTimeConfig } from '../lib/timeScoring';
 import type { ClassificationValue } from '../lib/participants';
+import type { ScanLocation, ScanReference } from '../lib/scanLocations';
 
 // Rally types
 export interface Rally {
@@ -26,6 +27,11 @@ export interface Stage {
   timeScoreKey?: TimeScoreKeyRow[];
   merkScoreKey?: MerkScoreKeyRow[];
   timeConfig?: StageTimeConfig;
+  // Anti-cheat settings for the route QR codes of this stage: how far from its
+  // sign a scan may be, and where officials have pinned the signs that need it
+  // (see app/lib/scanLocations.ts).
+  locationConfig?: { radiusMeters: number };
+  scanReferences?: ScanReference[];
 }
 
 export interface ScoreKeyRow {
@@ -94,6 +100,9 @@ export interface AnswerSheet {
   disqualified?: boolean;
   startDelta?: number;
   endDelta?: number;
+  // Where the crew's phone was when each route QR code dropped a letter into a
+  // row. Recorded by the Android app, never part of a penalty.
+  scanLocations?: ScanLocation[];
   submittedAt: string;
 }
 

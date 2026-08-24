@@ -122,6 +122,13 @@ export default function ViewStagePage({
                 QR Codes
               </Link>
               <Link
+                href={`/rallies/${rallyId}/stages/${stage._id}/scan-locations`}
+                className="px-4 py-2 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 font-medium text-base transition-colors"
+                title="Where the crews were when they scanned this stage's route QR codes"
+              >
+                Scan Locations
+              </Link>
+              <Link
                 href={`/time-import?rallyId=${rallyId}&stageId=${stage._id}`}
                 className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium text-base transition-colors"
               >

@@ -8,7 +8,7 @@ import { readBody } from '../../../lib/api-guard';
 import { clientIp, rateLimit } from '../../../lib/rate-limit';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../../../lib/scoring';
 import { rescoreParticipants } from '../../../lib/rescore';
-import { parseAppCardRows, parseEq } from '../../../lib/validation';
+import { parseAppCardRows, parseEq, parseScanLocations } from '../../../lib/validation';
 import { parseCardId, resolveCard } from '../../../lib/appCards';
 import { parseRallyCode } from '../../../lib/rallyCodes';
 
@@ -26,6 +26,10 @@ import { parseRallyCode } from '../../../lib/rallyCodes';
 //
 // Nothing about the scoring is taken from the phone: the app sends letters, the
 // server grades them, exactly as it does for a sheet an official types.
+//
+// The card also carries the crew's scan locations (`scans`), which are stored
+// as they arrive and never touch a total — see app/lib/scanLocations.ts for
+// what officials do with them.
 
 const SUBMIT_RATE_LIMIT = 10;
 const SUBMIT_RATE_WINDOW_MS = 60 * 1000;
@@ -75,6 +79,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid card rows' }, { status: 400 });
   }
 
+  // Where the phone was when each route QR code dropped a letter into a row.
+  // Evidence only — it cannot move a penalty — so a card from an older version
+  // of the app, which sends none, is stored exactly as it always was.
+  const scanLocations = parseScanLocations(body.scans);
+
   try {
     await dbConnect();
 
@@ -110,6 +119,9 @@ export async function POST(request: NextRequest) {
       existing.merkScores = merkScores;
       existing.merkPenalty = merkPenalty;
       existing.totalPenalty = totalPenalty;
+      // A card from an app that records no locations must not wipe the ones a
+      // crew's earlier hand-in carried, the same rule the merk column follows.
+      if (scanLocations) existing.scanLocations = scanLocations;
       existing.submittedAt = new Date();
       await existing.save();
     } else {
@@ -122,6 +134,7 @@ export async function POST(request: NextRequest) {
         merkScores,
         merkPenalty,
         totalPenalty,
+        scanLocations: scanLocations || [],
       });
     }
 
