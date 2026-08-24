@@ -36,6 +36,9 @@ export const MAX_NAME_LENGTH = 200;
 export const APP_ORC_ROWS = 30;
 export const APP_MERK_ROWS = 6;
 export const APP_CARD_ROWS = APP_ORC_ROWS + APP_MERK_ROWS;
+// A card carries at most one scan per ORC cell — 30 rows of 4 — and the app
+// sends only the cells a QR code filled. The cap is the card, with headroom.
+export const MAX_CARD_SCANS = 120;
 // A rally is numbered 1..100, so an entry list cannot hold more crews than that.
 export const MAX_IMPORT_PARTICIPANTS = 100;
 // A time control hands in at most one time per participant, so the same bound
@@ -336,4 +339,119 @@ export function parseAppCardRows(value: unknown): ParsedCardRows | null {
     : null;
 
   return { answers, merkScores };
+}
+
+// --- Scan locations of a card ----------------------------------------------
+
+// Where the phone was when a route QR code dropped a letter into a row (see
+// app/lib/scanLocations.ts). This is evidence, not scoring input: it can never
+// change a penalty, so the parse is about keeping the stored shape sane rather
+// than about protecting a total.
+//
+// A scan the phone could not locate arrives with no coordinates and is kept as
+// such — `latitude: null` — because a card handed in with no locations at all
+// is precisely what an official is looking for.
+
+export interface ParsedScanLocation {
+  rowNumber: number;
+  column: number;
+  letter: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracy: number;
+  scannedAt: Date | null;
+}
+
+function parseCoordinate(value: unknown, limit: number): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  if (value < -limit || value > limit) return null;
+  // 0,0 is in the Gulf of Guinea and is what a phone reports when it has no fix
+  // but answers anyway. No rally is scored there.
+  return value;
+}
+
+// The phone's own clock, so it is not trusted for anything but display; an
+// unusable value is stored as "unknown" rather than as now.
+function parseScannedAt(value: unknown): Date | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function parseScanLocations(value: unknown): ParsedScanLocation[] | null {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value)) return null;
+
+  const scans: ParsedScanLocation[] = [];
+
+  for (const entry of value.slice(0, MAX_CARD_SCANS)) {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const scan = entry as Record<string, unknown>;
+
+    const rowNumber = typeof scan.row === 'number' ? scan.row : Number(scan.row);
+    if (!Number.isInteger(rowNumber) || rowNumber < 1 || rowNumber > APP_ORC_ROWS) continue;
+
+    const rawColumn = typeof scan.col === 'number' ? scan.col : Number(scan.col);
+    const column =
+      Number.isInteger(rawColumn) && rawColumn >= 1 && rawColumn <= MAX_COLUMNS ? rawColumn : 0;
+
+    const letter = cardLetter(scan.letter);
+    if (!letter) continue;
+
+    const latitude = parseCoordinate(scan.lat, 90);
+    const longitude = parseCoordinate(scan.lng, 180);
+    const accuracy =
+      typeof scan.accuracy === 'number' && Number.isFinite(scan.accuracy) && scan.accuracy > 0
+        ? Math.min(Math.round(scan.accuracy), 100000)
+        : 0;
+
+    scans.push({
+      rowNumber,
+      column,
+      letter,
+      // A half-fix is no fix: both coordinates, or neither.
+      latitude: latitude !== null && longitude !== null ? latitude : null,
+      longitude: latitude !== null && longitude !== null ? longitude : null,
+      accuracy,
+      scannedAt: parseScannedAt(scan.scannedAt),
+    });
+  }
+
+  return scans;
+}
+
+// --- Where the officials say a sign stands ---------------------------------
+
+// A pinned reference point for one route sign of a stage. Officials either
+// accept the consensus of the scans or type coordinates; either way it reaches
+// a query only after this.
+export function parseScanReference(body: Record<string, unknown>): {
+  rowNumber: number;
+  letter: string;
+} | null {
+  const rowNumber = typeof body.rowNumber === 'number' ? body.rowNumber : Number(body.rowNumber);
+  if (!Number.isInteger(rowNumber) || rowNumber < 1 || rowNumber > APP_ORC_ROWS) return null;
+
+  const letter = cardLetter(body.letter);
+  if (!letter) return null;
+
+  return { rowNumber, letter };
+}
+
+export function parseLatitude(value: unknown): number | null {
+  return parseCoordinate(value, 90);
+}
+
+export function parseLongitude(value: unknown): number | null {
+  return parseCoordinate(value, 180);
+}
+
+// The radius a scan may be from its sign before it is flagged, in metres.
+// Bounded so a typo cannot turn the check off (0) or into a whole province.
+export function parseScanRadius(value: unknown): number | null {
+  const radius = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(radius)) return null;
+  const rounded = Math.round(radius);
+  if (rounded < 10 || rounded > 10000) return null;
+  return rounded;
 }

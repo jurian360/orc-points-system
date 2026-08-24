@@ -47,6 +47,8 @@ in code and UI — do not "translate" them:
 | **App code** | The 8-character code behind the QR a participant scans. It stands for exactly one card — one `{rally, stage, eq}` — and is the crew's only credential. |
 | **Rally code** | A rally's short public identifier (`Rally.code`), e.g. `SARKNAJAAR`. Officials name it when they create the rally; the app shows it and sends it back with a finalised card. |
 | **Card number** | A stage's `cardId`: its stable number within the rally, which a submission is resolved by. Unlike the place in the running order, it does not move when a stage is deleted. |
+| **Route QR / sign** | A code on a sign along the route of a stage, e.g. `15:B`: the crew scans it and the letter B drops into row 15 of their card. One sign is one `{rowNumber, letter}`. |
+| **Scan location** | Where the crew's phone was when it read a route QR code. Recorded per scan by the Android app, handed in with the card, and checked against where the sign stands — the anti-cheat check. |
 
 ## Data model (`app/models/index.ts`)
 
@@ -88,6 +90,17 @@ Rally ──< Stage ──< AnswerSheet
   of overwriting another crew. Deleting a participant removes the record *and*
   their sheets in that rally. `POST .../participants/import` writes a whole entry
   list in one `bulkWrite` of upserts — see the import section below.
+- `AnswerSheet.scanLocations` — `{ rowNumber, column, letter, latitude, longitude,
+  accuracy, scannedAt }` per route QR code the crew scanned into the card. Written
+  only by `POST /api/app/submit`, read only by the scan-location pages: **it is
+  evidence, never scoring input**, so no penalty and no re-scoring depends on it.
+  A scan the phone could not locate is stored with `latitude`/`longitude` null —
+  a card handed in with no location at all is what an official wants to see, not
+  a record that quietly disappears.
+- `Stage.locationConfig.radiusMeters` (default 100) and `Stage.scanReferences`
+  (`{ rowNumber, letter, latitude, longitude }`) — how far from its sign a scan
+  may be before it is flagged, and where officials have pinned the signs of this
+  stage. Both are optional: without a pin the check uses the crews' own consensus.
 - `CardAccess` — `{ rallyId, stageId, eq, code, submittedAt }`, the code behind
   one printed QR. Minted per `{stage, eq}` (**unique index**), never derived, so
   it cannot be guessed from an EQ number. `submittedAt` is the hand-in lock: a
@@ -249,6 +262,47 @@ them: a scoring rule that shipped after the cards were typed, or a document
 edited straight in the database. It takes no body — the rally in the path is the
 whole request.
 
+## Scan locations: the anti-cheat check (`app/lib/scanLocations.ts`)
+
+Along the route of a stage stand signs carrying a QR code like `15:B` — scan it
+and the letter B drops into row 15 of the card. The letters are the whole point
+of the rally, so a crew that photographs a sign and sends the picture to a friend
+two villages away has handed them the answer without them driving past it. The
+Android app therefore records **where the phone was** at every scan and sends
+those coordinates with the finalised card; this module answers the officials'
+question: *who scanned this sign from somewhere the sign is not?*
+
+- **Where a sign stands** comes from one of two places. An official can **pin**
+  it (accept the crowd's answer with one button, or type coordinates), and a pin
+  always wins. Otherwise it is the **consensus** of the scans themselves: the
+  median of the coordinates as a seed, re-fitted a few times over the scans
+  within one radius of it, so the crews who were elsewhere do not drag the point
+  towards them. A consensus needs `MIN_SCANS_FOR_CONSENSUS` (3) located scans —
+  two crews agreeing prove nothing, they could be the two who shared the photo.
+- **A scan farther than the radius** (`Stage.locationConfig.radiusMeters`, 100 m
+  by default) is flagged. A flag is something for an official to look into, never
+  a penalty: nothing here reaches the scoring.
+- **Four statuses per scan**: `ok`, `far` (the flag), `missing` (the phone gave
+  no location) and `unknown` (the sign has no reference yet, so nothing can be
+  said).
+- **Typed letters are counted too.** The app lets a crew type a letter when a
+  camera will not focus, which is also the obvious way around a location check,
+  so the report compares the letters on a card with the scans behind them and
+  reports the difference as `typed`. A crew with a full card and no scans at all
+  is a line on the report rather than an absence from it.
+- Pure and shared by the API and the pages, exactly like `app/lib/scoring.ts`.
+  `app/lib/scanReports.ts` is the server-only half that reads the sheets.
+
+Officials read it on two pages: `/rallies/[id]/stages/[stageId]/scan-locations`
+(a section per sign — a `ScanMap` SVG of the scans around it, the coordinates,
+the pin buttons and a line per crew) and `/rallies/[id]/scan-locations` (the
+whole rally: which crews were flagged, on which signs of which stages). `ScanMap`
+is inline SVG rather than an embedded map because the CSP admits no third-party
+tiles; every coordinate also links out to OpenStreetMap in a new tab.
+
+`POST /api/stages/[id]/scan-locations` takes `pin` / `unpin` / `radius` and
+answers with the rebuilt report, the same shape the QR page's POST follows.
+
 ## Importing an entry list
 
 Officials do not type 50 crews by hand: `ParticipantsPanel` → *Import Entry List*
@@ -332,6 +386,14 @@ local Room database and talks to this app exactly twice.
   number cannot write over a crew's sheet after they handed in. *Reopen* on the
   QR page clears the lock; *New code* replaces the code, which invalidates the
   sheet that carried the old one.
+- **The card carries the crew's scan locations.** Every route QR code the app
+  reads is stored with the phone's position (`scans[]` in the submission:
+  `{row, col, letter, lat, lng, accuracy, scannedAt}`), which is what the
+  anti-cheat check above reads. The app asks for the location permission when a
+  card is opened and says on screen when it is recording scans without one; a
+  crew that refuses can still fill in their card, their scans simply arrive
+  unlocated. An older version of the app sends no `scans` at all and is stored
+  exactly as it always was.
 - **Nothing about the scoring comes from the phone.** The app sends the letters
   of the 30 ORC rows (and the 6 merk rows, if a later version starts sending
   them); the totals are computed here and the participant's rally is re-scored,
@@ -358,6 +420,8 @@ app/
                   rallies/[id]/rescore to re-score a whole rally on demand,
                   stages/[id]/times/import for the times of one control,
                   stages/[id]/access-codes for the QR codes of one stage,
+                  stages/[id]/scan-locations + rallies/[id]/scan-locations for
+                  the anti-cheat report of a stage and of a whole rally,
                   app/card + app/submit, the two public endpoints of the
                   Android app)
   components/     client components (forms, grids, card views, auth context)
@@ -366,11 +430,15 @@ app/
                   spreadsheet + columnMapping + participantImport + timeImport
                   (entry-list and time imports, browser side),
                   rallyCodes (a rally's public code, shared client + server),
-                  appCards (codes and identifiers of the Android app) + qrcode
+                  appCards (codes and identifiers of the Android app) + qrcode,
+                  scanLocations (the anti-cheat check, shared client + server)
+                  + scanReports (its server-only half, reading the sheets)
   models/         Mongoose schemas
   rallies/...     pages (rally dashboard, rallies/[id]/edit for its name and
                   code, stages, answer sheets, participant view,
-                  stages/[stageId]/qr-codes: the printable sheet of QR codes)
+                  stages/[stageId]/qr-codes: the printable sheet of QR codes,
+                  stages/[stageId]/scan-locations + rallies/[id]/scan-locations:
+                  where the crews were when they scanned the route QR codes)
   time-import/    the time import wizard (rally -> stage -> control -> file)
   types/          shared TS interfaces
 middleware.ts     auth + rate limit + CSRF at the edge
@@ -479,6 +547,13 @@ Do not regress them.**
   sheet's rows (it cannot recompute them without the rest of the rally).
   Standings use the stored field. Both are intentional — keep them consistent by keeping re-scoring
   correct.
+- Scan locations are **evidence, not scoring**: re-scoring never touches them
+  (`rescore.ts` `$set`s only the penalty fields), and a card handed in on an app
+  that sends none must not blank the ones a crew's earlier hand-in carried —
+  the same rule the merk column follows in `POST /api/app/submit`.
+- The consensus location of a sign moves as cards come in, so a report read
+  halfway through an event can flag a crew that a later report clears. Pin a
+  sign to freeze it.
 - The rate limiter is in-memory and per-process; it is only correct for the
   single-container deployment. Scaling out needs a shared store.
 - `COOLIFY.md` still mentions the pre-refactor `quizzes` /

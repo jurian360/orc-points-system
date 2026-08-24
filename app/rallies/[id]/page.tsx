@@ -315,6 +315,13 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 Edit Rally
               </Link>
               <Link
+                href={`/rallies/${rally._id}/scan-locations`}
+                className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 font-medium border border-gray-300"
+                title="Where the crews were when they scanned the route QR codes"
+              >
+                Scan Locations
+              </Link>
+              <Link
                 href={`/time-import?rallyId=${rally._id}`}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm"
               >
@@ -432,6 +439,12 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                               className="text-green-700 hover:text-green-900 font-medium text-base"
                             >
                               QR Codes
+                            </Link>
+                            <Link
+                              href={`/rallies/${rally._id}/stages/${stage._id}/scan-locations`}
+                              className="text-amber-700 hover:text-amber-900 font-medium text-base"
+                            >
+                              Scans
                             </Link>
                             <Link
                               href={`/time-import?rallyId=${rally._id}&stageId=${stage._id}`}
