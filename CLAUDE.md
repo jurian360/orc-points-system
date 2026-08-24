@@ -331,7 +331,16 @@ local Room database and talks to this app exactly twice.
   second submission is a 409, so somebody who guesses a rally code and an EQ
   number cannot write over a crew's sheet after they handed in. *Reopen* on the
   QR page clears the lock; *New code* replaces the code, which invalidates the
-  sheet that carried the old one.
+  sheet that carried the old one. The scan answers with the same lock as
+  `ingeleverd`, so the app can say so before the crew types the card; neither
+  the flag nor a 409 locks the card in the app, because *Reopen* is what makes
+  a second hand-in legitimate.
+- **The scan answers with more than the identifiers.** Beside the four values a
+  submission is resolved by (`rallycode`, `kaartid`, `equipenr`, plus `kaartnr`
+  for the running order), it carries `rallynaam`, `kaartnaam`, `equipenaam` and
+  `klasse` — which card this is, in words. The app shows them when a code is
+  scanned and above the grid, so keep them filled: a stage without a name or a
+  rally without its entry list makes the app's card header thinner, not wrong.
 - **Nothing about the scoring comes from the phone.** The app sends the letters
   of the 30 ORC rows (and the 6 merk rows, if a later version starts sending
   them); the totals are computed here and the participant's rally is re-scored,

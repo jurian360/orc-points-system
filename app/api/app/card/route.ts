@@ -85,14 +85,14 @@ export async function GET(request: NextRequest) {
       equipeid: access.eq,
       kaartid: cardId,
       kaartnr: position || cardId,
-      // Extra context the app does not read today, but which makes the response
-      // legible on its own and gives a later version something to show.
+      // Which card this is, in words. The app shows these to the crew before
+      // they add the card, so a mis-scan is caught before 30 rows are typed.
       rallynaam: rally.name,
       kaartnaam: stage.name,
       equipenaam: crew,
       klasse: participant?.classification || '',
-      // Whether this card has already been handed in on this code. The app does
-      // not read it yet; the submit route is what enforces it.
+      // Whether this card has already been handed in on this code. The app
+      // warns on it; the submit route is what enforces it.
       ingeleverd: Boolean(access.submittedAt),
     });
   } catch (error) {
