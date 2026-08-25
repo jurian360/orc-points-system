@@ -3,7 +3,7 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/mongodb';
 import { AnswerSheet, Rally } from '../../../../models';
-import { requireSession } from '../../../../lib/api-guard';
+import { requireRallyAdmin } from '../../../../lib/api-guard';
 import { rescoreRally } from '../../../../lib/rescore';
 import mongoose from 'mongoose';
 
@@ -23,8 +23,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireRallyAdmin();
+  if (!session.ok) return session.response;
 
   try {
     await dbConnect();

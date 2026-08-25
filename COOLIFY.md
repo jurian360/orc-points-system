@@ -34,7 +34,9 @@ development only. See `.env.example` for the full list.
 | ------------------- | -------- | ------------------------------------------------------------------------ |
 | `MONGODB_URI`       | yes      | Full MongoDB connection string, **including a database name**.           |
 | `SESSION_SECRET`    | yes      | >= 32 chars. Signs session cookies. `node scripts/generate-secret.mjs`   |
-| `APP_PASSWORD_HASH` | yes      | scrypt hash of the login password. `node scripts/hash-password.mjs '...'` |
+| `ADMIN_USERNAME`      | no       | Username of the recovery admin. Defaults to `admin`.                     |
+| `ADMIN_PASSWORD_HASH` | yes      | scrypt hash of its password. `node scripts/hash-password.mjs '...'`      |
+| `APP_PASSWORD_HASH`   | no       | The pre-accounts shared password. Read as `ADMIN_PASSWORD_HASH` when that one is unset. |
 
 Example `MONGODB_URI` (Coolify-managed MongoDB, note the `/orc-points-system`
 database name):
@@ -50,23 +52,37 @@ mongodb://USER:PASSWORD@HOST:27017/orc-points-system?authSource=admin&directConn
 Create a least-privilege database user with `readWrite` on `orc-points-system`
 only. Do not deploy with the `root` account.
 
-All three variables are required at **runtime**, not at build time — the image
+The required variables are needed at **runtime**, not at build time — the image
 builds without them, and the app fails fast with a clear error on the first
 request if one is missing.
 
-## 4. Application password
+## 4. Accounts and the recovery admin
 
-The password is stored as a scrypt hash in `APP_PASSWORD_HASH`; the plaintext
-exists nowhere in the repository or the environment. To set or rotate it:
+Officials sign in with a username and a password, in one of two roles: an
+**admin** runs the rally and manages the accounts, a **data entry** account
+types control cards and reads the standings. Those accounts live in the database
+and are managed on the app's **Users** page.
+
+`ADMIN_USERNAME` + `ADMIN_PASSWORD_HASH` are something else: the **recovery
+admin**. It has no record in the database, so nothing in the app can delete it,
+demote it or lock it out, and it still works after the database is restored from
+a backup. It is how you sign in the first time, and the way back in if every
+admin forgets their password.
+
+Its password is stored as a scrypt hash; the plaintext exists nowhere in the
+repository or the environment. To set or rotate it:
 
 ```bash
 node scripts/hash-password.mjs 'your-new-password'
-# -> APP_PASSWORD_HASH=<saltHex>:<hashHex>
+# -> ADMIN_PASSWORD_HASH=<saltHex>:<hashHex>
 ```
 
-Paste the value into Coolify and redeploy. This is still a single shared secret
-(a gate, not per-user auth), but it is no longer recoverable from the source or
-from a built image.
+Paste the value into Coolify and redeploy.
+
+Upgrading a deployment that predates the accounts: nothing has to change. The
+old `APP_PASSWORD_HASH` is read as the recovery admin's password and its
+username is `admin`, so that password still signs you in — now as an admin, with
+a **Users** page to add the real accounts on.
 
 ## 5. Verify
 

@@ -18,8 +18,8 @@ import mongoose from 'mongoose';
 // GET /api/answersheets?stageId=... or ?rallyId=... (optionally &eq=...)
 // Returns answer sheets filtered by stage or rally.
 export async function GET(request: NextRequest) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireSession();
+  if (!session.ok) return session.response;
 
   // Validate before touching the database: invalid input should cost a 400,
   // not a connection.
@@ -72,8 +72,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireSession();
+  if (!session.ok) return session.response;
 
   const parsed = await readBody(request);
   if (!parsed.ok) return parsed.response;

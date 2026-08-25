@@ -7,6 +7,8 @@
 //   AnswerSheet -> a participant's filled-in sheet for a single stage.
 //   CardAccess  -> the code behind the QR a participant scans to pull one
 //                  {stage, eq} card into the Android app.
+//   User        -> an official's account: a username, a password and one of the
+//                  two roles (admin / data-entry).
 //                  A participant (eq) can have many answer sheets per rally
 //                  (one per stage). The rally winner is decided by the sum of
 //                  the penalty points of all of a participant's answer sheets.
@@ -16,6 +18,7 @@ import 'server-only';
 import mongoose from 'mongoose';
 
 import { CLASSIFICATIONS } from '../lib/participants';
+import { MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH, ROLES } from '../lib/roles';
 
 // A rally is the top-level event. Stages and answer sheets hang off of it.
 const RallySchema = new mongoose.Schema({
@@ -357,6 +360,50 @@ const CardAccessSchema = new mongoose.Schema({
 // One code per participant per stage — the same shape as the sheets.
 CardAccessSchema.index({ stageId: 1, eq: 1 }, { unique: true });
 
+
+// An account of an official. There are two kinds — an admin runs the rally, a
+// data-entry user types cards for it — and what each may do lives in
+// `app/lib/roles.ts`, not here.
+//
+// Participants have no account at all: a crew authorises on the code behind the
+// QR they scanned (see CardAccess above).
+const UserSchema = new mongoose.Schema({
+  // Stored already normalised (lower case, trimmed) by `normalizeUsername`, so
+  // the unique index means what it says: "jurian" and "Jurian" are one account.
+  username: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+    lowercase: true,
+    minlength: MIN_USERNAME_LENGTH,
+    maxlength: MAX_USERNAME_LENGTH,
+  },
+  role: {
+    type: String,
+    required: true,
+    enum: [...ROLES],
+  },
+  // scrypt, as "<saltHex>:<hashHex>" — the format app/lib/passwords.ts writes
+  // and scripts/hash-password.mjs prints. A plaintext password is never stored,
+  // here or in the environment.
+  passwordHash: {
+    type: String,
+    required: true,
+  },
+  // When this account's password was last set. `requireSession()` refuses a
+  // token issued before it, so changing (or having an admin reset) a password
+  // signs that account's other sessions out.
+  passwordChangedAt: {
+    type: Date,
+    default: Date.now,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
 // Create models if they don't already exist
 export const Rally = mongoose.models.Rally || mongoose.model('Rally', RallySchema);
 export const Stage = mongoose.models.Stage || mongoose.model('Stage', StageSchema);
@@ -366,3 +413,4 @@ export const AnswerSheet = mongoose.models.AnswerSheet ||
   mongoose.model('AnswerSheet', AnswerSheetSchema);
 export const CardAccess = mongoose.models.CardAccess ||
   mongoose.model('CardAccess', CardAccessSchema);
+export const User = mongoose.models.User || mongoose.model('User', UserSchema);

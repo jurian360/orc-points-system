@@ -3,14 +3,14 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../lib/mongodb';
 import { Stage, Rally } from '../../models';
-import { readBody, requireSession } from '../../lib/api-guard';
+import { readBody, requireSession, requireRallyAdmin } from '../../lib/api-guard';
 import { parseName, processScoreKey } from '../../lib/validation';
 import { rescoreRally } from '../../lib/rescore';
 import mongoose from 'mongoose';
 
 export async function GET(request: NextRequest) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireSession();
+  if (!session.ok) return session.response;
 
   const { searchParams } = new URL(request.url);
   const rallyId = searchParams.get('rallyId');
@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireRallyAdmin();
+  if (!session.ok) return session.response;
 
   const parsed = await readBody(request);
   if (!parsed.ok) return parsed.response;

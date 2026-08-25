@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { SESSION_COOKIE, verifySessionToken } from './app/lib/session';
+import { SESSION_COOKIE, readSessionToken } from './app/lib/session';
+import { can, type Permission } from './app/lib/roles';
 import { clientIp, rateLimit } from './app/lib/rate-limit';
 
 // Paths reachable without a session. Everything else the matcher covers
@@ -14,6 +15,30 @@ const PUBLIC_API_PREFIX = '/api/auth/';
 const PUBLIC_APP_PREFIX = '/api/app/';
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+// Pages only an admin may open. A data-entry account types cards and reads the
+// standings; everything that changes the rally itself — its stages and keys,
+// its entry list, the time import, the printed QR codes — and the user
+// management is an admin's.
+//
+// This is the edge-side half of the check. The routes those pages call each run
+// their own guard (app/lib/api-guard.ts), which is what actually protects the
+// data: this only keeps an official from landing on a page whose every button
+// would answer 403.
+const RESTRICTED_PAGES: { pattern: RegExp; permission: Permission }[] = [
+  { pattern: /^\/users(\/|$)/, permission: 'manage:users' },
+  { pattern: /^\/time-import(\/|$)/, permission: 'manage:rally' },
+  { pattern: /^\/rallies\/new$/, permission: 'manage:rally' },
+  { pattern: /^\/rallies\/[^/]+\/edit$/, permission: 'manage:rally' },
+  { pattern: /^\/rallies\/[^/]+\/stages\/new$/, permission: 'manage:rally' },
+  { pattern: /^\/rallies\/[^/]+\/stages\/[^/]+\/edit$/, permission: 'manage:rally' },
+  { pattern: /^\/rallies\/[^/]+\/stages\/[^/]+\/qr-codes$/, permission: 'manage:rally' },
+];
+
+// The permission a page needs, or null when any signed-in official may open it.
+function requiredPermission(pathname: string): Permission | null {
+  return RESTRICTED_PAGES.find(({ pattern }) => pattern.test(pathname))?.permission ?? null;
+}
 
 // Coarse per-IP ceiling across the whole API, on top of the stricter
 // per-endpoint limit on login.
@@ -84,9 +109,9 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith(PUBLIC_API_PREFIX) || isAppApi || PUBLIC_PATHS.includes(pathname);
 
   if (!isPublic) {
-    const authenticated = await verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value);
+    const session = await readSessionToken(request.cookies.get(SESSION_COOKIE)?.value);
 
-    if (!authenticated) {
+    if (!session) {
       if (isApi) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
@@ -96,6 +121,19 @@ export async function middleware(request: NextRequest) {
       // otherwise a Server Component added later would render real data to
       // anonymous visitors.
       return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    // Role gating for pages. The role comes out of the signed cookie, which is
+    // the role this account had when it signed in — there is no database on the
+    // Edge to ask for a fresher one. That is why it is only the pages: every
+    // API route re-reads the account before it writes anything, so a demotion
+    // takes effect on the next request either way.
+    if (!isApi) {
+      const permission = requiredPermission(pathname);
+
+      if (permission && !can(session.role, permission)) {
+        return NextResponse.redirect(new URL('/forbidden', request.url));
+      }
     }
   }
 

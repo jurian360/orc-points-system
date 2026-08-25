@@ -27,6 +27,10 @@ interface ParticipantsPanelProps {
   // How many crews are recorded, so the page can label its Participants tab
   // without fetching the entry list a second time.
   onCountChange?: (count: number) => void;
+  // Set for an official who may not change the entry list — a data-entry
+  // account. The list itself stays: they need to see which crew rides under
+  // which EQ while they type the cards.
+  readOnly?: boolean;
 }
 
 type Editing = { mode: 'add' } | { mode: 'edit'; eq: number } | null;
@@ -39,6 +43,7 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
   sheetEqs,
   onChanged,
   onCountChange,
+  readOnly = false,
 }) => {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,26 +178,30 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
             aria-label="Search the participants"
             className="px-3 py-2 border border-gray-300 rounded-md text-base w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <button
-            onClick={() => {
-              setNotice(null);
-              setImporting((current) => !current);
-              setEditing(null);
-            }}
-            className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 font-medium shadow-sm"
-          >
-            {importing ? 'Close Import' : 'Import Entry List'}
-          </button>
-          <button
-            onClick={() => {
-              setNotice(null);
-              setEditing(editing?.mode === 'add' ? null : { mode: 'add' });
-              setImporting(false);
-            }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm"
-          >
-            {editing?.mode === 'add' ? 'Close' : 'Add Participant'}
-          </button>
+          {!readOnly && (
+            <>
+              <button
+                onClick={() => {
+                  setNotice(null);
+                  setImporting((current) => !current);
+                  setEditing(null);
+                }}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 font-medium shadow-sm"
+              >
+                {importing ? 'Close Import' : 'Import Entry List'}
+              </button>
+              <button
+                onClick={() => {
+                  setNotice(null);
+                  setEditing(editing?.mode === 'add' ? null : { mode: 'add' });
+                  setImporting(false);
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm"
+              >
+                {editing?.mode === 'add' ? 'Close' : 'Add Participant'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -302,18 +311,24 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
                   </td>
                   <td className="px-6 py-2 whitespace-nowrap text-right">
                     <div className="flex justify-end space-x-4">
-                      <button
-                        onClick={() => setEditing({ mode: 'edit', eq })}
-                        className="text-indigo-600 hover:text-indigo-900 font-medium text-base"
-                      >
-                        {details ? 'Edit' : 'Add Details'}
-                      </button>
-                      <button
-                        onClick={() => handleDelete(eq, hasSheets)}
-                        className="text-red-600 hover:text-red-900 font-medium text-base"
-                      >
-                        Delete
-                      </button>
+                      {readOnly ? (
+                        <span className="text-gray-400 text-base">—</span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setEditing({ mode: 'edit', eq })}
+                            className="text-indigo-600 hover:text-indigo-900 font-medium text-base"
+                          >
+                            {details ? 'Edit' : 'Add Details'}
+                          </button>
+                          <button
+                            onClick={() => handleDelete(eq, hasSheets)}
+                            className="text-red-600 hover:text-red-900 font-medium text-base"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

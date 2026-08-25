@@ -33,7 +33,7 @@ in code and UI — do not "translate" them:
 | **Rally** | Top-level event. Has many stages. |
 | **Stage** | One leg of a rally. Holds the answer key used to grade sheets. |
 | **Answer sheet** | One participant's submission for **one** stage. |
-| **EQ** | Participant/equipe number, integer `1..100`. Identifies a competitor — there are no user accounts. |
+| **EQ** | Participant/equipe number, integer `1..100`. Identifies a competitor — crews have no account, only the officials do. |
 | **Classification** | The class a crew rides in: `B`, `A`, `H`, `I` or `T` (or empty while unknown). Recorded per participant, not used by the scoring. |
 | **Controlekaart** | The paper control card the whole UI is modelled on: 4 columns — ORC's 1–15 \| ORC's 16–30 \| For Official Use Only (time) \| Merk + TOTAAL STRAFPUNTEN. |
 | **ORC's** | The 30 lettered answer rows, up to 4 letters (columns) per row. |
@@ -44,6 +44,9 @@ in code and UI — do not "translate" them:
 | **Delta** | How many minutes a participant is off their own schedule. It runs from the start of the rally to the last stage. |
 | **Merk** | Marker/sign rows, 6 rows, one letter each. Scored *vertically* against the stage's merk key, which holds the correct letters and the letters it rules out. |
 | **Diversen** | The merk part of a sheet's penalty, the third line of TOTAAL STRAFPUNTEN next to ORC's and Tijd. |
+| **Admin** | An official who runs the rally: stages, answer keys, entry list, imports, QR codes and the accounts. |
+| **Data entry** | An official who types control cards (ORC's, tijd, merk) and reads the standings — nothing else. |
+| **Recovery admin** | The admin configured in the deployment environment (`ADMIN_USERNAME` + `ADMIN_PASSWORD_HASH`). No database record, so it cannot be deleted or demoted: the way back in when every admin has forgotten their password. |
 | **App code** | The 8-character code behind the QR a participant scans. It stands for exactly one card — one `{rally, stage, eq}` — and is the crew's only credential. |
 | **Rally code** | A rally's short public identifier (`Rally.code`), e.g. `SARKNAJAAR`. Officials name it when they create the rally; the app shows it and sends it back with a finalised card. |
 | **Card number** | A stage's `cardId`: its stable number within the rally, which a submission is resolved by. Unlike the place in the running order, it does not move when a stage is deleted. |
@@ -51,6 +54,8 @@ in code and UI — do not "translate" them:
 ## Data model (`app/models/index.ts`)
 
 ```
+User                   (an official's account; owns no rally data)
+
 Rally ──< Stage ──< AnswerSheet
    ├──────────────────┤  (AnswerSheet also stores rallyId for cheap standings)
    │                  └─< CardAccess   (the QR code of one {stage, eq})
@@ -96,6 +101,13 @@ Rally ──< Stage ──< AnswerSheet
   of overwriting another crew. Deleting a participant removes the record *and*
   their sheets in that rally. `POST .../participants/import` writes a whole entry
   list in one `bulkWrite` of upserts — see the import section below.
+- `User` — `{ username, role, passwordHash, passwordChangedAt }`, an official's
+  account. It hangs off nothing: an account owns no rally data, so deleting one
+  cascades nothing and the sheets it typed stay where they are. The username is
+  stored already lower-cased (`normalizeUsername`) so the **unique index** means
+  what it says, and `passwordHash` never leaves the API — every user route
+  projects `username role passwordChangedAt createdAt`. See *Accounts and roles*
+  below.
 - `CardAccess` — `{ rallyId, stageId, eq, code, submittedAt }`, the code behind
   one printed QR. Minted per `{stage, eq}` (**unique index**), never derived, so
   it cannot be guessed from an EQ number. `submittedAt` is the hand-in lock: a
@@ -400,11 +412,62 @@ versions 1-10, no dependency — the same trade-off `app/lib/spreadsheet.ts` mak
 for reading .xlsx. It returns a matrix; `QrCode.tsx` renders it as SVG so it
 stays sharp on paper.
 
+## Accounts and roles (`app/lib/roles.ts`)
+
+Officials sign in with a **username and a password**; participants still have no
+account at all (a crew authorises on the code behind their QR). There are two
+roles and no plan for a third:
+
+| | admin | data-entry |
+| --- | --- | --- |
+| Answer sheets: type, correct, delete | yes | **yes** |
+| Read rallies, stages, keys, cards, standings | yes | yes |
+| Rally, stages and answer keys | yes | no |
+| Entry list, time import, QR codes, re-score | yes | no |
+| Accounts | yes | no |
+| Own password | yes | yes |
+
+`app/lib/roles.ts` is the one table: it is pure and shared, so the buttons a
+view hides, the pages `middleware.ts` gates and the routes `api-guard.ts`
+refuses cannot drift apart. **Hiding a button is never the control** — the route
+guard is; a hidden button only spares an official a 403.
+
+- **A session says who you are.** The signed cookie carries `{sub, username,
+  role}` (`app/lib/session.ts`), which is what lets middleware gate an admin
+  page at the edge, where there is no database. It is the role the account had
+  at sign-in: `requireSession()` re-reads the account through
+  `currentUser()` on every API request, so a demotion or a deletion takes effect
+  on the next request rather than when the 24-hour token expires.
+- **A password change signs the account's other sessions out.**
+  `User.passwordChangedAt` is compared with the token's issue time; the browser
+  that made the change gets a fresh cookie so it is not signed out by its own
+  change.
+- **The recovery admin lives in the environment**, not in the database
+  (`app/lib/users.ts`): `ADMIN_USERNAME` + `ADMIN_PASSWORD_HASH`, the same
+  scrypt `<saltHex>:<hashHex>` a user's password is stored as. It has no
+  document, so nothing in the app can delete it, demote it or lock it out, and
+  it survives a restored backup — it is the way back in when every admin has
+  forgotten their password. A `User` may not take its username: two accounts
+  answering to one name would make a login ambiguous. `APP_PASSWORD_HASH` — the
+  shared password this app had before accounts — is still read as its
+  credential, so a deployment that predates this keeps working.
+- **The user routes will not strand the app**: the last admin cannot be deleted
+  or demoted, and nobody can delete or demote themselves. Deleting an account
+  cascades nothing — the sheets it typed belong to the rally, not to the
+  official who typed them.
+- **Passwords are hashed in one place** (`app/lib/passwords.ts`, scrypt +
+  `timingSafeEqual`), used by the login, the user routes and
+  `scripts/hash-password.mjs`. A login for an unknown username spends the same
+  scrypt time as a real one (`burnPasswordTime`), so the response time does not
+  list which accounts exist, and every failure answers one message.
+
 ## Layout
 
 ```
 app/
   api/            route handlers (rallies, stages, answersheets, auth, standings,
+                  users + users/[id] to manage the officials' accounts,
+                  auth/login + auth/check + auth/password (own password),
                   rallies/[id]/participants to list/add the crews of a rally,
                   .../[eq] to read, save or drop one, .../import for an entry list,
                   rallies/[id]/rescore to re-score a whole rally on demand,
@@ -414,7 +477,9 @@ app/
                   Android app)
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env,
-                  api-guard, participants (class letters, shared client + server),
+                  api-guard, roles (the two roles and their permissions, shared
+                  client + server), passwords (scrypt), users (accounts + the
+                  recovery admin), participants (class letters, shared client + server),
                   spreadsheet + columnMapping + participantImport + timeImport
                   (entry-list and time imports, browser side),
                   rallyCodes (a rally's public code, shared client + server),
@@ -424,6 +489,9 @@ app/
                   code, stages, answer sheets, participant view,
                   stages/[stageId]/qr-codes: the printable sheet of QR codes)
   time-import/    the time import wizard (rally -> stage -> control -> file)
+  users/          the accounts page (admin only)
+  account/        your own account: role and password
+  forbidden/      where middleware sends an official who lacks the role
   types/          shared TS interfaces
 middleware.ts     auth + rate limit + CSRF at the edge
 scripts/          generate-secret.mjs, hash-password.mjs
@@ -452,13 +520,23 @@ Browse via `localhost` — the session cookie is always `Secure`.
 **Security-sensitive; a review already hardened these (`SECURITY-AUDIT.md`).
 Do not regress them.**
 
-- Every API route starts with `await requireSession()` and reads its body with
-  `readBody()` (256 KB cap, object-only JSON). `middleware.ts` also blocks
-  unauthenticated requests — the per-handler guard is deliberate defence in
+- Every API route starts with a guard from `app/lib/api-guard.ts` and reads its
+  body with `readBody()` (256 KB cap, object-only JSON). The guard is
+  `requireSession()` for a read and for writing an **answer sheet**,
+  `requireRallyAdmin()` for **everything else that writes** — a rally, a stage
+  or its key, the entry list, the imports, the access codes, the re-score — and
+  `requireUserAdmin()` for `/api/users`. They all return
+  `{ ok, user | response }`, so a handler starts
+  `if (!session.ok) return session.response;` and can read `session.user`.
+  `middleware.ts` also blocks unauthenticated requests and keeps a data-entry
+  account off the admin *pages* — the per-handler guard is deliberate defence in
   depth, keep both. **The two Android-app endpoints are the only exception**
   (`/api/app/*`): they are public by design, and they pay for it with a
   scanned-code check, a per-IP rate limit and a one-submission lock. Do not add
   a third public route without the same three.
+- **A new mutating route defaults to `requireRallyAdmin()`.** Typing a
+  participant's card is the one thing a data-entry account may change; if a new
+  route is not that, it is an admin's.
 - **Never interpolate an unvalidated value into a Mongoose query.** Ids go
   through `mongoose.Types.ObjectId.isValid`, `eq` through
   `parseEq` / `parseEqParam`, names through `parseName`, arrays through the
@@ -530,6 +608,13 @@ Do not regress them.**
   behaviour when touching those routes.
 
 ## Gotchas
+
+- A role is checked in three places and they must agree: `app/lib/roles.ts` (the
+  table), `middleware.ts` (which *pages* a role may open) and the route guards
+  (what it may actually do). Adding an admin-only page means adding it to
+  `RESTRICTED_PAGES` as well as guarding the routes behind it — a page missing
+  from that list still refuses every write, it just looks broken instead of
+  saying "not you".
 
 - A card handed in from the app is a sheet write like any other, so it
   re-scores that participant's rally. If you add another way for a card to

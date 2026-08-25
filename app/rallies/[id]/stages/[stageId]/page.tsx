@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import StageKeyCard from '../../../../components/StageKeyCard';
+import { useAuth } from '../../../../components/AuthContext';
 import type { StageMerkKeyRow, StageScoreKeyRow } from '../../../../components/StageKeyCard';
 import type { StageTimeConfig, TimeKeyRow } from '../../../../lib/timeScoring';
 
@@ -22,6 +23,7 @@ export default function ViewStagePage({
 }: {
   params: Promise<{ id: string; stageId: string }>;
 }) {
+  const { can } = useAuth();
   const [rallyId, setRallyId] = useState<string>('');
   const [stageId, setStageId] = useState<string>('');
   const [stage, setStage] = useState<Stage | null>(null);
@@ -114,26 +116,31 @@ export default function ViewStagePage({
         <div className="bg-white rounded-xl shadow-xl overflow-hidden border-2 border-gray-200 mb-6">
           <div className="px-6 py-3 border-b-2 border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
             <h2 className="text-lg font-bold text-gray-800">Answer Key</h2>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href={`/rallies/${rallyId}/stages/${stage._id}/qr-codes`}
-                className="px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-medium text-base transition-colors"
-              >
-                QR Codes
-              </Link>
-              <Link
-                href={`/time-import?rallyId=${rallyId}&stageId=${stage._id}`}
-                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium text-base transition-colors"
-              >
-                Import Times
-              </Link>
-              <Link
-                href={`/rallies/${rallyId}/stages/${stage._id}/edit`}
-                className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-base transition-colors"
-              >
-                Edit Stage
-              </Link>
-            </div>
+            {/* Reading the key is every official's — a data-entry account types
+                cards against it. Changing it, printing the QR codes and
+                importing a control's times are an admin's. */}
+            {can('manage:rally') && (
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href={`/rallies/${rallyId}/stages/${stage._id}/qr-codes`}
+                  className="px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-medium text-base transition-colors"
+                >
+                  QR Codes
+                </Link>
+                <Link
+                  href={`/time-import?rallyId=${rallyId}&stageId=${stage._id}`}
+                  className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium text-base transition-colors"
+                >
+                  Import Times
+                </Link>
+                <Link
+                  href={`/rallies/${rallyId}/stages/${stage._id}/edit`}
+                  className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-base transition-colors"
+                >
+                  Edit Stage
+                </Link>
+              </div>
+            )}
           </div>
 
           {/* Same 4 columns as the stage form and the scored sheets */}

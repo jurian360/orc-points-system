@@ -4,9 +4,11 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AuthProvider, useAuth } from './components/AuthContext';
+import { ROLE_LABELS } from './lib/roles';
 
 const Navigation: React.FC = () => {
-  const { logout } = useAuth();
+  const { user, loading, can, logout } = useAuth();
+  const isAdmin = can('manage:rally');
 
   return (
     <nav className="bg-blue-600 shadow-md">
@@ -29,15 +31,43 @@ const Navigation: React.FC = () => {
               >
                 Rallies
               </Link>
-              <Link
-                href="/time-import"
-                className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
-              >
-                Import Times
-              </Link>
+              {/* The admin links are hidden for a data-entry account. Hiding is
+                  a courtesy, not the control: middleware.ts redirects the page
+                  and every route behind it answers 403. Nothing renders until
+                  /api/auth/check has answered, so the links do not flash away
+                  from an admin. */}
+              {!loading && isAdmin && (
+                <>
+                  <Link
+                    href="/time-import"
+                    className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Import Times
+                  </Link>
+                  <Link
+                    href="/users"
+                    className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Users
+                  </Link>
+                </>
+              )}
             </div>
           </div>
-          <div>
+          <div className="flex items-center gap-1">
+            {user && (
+              <Link
+                href="/account"
+                className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                title="Your account"
+              >
+                <span className="font-semibold">{user.username}</span>
+                <span className="hidden sm:inline text-blue-200">
+                  {' '}
+                  ({ROLE_LABELS[user.role]})
+                </span>
+              </Link>
+            )}
             <button
               onClick={logout}
               className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"

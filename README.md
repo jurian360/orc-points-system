@@ -90,7 +90,7 @@ Any other hosted MongoDB works the same way — use its own `mongodb://` or
 
 ## 3. Create `.env.local`
 
-The app reads three required variables. Copy the template:
+The app reads four required variables. Copy the template:
 
 ```bash
 cp .env.example .env.local
@@ -100,19 +100,25 @@ Then generate the two secrets:
 
 ```bash
 node scripts/generate-secret.mjs            # prints SESSION_SECRET=...
-node scripts/hash-password.mjs 'your-password'   # prints APP_PASSWORD_HASH=...
+node scripts/hash-password.mjs 'your-password'   # prints ADMIN_PASSWORD_HASH=...
 ```
 
 `hash-password.mjs` requires at least 12 characters. The plaintext password is
-never stored — only its scrypt hash goes into the environment. The password you
-pass here is the one you will type on the app's login screen.
+never stored — only its scrypt hash goes into the environment.
+
+That credential is the **recovery admin**: the account you sign in with when
+there are no accounts yet, and the way back in if every admin later forgets
+their password. It lives only in the environment, so nothing in the app can
+delete it or take its role away. Everyone else gets a username and a password on
+the **Users** page once you are in.
 
 Fill in `.env.local` so it looks like this:
 
 ```bash
 MONGODB_URI=mongodb+srv://USER:PASSWORD@cluster0.abcde.mongodb.net/orc-points-system?retryWrites=true&w=majority
 SESSION_SECRET=<output of generate-secret.mjs, at least 32 chars>
-APP_PASSWORD_HASH=<saltHex>:<hashHex>
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD_HASH=<saltHex>:<hashHex>
 ```
 
 `.env.local` is git-ignored (see `.gitignore`) — keep it that way; it holds a
@@ -124,8 +130,14 @@ live database credential.
 npm run dev
 ```
 
-Open **[http://localhost:3000](http://localhost:3000)** and log in with the
-password you hashed in step 3.
+Open **[http://localhost:3000](http://localhost:3000)** and log in with
+`ADMIN_USERNAME` and the password you hashed in step 3.
+
+There are two kinds of account. An **admin** runs the rally — the stages and
+their answer keys, the entry list, the time import, the QR codes and the users.
+A **data entry** account types the control cards (the ORC's, the tijd and the
+merk) and reads the standings, and nothing else. Add them under **Users** in the
+navigation bar; everyone can change their own password under their name.
 
 > Use `localhost` (or `127.0.0.1`), not your machine's LAN IP. The session
 > cookie is always set with `Secure`, and browsers only accept a `Secure`
@@ -154,9 +166,14 @@ project root, or the dev server was started before the file existed. Restart
 **`SESSION_SECRET must be at least 32 characters long`** — regenerate it with
 `node scripts/generate-secret.mjs` and paste the full value.
 
-**Login returns "Server error"** — `APP_PASSWORD_HASH` is missing or not in
-`<saltHex>:<hashHex>` form. Re-run `node scripts/hash-password.mjs '...'` and
-copy the whole line's value.
+**Login returns "Server error"** — `ADMIN_PASSWORD_HASH` (or the older
+`APP_PASSWORD_HASH`) is missing or not in `<saltHex>:<hashHex>` form. Re-run
+`node scripts/hash-password.mjs '...'` and copy the whole line's value.
+
+**Nobody can sign in any more** — sign in with `ADMIN_USERNAME` and the password
+behind `ADMIN_PASSWORD_HASH`, then reset the accounts on the **Users** page. If
+that password is lost too, hash a new one and redeploy; the recovery admin is
+not stored in the database, so nothing there has to be repaired.
 
 **Login returns "Too many attempts"** — five failed logins per IP per 15
 minutes. Wait it out, or restart the dev server (the rate-limiter is in-memory).

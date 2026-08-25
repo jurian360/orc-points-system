@@ -3,7 +3,7 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../../lib/mongodb';
 import { Participant, Rally } from '../../../../../models';
-import { readBody, requireSession } from '../../../../../lib/api-guard';
+import { readBody, requireRallyAdmin } from '../../../../../lib/api-guard';
 import {
   MAX_IMPORT_PARTICIPANTS,
   parseClassification,
@@ -27,8 +27,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireRallyAdmin();
+  if (!session.ok) return session.response;
 
   const parsed = await readBody(request);
   if (!parsed.ok) return parsed.response;
