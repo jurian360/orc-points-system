@@ -363,11 +363,23 @@ stage's time column.
 ## The WPT overview
 
 The rally dashboard has four tabs — Stages, Standings, Participants and **Times**
-— and the last one is the time import read back. `RallyTimesPanel` shows one
-table per stage, in running order: a row per crew, a column per control (START,
-the GTC's the stage uses, FINISH) and the WPT in the cell. It is what an official
-reads once a control has handed its export in — did every crew get a time, and
-which of them came in outside their window — instead of opening 56 cards.
+— and the last one is the time import read back. `RallyTimesPanel` shows **one
+row per crew** running the whole rally left to right: the stages sit side by
+side in running order, each with a column per control (START, the GTC's the
+stage uses, FINISH) and its own Tijd total. It is what an official reads once a
+control has handed its export in — did every crew get a time, and which of them
+came in outside their window — instead of opening 56 cards.
+
+- **It is a grid, not a page of tables**, and it is laid out as one: the Times
+  tab is the one tab the rally dashboard gives the full window rather than the
+  reading column (`container` in `app/rallies/[id]/page.tsx`), and the grid
+  scrolls inside itself in both directions with the crew columns and the two
+  header rows frozen. On a real rally it is 56 crews long and a dozen controls
+  wide, and neither the name of a crew nor the name of a control may scroll out
+  of sight. Two consequences to keep: the table is `border-separate`, because a
+  sticky cell loses collapsed borders, and the three crew columns have **exact**
+  widths, because each one is frozen at the sum of the widths before it —
+  changing a width means changing the offset after it.
 
 - **A card shows one crew's time column; this is the other way round.** Both are
   the same numbers: `GET /api/rallies/[id]/times` reads the `timePenalties` rows
