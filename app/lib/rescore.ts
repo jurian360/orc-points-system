@@ -16,7 +16,7 @@ import 'server-only';
 import mongoose from 'mongoose';
 
 import { AnswerSheet, Stage } from '../models';
-import { calculateMerkPenalty, calculateTotalPenalty } from './scoring';
+import { calculateMerkPenalty, calculateTotalPenalty, scoreAnswerRows } from './scoring';
 import { scoreRallyTimes, type RallyStageTimeInput, type TimeEntryRow } from './timeScoring';
 
 // The running order of a rally is the order its stages were created in — the
@@ -94,6 +94,10 @@ export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {
           filter: { _id: sheet._id },
           update: {
             $set: {
+              // The officials' letters are kept; the strafpunten of a row are
+              // derived from the stage key, exactly as the time and merk rows
+              // are — nothing on a sheet claims a penalty of its own.
+              answers: scoreAnswerRows(stage?.scoreKey, sheet.answers),
               // The stored rows keep the officials' WPT and add the derived
               // ideal time, +/- and penalty of every row.
               timePenalties: timeResult

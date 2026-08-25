@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ClassificationBadge from './ClassificationBadge';
 import { crewLabel, type ClassificationValue } from '../lib/participants';
-import { calculateMerkPenalty, PENALTY_PER_ERROR, type MerkKeyRow } from '../lib/scoring';
+import {
+  calculateMerkPenalty,
+  calculateRowPenalty,
+  calculateTotalPenalty,
+  hasOrderError,
+  PENALTY_PER_ERROR,
+  type MerkKeyRow,
+  type ScoreKeyRow,
+} from '../lib/scoring';
 import {
   scoreRallyTimes,
   timeRowLabel,
@@ -14,10 +22,13 @@ import {
 interface Stage {
   _id: string;
   name: string;
-  // Only the order flag of the key is read here: the entry grid marks the rows
-  // whose letters are scored on their order, so the official knows to type them
-  // exactly as the participant wrote them. The grading itself stays server-side.
-  scoreKey?: { rowNumber: number; orderMatters?: boolean }[];
+  // The ORC key of the stage. It is read in full here: the strafpunten of a row
+  // are *scored*, never typed, so the grid grades every row against the key
+  // while the official types it — with the same module the server stores the
+  // total with, so what is on screen is what gets saved. The key also marks the
+  // rows whose letters are scored on their order, so the official knows to type
+  // them exactly as the participant wrote them.
+  scoreKey?: ScoreKeyRow[];
   timeScoreKey?: TimeKeyRow[];
   timeConfig?: Partial<StageTimeConfig>;
   // The merk key, unlike the ORC key, *is* read here: the merk column is scored
@@ -45,10 +56,11 @@ interface ParticipantDetails {
   navigatorName?: string;
 }
 
+// Only the letters of a row are typed; its strafpunten are scored against the
+// stage's ORC key, exactly as the time and merk columns are.
 interface AnswerRow {
   rowNumber: number;
   selectedAnswers: string[];
-  strafp: string;
 }
 
 // Only the WPT is typed on a sheet; the ideal time, the +/- and the penalty of
@@ -114,19 +126,15 @@ const ORC_HALF = Math.ceil(ANSWER_ROWS / 2); // rows per ORC column
 
 // Grid identifiers + dimensions used for keyboard navigation between cells.
 // Each visible table is its own grid so arrow keys stay within the column the
-// user is looking at. Columns include the trailing strafpunten field.
+// user is looking at. Only the typed cells count: the strafpunten of a row are
+// computed, so the ORC grids end at the last letter column.
 type GridName = 'orc-left' | 'orc-right' | 'time' | 'merk';
 
 const GRID_DIMS: Record<GridName, { rows: number; cols: number }> = {
-  'orc-left': { rows: ORC_HALF, cols: LETTER_COLUMNS + 1 },
-  'orc-right': { rows: ANSWER_ROWS - ORC_HALF, cols: LETTER_COLUMNS + 1 },
+  'orc-left': { rows: ORC_HALF, cols: LETTER_COLUMNS }, // letters only — the strafp. is scored
+  'orc-right': { rows: ANSWER_ROWS - ORC_HALF, cols: LETTER_COLUMNS },
   time: { rows: TIME_ROWS, cols: 1 }, // wpt only — the rest is computed
   merk: { rows: MERK_ROWS, cols: 1 }, // merk letter only — the rest is computed
-};
-
-const toNumber = (value: string): number => {
-  const n = parseInt(value, 10);
-  return isNaN(n) ? 0 : n;
 };
 
 // Fill a fixed-size grid of `rows` rows from whatever the stored sheet has, by
@@ -288,7 +296,6 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
       (rowNumber) => ({
         rowNumber,
         selectedAnswers: Array(LETTER_COLUMNS).fill(''),
-        strafp: '',
       }),
       initialData?.answers,
       (row, stored) => ({
@@ -297,7 +304,6 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
           { length: LETTER_COLUMNS },
           (_, colIndex) => stored.selectedAnswers?.[colIndex] || ''
         ),
-        strafp: stored.strafp ? String(stored.strafp) : '',
       })
     )
   );
@@ -333,14 +339,6 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
       const row = { ...next[rowIndex], selectedAnswers: [...next[rowIndex].selectedAnswers] };
       row.selectedAnswers[colIndex] = value.toUpperCase();
       next[rowIndex] = row;
-      return next;
-    });
-  };
-
-  const handleAnswerStrafpChange = (rowIndex: number, value: string) => {
-    setAnswers((prev) => {
-      const next = [...prev];
-      next[rowIndex] = { ...next[rowIndex], strafp: value };
       return next;
     });
   };
@@ -430,8 +428,62 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     [merkResult]
   );
 
-  // Penalty totals for the "Totaal Strafpunten" overview
-  const orcTotal = answers.reduce((sum, row) => sum + toNumber(row.strafp), 0);
+  // Live ORC scoring for the sheet being typed. Like the merk column, the ORC
+  // rows are scored from the sheet and the stage key alone — they do not chain
+  // across stages the way the time does — so every row can be graded while the
+  // official types it, with the same module the server stores the total with.
+  // The strafpunten are therefore shown, never entered: a row costs what the
+  // key says it costs.
+  const orcKey = useMemo(() => {
+    const stage = stages.find((candidate) => candidate._id === stageId);
+    return stage?.scoreKey || [];
+  }, [stages, stageId]);
+
+  const orcKeyByRow = useMemo(
+    () => new Map(orcKey.map((row) => [row.rowNumber, row])),
+    [orcKey]
+  );
+
+  // The scored state of every row of the card: what it costs, and whether the
+  // key asks for an order and the letters are out of it. A row the key does not
+  // cover — a stage that uses fewer than 30 ORC's — costs nothing.
+  const orcRowScores = useMemo(() => {
+    const scores = new Map<
+      number,
+      { strafp: number; orderMatters: boolean; orderError: boolean }
+    >();
+
+    answers.forEach((row) => {
+      const keyRow = orcKeyByRow.get(row.rowNumber);
+      if (!keyRow) {
+        scores.set(row.rowNumber, { strafp: 0, orderMatters: false, orderError: false });
+        return;
+      }
+      const participantRow = {
+        rowNumber: row.rowNumber,
+        selectedAnswers: row.selectedAnswers,
+      };
+      scores.set(row.rowNumber, {
+        strafp: calculateRowPenalty(keyRow, participantRow),
+        orderMatters: Boolean(keyRow.orderMatters),
+        orderError: hasOrderError(keyRow, participantRow),
+      });
+    });
+
+    return scores;
+  }, [answers, orcKeyByRow]);
+
+  // A stage whose key has no letters at all scores every card 0 on the ORC's;
+  // saying so beats a column of zeroes nobody can explain.
+  const orcKeyEmpty = useMemo(
+    () => !orcKey.some((row) => (row.answers || []).some(Boolean)),
+    [orcKey]
+  );
+
+  // Penalty totals for the "Totaal Strafpunten" overview. The ORC total comes
+  // from the key rather than from the rows on screen, exactly as the server
+  // computes it — a key row the card has no row for still costs its letters.
+  const orcTotal = useMemo(() => calculateTotalPenalty(orcKey, answers), [orcKey, answers]);
   const tijdTotal = timeResult ? timeResult.totalPenalty : 0;
   const diversenTotal = merkResult.totalPenalty;
   const grandTotal = orcTotal + tijdTotal + diversenTotal;
@@ -469,7 +521,9 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     const processedAnswers = answers.map((row) => ({
       rowNumber: row.rowNumber,
       selectedAnswers: row.selectedAnswers.filter((answer) => answer.trim() !== ''),
-      strafp: toNumber(row.strafp),
+      // Sent so the request carries the card as it was shown; the server
+      // scores the rows itself (see app/lib/validation.ts).
+      strafp: orcRowScores.get(row.rowNumber)?.strafp || 0,
     }));
 
     // The server recomputes the derived cells from the stage's time key; they
@@ -498,74 +552,78 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     });
   };
 
-  // The rows of this stage whose letters are scored on their order as well.
-  // Typing them in the order the participant wrote them is what makes that
-  // scoring correct, so the grid marks them.
-  const orderRows = useMemo(() => {
-    const stage = stages.find((candidate) => candidate._id === stageId);
-    return new Set(
-      (stage?.scoreKey || [])
-        .filter((row) => row.orderMatters)
-        .map((row) => row.rowNumber)
-    );
-  }, [stages, stageId]);
-
   // Render one ORC answer row (letters + strafp) — compact so the whole card fits on screen.
   // `grid`/`localRow` position the row for keyboard navigation; `rowIndex` is the
   // absolute index into the answers state array used when updating values.
+  //
+  // Only the letters are inputs: the strafpunten cell shows what the row costs
+  // against the stage key and follows every letter typed into the row.
   const renderAnswerRow = (
     row: AnswerRow,
     rowIndex: number,
     grid: GridName,
     localRow: number
-  ) => (
-    <tr key={row.rowNumber} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-      <td className="py-0.5 px-1 border-b border-r border-gray-300 font-bold text-sm text-gray-800 text-center w-7">
-        {row.rowNumber}
-        {orderRows.has(row.rowNumber) && (
-          <span
-            className="block text-[9px] font-bold leading-tight text-purple-700"
-            title="Volgorde telt — type the letters in the order the participant wrote them"
-          >
-            1&rarr;2
-          </span>
-        )}
-      </td>
-      {Array.from({ length: LETTER_COLUMNS }).map((_, colIndex) => (
-        <td key={colIndex} className="py-0.5 px-0.5 border-b border-r border-gray-300 text-center">
-          <input
-            type="text"
-            className="w-9 h-8 p-0 border border-gray-400 rounded text-center text-lg font-bold uppercase focus:border-green-500 focus:ring-1 focus:ring-green-200 text-gray-700"
-            maxLength={1}
-            value={row.selectedAnswers[colIndex] || ''}
-            data-grid={grid}
-            data-row={localRow}
-            data-col={colIndex}
-            onKeyDown={handleCellKeyDown}
-            onChange={(e) => {
-              handleAnswerChange(rowIndex, colIndex, e.target.value);
-              if (e.target.value) advanceAfterLetter(grid, localRow, colIndex);
-            }}
-            aria-label={`Answer for row ${row.rowNumber}, letter ${colIndex + 1}`}
-          />
+  ) => {
+    const scored = orcRowScores.get(row.rowNumber);
+
+    return (
+      <tr
+        key={row.rowNumber}
+        className={
+          scored?.strafp ? 'bg-red-50' : rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+        }
+      >
+        <td className="py-0.5 px-1 border-b border-r border-gray-300 font-bold text-sm text-gray-800 text-center w-7">
+          {row.rowNumber}
+          {scored?.orderMatters && (
+            <span
+              className={`block text-[9px] font-bold leading-tight ${
+                scored.orderError ? 'text-red-700' : 'text-purple-700'
+              }`}
+              title={
+                scored.orderError
+                  ? `The letters of this row are out of the order of the key (+${PENALTY_PER_ERROR})`
+                  : 'Volgorde telt — type the letters in the order the participant wrote them'
+              }
+            >
+              1&rarr;2
+            </span>
+          )}
         </td>
-      ))}
-      <td className="py-0.5 px-0.5 border-b border-gray-300 text-center">
-        <input
-          type="number"
-          min={0}
-          className="w-12 h-8 p-0.5 border border-gray-400 rounded text-center text-sm font-semibold focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-gray-700"
-          value={row.strafp}
-          data-grid={grid}
-          data-row={localRow}
-          data-col={LETTER_COLUMNS}
-          onKeyDown={handleCellKeyDown}
-          onChange={(e) => handleAnswerStrafpChange(rowIndex, e.target.value)}
-          aria-label={`Strafpunten for row ${row.rowNumber}`}
-        />
-      </td>
-    </tr>
-  );
+        {Array.from({ length: LETTER_COLUMNS }).map((_, colIndex) => (
+          <td key={colIndex} className="py-0.5 px-0.5 border-b border-r border-gray-300 text-center">
+            <input
+              type="text"
+              className="w-9 h-8 p-0 border border-gray-400 rounded text-center text-lg font-bold uppercase focus:border-green-500 focus:ring-1 focus:ring-green-200 text-gray-700"
+              maxLength={1}
+              value={row.selectedAnswers[colIndex] || ''}
+              data-grid={grid}
+              data-row={localRow}
+              data-col={colIndex}
+              onKeyDown={handleCellKeyDown}
+              onChange={(e) => {
+                handleAnswerChange(rowIndex, colIndex, e.target.value);
+                if (e.target.value) advanceAfterLetter(grid, localRow, colIndex);
+              }}
+              aria-label={`Answer for row ${row.rowNumber}, letter ${colIndex + 1}`}
+            />
+          </td>
+        ))}
+        <td
+          className={`py-0.5 px-1 border-b border-gray-300 text-center text-sm font-bold ${
+            scored?.strafp ? 'text-red-700' : 'text-gray-900'
+          }`}
+          title={
+            scored?.orderError
+              ? `Scored against the stage key, including ${PENALTY_PER_ERROR} for the wrong order`
+              : 'Scored against the stage key'
+          }
+        >
+          {scored?.strafp || 0}
+        </td>
+      </tr>
+    );
+  };
 
   // ORC section is split into two columns of 15 rows, like the paper card
   const half = ORC_HALF;
@@ -678,8 +736,8 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
 
         <p className="text-sm text-gray-600 sm:ml-auto sm:pb-2">
           {isEditing
-            ? 'Correct the card and save. The stage of a submitted sheet cannot be changed — delete it and enter a new one instead.'
-            : 'Enter single-letter answers per column, plus strafpunten per row.'}
+            ? 'Correct the card and save. The strafpunten follow the letters you type — the stage of a submitted sheet cannot be changed, delete it and enter a new one instead.'
+            : 'Type one letter per column, as the participant wrote them. The strafpunten are scored against the stage answer key while you type.'}
         </p>
       </div>
 
@@ -710,6 +768,12 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
               </tbody>
             </table>
           </div>
+
+          <p className="text-[11px] text-gray-600 mt-1">
+            {orcKeyEmpty
+              ? 'This stage has no ORC answer key yet, so every row scores 0. Add the key to the stage and the cards are re-scored.'
+              : `Each wrong, missing or doubled letter costs ${PENALTY_PER_ERROR}, and so does the wrong order on a row marked 1→2, up to the row's maximum.`}
+          </p>
         </div>
 
         {/* Column 3 — Tijd: officials type the WPT, the rest is scored live */}

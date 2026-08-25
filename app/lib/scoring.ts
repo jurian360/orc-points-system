@@ -180,6 +180,33 @@ export function calculateTotalPenalty(
   }, 0);
 }
 
+// The penalty of every row a sheet holds, in the order the sheet holds them.
+//
+// A row's `strafp` is derived, exactly like the `strafp` of a time or a merk
+// row: it is what the key says the row costs, never what an official typed. The
+// entry form shows these numbers while a card is typed and the re-scoring
+// (app/lib/rescore.ts) writes them to the stored sheet, so the row a card shows
+// and the total the standings read are the same computation.
+//
+// Only the rows the sheet holds get a row here — a key row the sheet has no row
+// for still costs its missing letters, but it costs them in the total
+// (calculateTotalPenalty), not on a row of the card.
+export function scoreAnswerRows(
+  scoreKey: ScoreKeyRow[] | undefined,
+  answers: AnswerRow[] | undefined
+): { rowNumber: number; selectedAnswers: string[]; strafp: number }[] {
+  const keyByRow = new Map((scoreKey || []).map((row) => [row.rowNumber, row]));
+
+  return (answers || []).map((row) => {
+    const keyRow = keyByRow.get(row.rowNumber);
+    return {
+      rowNumber: row.rowNumber,
+      selectedAnswers: [...(row.selectedAnswers || [])],
+      strafp: keyRow ? calculateRowPenalty(keyRow, row) : 0,
+    };
+  });
+}
+
 // --- Merk ------------------------------------------------------------------
 //
 // The merk column is the second lettered check of a stage, and unlike the ORC's

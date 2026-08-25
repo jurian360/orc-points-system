@@ -71,9 +71,13 @@ Rally ──< Stage ──< AnswerSheet
   the whole column.
 - `AnswerSheet` — `{ eq, rallyId, stageId, answers[], timePenalties[], merkScores[],
   totalPenalty, timePenalty, merkPenalty, disqualified, startDelta, endDelta }`.
-  On a time row officials type only the `wpt`; `ipt`, `plusMinus` and `strafp` are
-  computed server-side. On a merk row they type only the `merk` letter; its
-  `strafp` is computed too.
+  **Officials type letters and times, never points.** On an ORC row they type only
+  the letters; the row's `strafp` is scored against the stage key. On a time row
+  they type only the `wpt`; `ipt`, `plusMinus` and `strafp` are computed
+  server-side. On a merk row they type only the `merk` letter; its `strafp` is
+  computed too. `parseAnswerRows` / `parseTimePenalties` / `parseMerkScores`
+  therefore drop whatever penalty the client sent, and `rescore.ts` writes the
+  derived one — a sheet cannot claim a total it did not earn.
 - **Unique index `{ stageId, eq }`** — one sheet per participant per stage. The
   pre-insert `findOne` check is a nicety; the index is the real guard, and the
   `11000` duplicate-key error is mapped to a 409.
@@ -480,6 +484,13 @@ Do not regress them.**
   on their order, the IPT 0 timetable with the stage's time settings and the
   maximum each part can cost. A row whose order counts is marked `1→2` in the key
   card, in the scored card and in the entry grid.
+- **The entry form scores while it is typed.** `AnswerSheetForm` shows the
+  strafpunten of every ORC row (`calculateRowPenalty` / `hasOrderError`), of every
+  time row and of every merk row as read-only cells that follow each keystroke,
+  and the ORC total comes from `calculateTotalPenalty` over the stage key — the
+  same modules the server stores the sheet with, so the card on screen and the
+  stored total are one computation. Nothing in the STRAFP. columns is an input;
+  correcting a score means correcting the letters, the times or the stage key.
 - A submitted sheet is corrected on the entry form itself: `AnswerSheetForm`
   takes `initialData` + `isEditing` and the edit page PUTs to
   `/api/answersheets/[id]`. The stage of a sheet is fixed there — a sheet is
