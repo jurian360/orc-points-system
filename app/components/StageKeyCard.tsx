@@ -183,9 +183,12 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
             </h3>
             {orcColumn(leftRows)}
             <p className="text-sm text-gray-600 mt-2">
-              Green is the correct letter of the column, red an explicit false letter. Max is the
-              cap on the penalty of the row. A row marked 1&rarr;2 under Volg. is scored on the
-              order of its letters as well: giving them out of order costs one extra error (30).
+              Green is the correct letter of the column, red an explicit false letter. A false
+              letter costs one error ({PENALTY_PER_ERROR}) however often the participant wrote it on
+              the row, and as many errors as the key lists it — a letter ruled out twice can cost
+              twice. Max is the cap on the penalty of the row. A row marked 1&rarr;2 under Volg. is
+              scored on the order of its letters as well: giving them out of order costs one extra
+              error ({PENALTY_PER_ERROR}).
             </p>
           </div>
 

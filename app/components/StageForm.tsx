@@ -370,6 +370,13 @@ const StageForm: React.FC<StageFormProps> = ({
           max penalty for each row.
         </p>
         <p className="text-sm text-gray-600 mt-1">
+          A letter the key rules out costs {PENALTY_PER_ERROR} points once, however often the
+          participant wrote it on that row — the same wrong letter four times is the same mistake,
+          not four. Type it in a second column only when the row can lose it twice: the key rules a
+          letter out as many times as it lists it, so two false D&apos;s can cost{' '}
+          {2 * PENALTY_PER_ERROR}.
+        </p>
+        <p className="text-sm text-gray-600 mt-1">
           Tick <span className="font-semibold">Volgorde</span> on an ORC row whose letters have to
           be given in the order of the key: the wrong order costs one extra error (30). A
           participant who gives only one of the letters pays for the missing ones and nothing more
