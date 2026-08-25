@@ -123,7 +123,12 @@ Rally ──< Stage ──< AnswerSheet
    whether the participant wrote one `D` or four, and a key that rules `D` out
    in two columns can charge 60. Writing the same wrong letter again is the
    same mistake, exactly as in the merk column.
-2. More correct letters given than the key expects → **+30** (once).
+2. Each correct letter given **more often than the key asks for** → **+30**,
+   once per letter: `R D R D` on the key `R D` costs 60 — one error for the
+   extra `R` and one for the extra `D` — while `R R R` on that key costs 30
+   for the doubled `R` (plus 30 for the missing `D`), because writing the
+   same surplus letter again is the same mistake, exactly as in the merk
+   column.
 3. Each required correct letter **missing** → **+30**.
 4. On a row with `orderMatters`, the correct letters given **out of the key's
    order** → **+30**, once, on top of what the letters themselves cost.

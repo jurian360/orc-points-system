@@ -377,6 +377,13 @@ const StageForm: React.FC<StageFormProps> = ({
           {2 * PENALTY_PER_ERROR}.
         </p>
         <p className="text-sm text-gray-600 mt-1">
+          A correct letter written more often than the key asks for costs {PENALTY_PER_ERROR}{' '}
+          points per letter: on the key R D, a row of R D R D costs{' '}
+          {2 * PENALTY_PER_ERROR} — one error for the extra R and one for the extra D. Writing the
+          same surplus letter again is the same mistake, so R R R on that key costs{' '}
+          {PENALTY_PER_ERROR} for the doubled R on top of the missing D.
+        </p>
+        <p className="text-sm text-gray-600 mt-1">
           Tick <span className="font-semibold">Volgorde</span> on an ORC row whose letters have to
           be given in the order of the key: the wrong order costs one extra error (30). A
           participant who gives only one of the letters pays for the missing ones and nothing more

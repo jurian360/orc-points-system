@@ -4,14 +4,15 @@
 // the sum of the three.
 //
 // A sheet is scored by comparing its selected letter answers against the
-// stage's answer key (scoreKey). Each wrong, missing, or duplicated correct
+// stage's answer key (scoreKey). Each wrong, missing, or doubled correct
 // answer costs 30 penalty points, and so does the wrong order on a row whose
 // key asks for one, capped per row by the row's maxPenalty (when
-// maxPenalty > 0). A letter the key rules out is one error however often the
-// participant wrote it on that row — as in the merk column, the same wrong
-// letter twice is the same mistake twice, not two mistakes. The same algorithm
-// powers the scoring detail view and the server-side total stored on each
-// answer sheet.
+// maxPenalty > 0). Both the doubles and the letters the key rules out are
+// counted per letter, exactly as in the merk column: every key letter written
+// too often is its own 30 points, while writing the same surplus or ruled-out
+// letter again is the same mistake, not a new one. The same algorithm powers
+// the scoring detail view and the server-side total stored on each answer
+// sheet.
 //
 // The *key* decides which rows are scored, never the sheet: a row the
 // participant did not answer costs its missing letters whether the sheet holds
@@ -112,13 +113,27 @@ export function calculateRowPenalty(
     }
   });
 
-  // 2. A correct answer given more times than expected costs 30 points.
-  const correctGiven = selected.filter((answer) =>
-    scoreKeyRow.answers.includes(answer)
-  );
-  if (correctGiven.length > scoreKeyRow.answers.length) {
-    rowPenalty += PENALTY_PER_ERROR;
-  }
+  // 2. A correct letter given more often than the key asks for costs 30 points,
+  //    once per letter: a row of R D R D against the key R D pays 60 — one
+  //    error for the extra R and one for the extra D — exactly as the merk
+  //    column charges every doubled key letter. Repeating the same surplus
+  //    letter again is the same mistake, so R R R against the key R D costs the
+  //    30 of the doubled R once (plus the 30 for the missing D).
+  const expectedCounts = new Map<string, number>();
+  scoreKeyRow.answers.forEach((answer) => {
+    if (!answer) return;
+    expectedCounts.set(answer, (expectedCounts.get(answer) || 0) + 1);
+  });
+  const givenCounts = new Map<string, number>();
+  selected.forEach((answer) => {
+    if (!answer) return;
+    givenCounts.set(answer, (givenCounts.get(answer) || 0) + 1);
+  });
+  expectedCounts.forEach((expected, letter) => {
+    if ((givenCounts.get(letter) || 0) > expected) {
+      rowPenalty += PENALTY_PER_ERROR;
+    }
+  });
 
   // 3. Each missing required correct answer costs 30 points.
   const requiredAnswers = [...scoreKeyRow.answers];
