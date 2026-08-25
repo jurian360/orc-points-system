@@ -6,6 +6,7 @@ import Link from 'next/link';
 import ClassificationBadge from '../../../../../components/ClassificationBadge';
 import QrCode from '../../../../../components/QrCode';
 import { crewLabel, type ClassificationValue } from '../../../../../lib/participants';
+import { PAGE_CONTAINER } from '../../../../../lib/layout';
 
 // The printable sheet of QR codes for one stage: one code per participant,
 // each standing for that crew's card for this stage.
@@ -150,7 +151,7 @@ export default function StageQrCodesPage({
 
   return (
     <div className="min-h-screen bg-gray-100 py-4 print:bg-white print:py-0">
-      <div className="max-w-[1700px] mx-auto p-4 print:p-0 print:max-w-none">
+      <div className={`${PAGE_CONTAINER} py-4 print:p-0 print:max-w-none`}>
         {/* Everything in here is for the official at the screen, not for paper */}
         <div className="print:hidden">
           <div className="mb-4">

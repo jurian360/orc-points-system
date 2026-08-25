@@ -6,6 +6,7 @@ import StageKeyCard from '../../../../components/StageKeyCard';
 import { useAuth } from '../../../../components/AuthContext';
 import type { StageMerkKeyRow, StageScoreKeyRow } from '../../../../components/StageKeyCard';
 import type { StageTimeConfig, TimeKeyRow } from '../../../../lib/timeScoring';
+import { PAGE_CONTAINER } from '../../../../lib/layout';
 
 interface Stage {
   _id: string;
@@ -103,7 +104,7 @@ export default function ViewStagePage({
 
   return (
     <div className="min-h-screen bg-gray-100 py-4">
-      <div className="max-w-[1700px] mx-auto p-4">
+      <div className={`${PAGE_CONTAINER} py-4`}>
         <div className="mb-4">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">{stage.name}</h1>
           <p className="text-gray-700 text-base">

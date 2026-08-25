@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../components/AuthContext';
 import { copyRallyName } from '../lib/rallyCodes';
+import { PAGE_CONTAINER } from '../lib/layout';
 
 interface Rally {
   _id: string;
@@ -114,7 +115,7 @@ export default function RalliesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4">
+      <div className={PAGE_CONTAINER}>
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800">Rally Management</h1>
           {isAdmin && (

@@ -7,6 +7,7 @@ import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
 import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
 import ClassificationBadge from './ClassificationBadge';
 import { crewLabel, type ClassificationValue } from '../lib/participants';
+import { PAGE_CONTAINER } from '../lib/layout';
 
 interface Stage {
   _id: string;
@@ -128,7 +129,7 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
   if (error || !stage || !sheet) {
     return (
       <div className="min-h-screen bg-gray-100 py-4">
-        <div className="max-w-[1700px] mx-auto p-4">
+        <div className={`${PAGE_CONTAINER} py-4`}>
           <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md">
             <p>{error || 'No data available for this answer sheet.'}</p>
           </div>
@@ -158,7 +159,7 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
 
   return (
     <div className="min-h-screen bg-gray-100 py-4">
-      <div className="max-w-[1700px] mx-auto p-4">
+      <div className={`${PAGE_CONTAINER} py-4`}>
         <div className="mb-4">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">
             Participant {sheet.eq}&apos;s Answers — {stage.name}

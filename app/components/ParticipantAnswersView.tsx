@@ -9,6 +9,7 @@ import ClassificationBadge from './ClassificationBadge';
 import ParticipantDetailsForm from './ParticipantDetailsForm';
 import { useAuth } from './AuthContext';
 import { crewLabel, type ClassificationValue } from '../lib/participants';
+import { PAGE_CONTAINER } from '../lib/layout';
 
 interface Rally {
   _id: string;
@@ -216,7 +217,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
 
   return (
     <div className="min-h-screen bg-gray-100 py-4">
-      <div className="max-w-[1700px] mx-auto p-4">
+      <div className={`${PAGE_CONTAINER} py-4`}>
         <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 mb-1">

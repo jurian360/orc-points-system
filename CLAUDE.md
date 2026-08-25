@@ -370,11 +370,12 @@ stage uses, FINISH) and its own Tijd total. It is what an official reads once a
 control has handed its export in — did every crew get a time, and which of them
 came in outside their window — instead of opening 56 cards.
 
-- **It is a grid, not a page of tables**, and it is laid out as one: the Times
-  tab is the one tab the rally dashboard gives the full window rather than the
-  reading column (`container` in `app/rallies/[id]/page.tsx`), and the grid
+- **It is a grid, not a page of tables**, and it is laid out as one: the grid
   scrolls inside itself in both directions with the crew columns and the two
-  header rows frozen. On a real rally it is 56 crews long and a dozen controls
+  header rows frozen. It does *not* get a width of its own — the dashboard, its
+  header and all four tabs share `PAGE_CONTAINER` (`app/lib/layout.ts`), so
+  switching to this tab does not re-flow the page; a grid wider than that
+  scrolls, which is what it does at any width anyway. On a real rally it is 56 crews long and a dozen controls
   wide, and neither the name of a crew nor the name of a control may scroll out
   of sight. Two consequences to keep: the table is `border-separate`, because a
   sticky cell loses collapsed borders, and the three crew columns have **exact**
@@ -546,6 +547,7 @@ app/
                   Android app)
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env,
+                  layout (PAGE_CONTAINER, the one page width of the app),
                   api-guard, roles (the two roles and their permissions, shared
                   client + server), passwords (scrypt), users (accounts + the
                   recovery admin), participants (class letters, shared client + server),
@@ -674,6 +676,12 @@ Do not regress them.**
   rather than by entering a second card. An EQ that predates the entry list stays
   selectable on its own sheet, so an already scored card remains correctable.
 - Styling is Tailwind utility classes inline; no component library.
+- **One page width.** Every full-page view — the top navigation, the rally
+  list, the dashboard and its four tabs, the stage, key and card pages —
+  wraps its content in `PAGE_CONTAINER` (`app/lib/layout.ts`), so the page
+  edges do not move when an official switches a tab or opens a stage. A grid
+  too wide for it scrolls inside itself; it does not widen the page. Forms
+  are the exception and keep their own narrow `max-w-*`.
 - Deleting cascades: deleting a rally removes its stages, sheets, participants
   and QR codes; deleting a stage removes its sheets and its QR codes. Keep that
   behaviour when touching those routes.

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import AnswerSheetForm from '../../../components/AnswerSheetForm';
 import { type ClassificationValue } from '../../../lib/participants';
 import type { ScoreKeyRow } from '../../../lib/scoring';
+import { PAGE_CONTAINER } from '../../../lib/layout';
 
 interface Rally {
   _id: string;
@@ -123,7 +124,7 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="min-h-screen bg-gray-100 py-4">
-      <div className="max-w-[1700px] mx-auto px-6">
+      <div className={PAGE_CONTAINER}>
         <div className="mb-4">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">
             Answer Sheets{rally ? ` — ${rally.name}` : ''}

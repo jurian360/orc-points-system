@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AuthProvider, useAuth } from './components/AuthContext';
 import { ROLE_LABELS } from './lib/roles';
+import { PAGE_CONTAINER } from './lib/layout';
 
 const Navigation: React.FC = () => {
   const { user, loading, can, logout } = useAuth();
@@ -12,7 +13,7 @@ const Navigation: React.FC = () => {
 
   return (
     <nav className="bg-blue-600 shadow-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className={PAGE_CONTAINER}>
         <div className="flex justify-between items-center h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
