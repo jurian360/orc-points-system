@@ -7,8 +7,11 @@
 // stage's answer key (scoreKey). Each wrong, missing, or duplicated correct
 // answer costs 30 penalty points, and so does the wrong order on a row whose
 // key asks for one, capped per row by the row's maxPenalty (when
-// maxPenalty > 0). The same algorithm powers the scoring detail view and the
-// server-side total stored on each answer sheet.
+// maxPenalty > 0). A letter the key rules out is one error however often the
+// participant wrote it on that row — as in the merk column, the same wrong
+// letter twice is the same mistake twice, not two mistakes. The same algorithm
+// powers the scoring detail view and the server-side total stored on each
+// answer sheet.
 //
 // The *key* decides which rows are scored, never the sheet: a row the
 // participant did not answer costs its missing letters whether the sheet holds
@@ -89,13 +92,23 @@ export function calculateRowPenalty(
   let rowPenalty = 0;
   const selected = participantRow?.selectedAnswers || [];
 
-  // 1. Explicit false answers cost 30 points each.
+  // 1. A letter the key rules out costs 30 points — but writing it again is the
+  //    same error, not a new one: the key rules a letter out once, so a row of
+  //    four D's on a key that says D is wrong costs 30, not 120. A key that
+  //    rules the same letter out in more than one column asks for it that many
+  //    times, and then it can be charged that many times (two false D's in the
+  //    key: at most 60 on that row).
+  const falseAllowance = new Map<string, number>();
+  (scoreKeyRow.falseAnswers || []).forEach((falseAnswer) => {
+    const letter = falseAnswer?.value;
+    if (!letter) return;
+    falseAllowance.set(letter, (falseAllowance.get(letter) || 0) + 1);
+  });
   selected.forEach((answer) => {
-    if (answer && scoreKeyRow.falseAnswers) {
-      const isFalse = scoreKeyRow.falseAnswers.some((fa) => fa.value === answer);
-      if (isFalse) {
-        rowPenalty += PENALTY_PER_ERROR;
-      }
+    const remaining = answer ? falseAllowance.get(answer) || 0 : 0;
+    if (remaining > 0) {
+      falseAllowance.set(answer, remaining - 1);
+      rowPenalty += PENALTY_PER_ERROR;
     }
   });
 

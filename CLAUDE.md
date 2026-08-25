@@ -118,7 +118,11 @@ Rally ──< Stage ──< AnswerSheet
 
 `PENALTY_PER_ERROR = 30`. Per ORC row, against that row's key:
 
-1. Each selected letter listed in the row's `falseAnswers` → **+30**.
+1. Each letter the row's `falseAnswers` rules out → **+30**, but a letter costs
+   that only as often as the key lists it: a key that rules out `D` charges 30
+   whether the participant wrote one `D` or four, and a key that rules `D` out
+   in two columns can charge 60. Writing the same wrong letter again is the
+   same mistake, exactly as in the merk column.
 2. More correct letters given than the key expects → **+30** (once).
 3. Each required correct letter **missing** → **+30**.
 4. On a row with `orderMatters`, the correct letters given **out of the key's
