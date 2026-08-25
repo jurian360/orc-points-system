@@ -112,6 +112,8 @@ export interface TimePenaltyRow {
   plusMinus: string;
   strafp: number;
   outOfWindow?: boolean;
+  // The stage uses this control but the sheet has no WPT for it.
+  missing?: boolean;
 }
 
 // Merk row of a sheet. Officials type the letter the participant wrote; the

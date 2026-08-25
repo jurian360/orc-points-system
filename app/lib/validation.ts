@@ -174,6 +174,7 @@ export function parseTimeConfig(value: unknown): StageTimeConfig {
     finishEarlyWindow: field('finishEarlyWindow', MAX_MINUTES),
     finishLateWindow: field('finishLateWindow', MAX_MINUTES),
     outOfWindowPenalty: field('outOfWindowPenalty', MAX_PENALTY),
+    missingFinishPenalty: field('missingFinishPenalty', MAX_PENALTY),
   };
 }
 
@@ -249,6 +250,7 @@ export function parseTimePenalties(value: unknown) {
       plusMinus: '',
       strafp: 0,
       outOfWindow: false,
+      missing: false,
     };
   });
 }

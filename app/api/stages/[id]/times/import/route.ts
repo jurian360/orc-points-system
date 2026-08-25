@@ -178,6 +178,7 @@ export async function POST(
         plusMinus: '',
         strafp: 0,
         outOfWindow: false,
+        missing: false,
       }));
     };
 
