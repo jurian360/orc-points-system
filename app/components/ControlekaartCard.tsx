@@ -130,7 +130,7 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
         )}
         {disqualified && (
           <p className="mt-2 px-2 py-1 rounded bg-red-100 text-red-800 text-sm font-bold">
-            Disqualified — outside the finish window of the last stage.
+            Disqualified — no finish time, or outside the finish window, on the last stage.
           </p>
         )}
       </div>

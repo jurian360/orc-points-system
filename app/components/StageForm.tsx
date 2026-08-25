@@ -551,7 +551,7 @@ const StageForm: React.FC<StageFormProps> = ({
                 has no WPT at all was missed and costs its maximum too: a GTC{' '}
                 {timeConfig.outOfWindowPenalty}, the finish {timeConfig.missingFinishPenalty}
                 {isFinalStage
-                  ? ''
+                  ? ' — and a missing finish on the last stage is a DNF, so the participant is disqualified'
                   : ` + ${timeConfig.breakMinutes} = ${timeConfig.missingFinishPenalty + timeConfig.breakMinutes}`}
                 . Defaults:{' '}
                 {DEFAULT_TIME_CONFIG.gtcEarlyWindow}/{DEFAULT_TIME_CONFIG.gtcLateWindow} for a GTC,{' '}

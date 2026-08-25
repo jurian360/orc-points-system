@@ -36,14 +36,17 @@
 //     outside its window, that same maximum *plus* the length of the break after
 //     the stage, because the break itself varies per stage;
 //   * the finish of the last stage has a wider window (default 15 early / 60
-//     late); outside it the participant is disqualified;
+//     late); outside it — and when it has no time at all, a DNF — the
+//     participant is disqualified;
 //   * a control the stage *does* use (it has an IPT 0) but that has no WPT is a
 //     control the participant missed, and it is charged like one: a GTC costs
 //     the same flat maximum (default 60), the finish costs its own, higher
 //     maximum (`missingFinishPenalty`, default 90) plus the break after the
 //     stage when another stage follows. Like a blown window it never moves the
-//     delta. The start row has no window and so has no maximum either: an
-//     untimed start costs nothing and leaves the delta where it was;
+//     delta. A missed finish of the *last* stage is a DNF: the participant
+//     never finished the rally, so they are disqualified as well as charged.
+//     The start row has no window and so has no maximum either: an untimed
+//     start costs nothing and leaves the delta where it was;
 //   * the delta keeps running across stages, up to the last one.
 //
 // The windows, the maximum and the break are stage settings (`timeConfig`) so
@@ -272,6 +275,8 @@ export function scoreStageTimes({
     // of any other stage — a start has no window, so it has no maximum either.
     if (actual === null) {
       let missingStrafp = 0;
+      let missingDisqualified = false;
+
       if (!free && kind === 'gtc') {
         missingStrafp = config.outOfWindowPenalty;
       } else if (!free && kind === 'finish') {
@@ -279,6 +284,13 @@ export function scoreStageTimes({
         // when the finish is passed outside its window.
         missingStrafp =
           config.missingFinishPenalty + (isFinalStage ? 0 : config.breakMinutes);
+        if (isFinalStage) {
+          // Never finished the rally: a DNF, ranked with the participants who
+          // came in outside the finish window. The maximum is still charged so
+          // the card adds up.
+          missingDisqualified = true;
+          disqualified = true;
+        }
       }
       // `runningDelta` is left alone: a control with no time never moves it.
       totalPenalty += missingStrafp;
@@ -294,7 +306,7 @@ export function scoreStageTimes({
         strafp: missingStrafp,
         outOfWindow: false,
         missing: missingStrafp > 0,
-        disqualified: false,
+        disqualified: missingDisqualified,
         free,
       };
     }

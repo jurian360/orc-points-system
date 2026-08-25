@@ -730,7 +730,8 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
           </p>
           {timeResult?.disqualified && (
             <p className="mt-1 px-2 py-1 rounded bg-red-100 text-red-800 text-xs font-bold">
-              Outside the finish window of the last stage — this participant is disqualified.
+              No finish time, or outside the finish window, on the last stage — this participant
+              is disqualified.
             </p>
           )}
           {timeResult && (

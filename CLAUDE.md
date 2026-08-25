@@ -181,15 +181,17 @@ minutes. Officials type the WPT; the delta is `WPT - IPT` in minutes.
    last valid one.
 6. The **finish of the last stage** has a wider window (default 15 early / 60
    late); outside it the participant is **disqualified** (`disqualified` on the
-   sheet; standings rank them behind everyone else).
+   sheet; standings rank them behind everyone else). So is a participant with no
+   finish time at all on that stage — a DNF, see the next rule.
 7. A row with no IPT 0 is not a checkpoint of that stage. A checkpoint that *is*
    used but has no WPT is one the participant **missed**, and it costs its
    maximum: a GTC the same flat maximum as a blown window (default 60), the
    finish its own, higher one (`missingFinishPenalty`, default 90) plus the
    break after the stage while another stage follows. Like a blown window it
    **never moves the delta**, and the row is marked `missing` on the sheet so
-   the card shows it in red. A missed finish is not a disqualification — only a
-   finish time *outside* the last stage's window is.
+   the card shows it in red. A missed finish on the **last** stage is a **DNF**:
+   the participant never finished the rally, so they are disqualified as well as
+   charged the 90 points.
 8. The **start row has no window, so it has no maximum either**: an untimed start
    costs nothing and leaves the delta where it was. The start of the first stage
    is free in any case.

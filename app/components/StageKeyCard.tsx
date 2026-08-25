@@ -316,7 +316,7 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
 
         <p className="text-sm text-gray-600 mt-2">
           {isFinalStage
-            ? 'This is the last stage of the rally: a participant outside the finish window is disqualified.'
+            ? 'This is the last stage of the rally: a participant outside the finish window, or with no finish time at all, is disqualified.'
             : `Another stage follows this one, so a blown finish window costs the maximum plus the break (${config.outOfWindowPenalty} + ${config.breakMinutes} = ${config.outOfWindowPenalty + config.breakMinutes}).`}{' '}
           {`A control with an IPT but no WPT was missed and costs its maximum as well: ${config.outOfWindowPenalty} for a GTC, ${
             isFinalStage
