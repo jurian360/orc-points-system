@@ -3,8 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import AnswerSheetForm from '../../../components/AnswerSheetForm';
-import ClassificationBadge from '../../../components/ClassificationBadge';
-import { crewLabel, type ClassificationValue } from '../../../lib/participants';
+import { type ClassificationValue } from '../../../lib/participants';
 
 interface Rally {
   _id: string;
@@ -30,16 +29,16 @@ interface Participant {
   navigatorName: string;
 }
 
+// The sheets the rally already holds. They are not listed on this page — the
+// standings, the stage view and the per-participant view are where a submitted
+// card is read — but the entry form needs them: it greys out the crews that
+// already have a sheet for the chosen stage and it chains the delta of the
+// earlier stages into its live time preview.
 interface AnswerSheet {
   _id: string;
   eq: number;
   stageId: string;
-  totalPenalty: number;
-  timePenalty?: number;
-  disqualified?: boolean;
   timePenalties?: { rowNumber: number; wpt?: string }[];
-  submittedAt: string;
-  stageName?: string;
 }
 
 export default function AnswerSheetsPage({ params }: { params: Promise<{ id: string }> }) {
@@ -74,25 +73,13 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
 
       if (rallyRes.ok) setRally(await rallyRes.json());
 
-      // The entry list: it labels the EQ numbers in the table below and is the
-      // list the entry form picks from — a card can only be typed for a crew
-      // the rally knows.
+      // The entry list the entry form picks from — a card can only be typed
+      // for a crew the rally knows.
       if (participantsRes.ok) setParticipants(await participantsRes.json());
 
-      let stagesData: Stage[] = [];
-      if (stagesRes.ok) {
-        stagesData = await stagesRes.json();
-        setStages(stagesData);
-      }
+      if (stagesRes.ok) setStages(await stagesRes.json());
 
-      if (sheetsRes.ok) {
-        const sheetsData: AnswerSheet[] = await sheetsRes.json();
-        const withStageName = sheetsData.map((sheet) => ({
-          ...sheet,
-          stageName: stagesData.find((s) => s._id === sheet.stageId)?.name || 'Unknown Stage',
-        }));
-        setSheets(withStageName);
-      }
+      if (sheetsRes.ok) setSheets(await sheetsRes.json());
     } catch (err) {
       setError('Failed to load data. Please try again later.');
       console.error(err);
@@ -132,66 +119,6 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
     }
   };
 
-  const handleDelete = async (sheetId: string) => {
-    if (
-      !window.confirm(
-        'Delete this answer sheet? The participant keeps their sheets for the other stages. This cannot be undone.'
-      )
-    ) {
-      return;
-    }
-    setError(null);
-    setSuccess(null);
-    try {
-      const response = await fetch(`/api/answersheets/${sheetId}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Failed to delete answer sheet');
-      setSuccess('Answer sheet deleted successfully!');
-      // Deleting a sheet re-scores the rest of that participant's rally — their
-      // delta no longer passes through this stage — so the table is reloaded
-      // rather than filtered in place.
-      loadData();
-    } catch (err) {
-      setError('Failed to delete answer sheet. Please try again.');
-      console.error(err);
-    }
-  };
-
-  // Removing a participant from the rally deletes their details and every sheet
-  // they have in it.
-  const handleDeleteParticipant = async (eq: number) => {
-    if (
-      !window.confirm(
-        `Delete participant ${eq} from this rally? Their details and every answer sheet they submitted for it will be deleted. This cannot be undone.`
-      )
-    ) {
-      return;
-    }
-    setError(null);
-    setSuccess(null);
-    try {
-      const response = await fetch(`/api/rallies/${rallyId}/participants/${eq}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('Failed to delete participant');
-      setSuccess(`Participant ${eq} deleted from this rally.`);
-      loadData();
-    } catch (err) {
-      setError('Failed to delete participant. Please try again.');
-      console.error(err);
-    }
-  };
-
-  const participantByEq = new Map(participants.map((participant) => [participant.eq, participant]));
-
-  const formatDate = (dateString: string) =>
-    new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
   return (
     <div className="min-h-screen bg-gray-100 py-4">
       <div className="max-w-[1700px] mx-auto px-6">
@@ -200,7 +127,7 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
             Answer Sheets{rally ? ` — ${rally.name}` : ''}
           </h1>
           <p className="text-gray-700 text-base">
-            Enter and manage participant answer sheets for the stages of this rally.
+            Type a participant&apos;s control card for one of the stages of this rally.
           </p>
         </div>
 
@@ -221,7 +148,11 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
             <h2 className="text-lg font-bold text-gray-800">Enter New Answer Sheet</h2>
           </div>
           <div className="p-4">
-            {stages.length === 0 ? (
+            {loading ? (
+              <div className="text-center p-12">
+                <p className="text-xl text-gray-600">Loading rally&hellip;</p>
+              </div>
+            ) : stages.length === 0 ? (
               <div className="text-center p-12 bg-gray-50 rounded-lg border-2 border-gray-200">
                 <p className="mb-6 text-xl text-gray-700">
                   No stages available. Add a stage to this rally first.
@@ -240,122 +171,6 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
                 sheets={sheets}
                 participants={participants}
               />
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-xl overflow-hidden mb-6">
-          <div className="px-6 py-3 border-b-2 border-gray-200">
-            <h2 className="text-lg font-bold text-gray-800">Submitted Answer Sheets</h2>
-          </div>
-
-          <div className="p-4">
-            {loading ? (
-              <div className="text-center p-12">
-                <p className="text-xl text-gray-600">Loading answer sheets...</p>
-              </div>
-            ) : sheets.length === 0 ? (
-              <div className="text-center p-12 bg-gray-50 rounded-lg border-2 border-gray-200">
-                <p className="text-xl text-gray-700">No answer sheets submitted yet.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y-2 divide-gray-200 border-2 border-gray-200 rounded-lg">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-8 py-5 text-left text-base font-bold text-gray-800 uppercase border-b-2 border-r-2 border-gray-200">
-                        Participant (EQ)
-                      </th>
-                      <th className="px-8 py-5 text-left text-base font-bold text-gray-800 uppercase border-b-2 border-r-2 border-gray-200">
-                        Stage
-                      </th>
-                      <th className="px-8 py-5 text-left text-base font-bold text-gray-800 uppercase border-b-2 border-r-2 border-gray-200">
-                        Tijd
-                      </th>
-                      <th className="px-8 py-5 text-left text-base font-bold text-gray-800 uppercase border-b-2 border-r-2 border-gray-200">
-                        Penalty
-                      </th>
-                      <th className="px-8 py-5 text-left text-base font-bold text-gray-800 uppercase border-b-2 border-r-2 border-gray-200">
-                        Submitted At
-                      </th>
-                      <th className="px-8 py-5 text-right text-base font-bold text-gray-800 uppercase border-b-2 border-gray-200">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {sheets.map((sheet) => (
-                      <tr key={sheet._id} className="hover:bg-gray-50">
-                        <td className="px-8 py-5 border-r-2 border-gray-200">
-                          <div className="flex items-center gap-3">
-                            <Link
-                              href={`/rallies/${rallyId}/participants/${sheet.eq}`}
-                              className="text-2xl font-bold text-blue-600 hover:underline"
-                              title={`Show all answers submitted by participant ${sheet.eq}`}
-                            >
-                              {sheet.eq}
-                            </Link>
-                            <ClassificationBadge
-                              classification={participantByEq.get(sheet.eq)?.classification}
-                            />
-                          </div>
-                          {crewLabel(participantByEq.get(sheet.eq)) && (
-                            <div className="text-base text-gray-700 mt-1">
-                              {crewLabel(participantByEq.get(sheet.eq))}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-8 py-5 whitespace-nowrap border-r-2 border-gray-200">
-                          <div className="text-lg text-gray-700">{sheet.stageName}</div>
-                        </td>
-                        <td className="px-8 py-5 whitespace-nowrap border-r-2 border-gray-200">
-                          <div className="text-lg text-gray-700">{sheet.timePenalty || 0}</div>
-                        </td>
-                        <td className="px-8 py-5 whitespace-nowrap border-r-2 border-gray-200">
-                          <div className="text-lg font-bold text-red-600">{sheet.totalPenalty}</div>
-                          {sheet.disqualified && (
-                            <span className="inline-block mt-1 px-2 py-0.5 rounded bg-red-100 text-red-800 text-sm font-bold">
-                              DQ
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-8 py-5 whitespace-nowrap border-r-2 border-gray-200">
-                          <div className="text-lg text-gray-700">{formatDate(sheet.submittedAt)}</div>
-                        </td>
-                        <td className="px-8 py-5 whitespace-nowrap text-right">
-                          <div className="flex justify-end flex-wrap gap-3">
-                            <Link
-                              href={`/rallies/${rallyId}/answer-sheets/${sheet._id}`}
-                              className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-medium text-lg transition-colors"
-                            >
-                              View Score
-                            </Link>
-                            <Link
-                              href={`/rallies/${rallyId}/answer-sheets/${sheet._id}/edit`}
-                              className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-lg transition-colors"
-                            >
-                              Edit
-                            </Link>
-                            <button
-                              onClick={() => handleDelete(sheet._id)}
-                              className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-lg transition-colors"
-                            >
-                              Delete Sheet
-                            </button>
-                            <button
-                              onClick={() => handleDeleteParticipant(sheet.eq)}
-                              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-lg transition-colors"
-                              title={`Delete the details and every answer sheet of participant ${sheet.eq} in this rally`}
-                            >
-                              Delete EQ {sheet.eq}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             )}
           </div>
         </div>
