@@ -360,6 +360,61 @@ stage's time column.
   calls `rescoreParticipants`: it stores no `ipt`, `plusMinus` or `strafp` of its
   own, exactly like the answer-sheet routes.
 
+## The WPT overview
+
+The rally dashboard has four tabs — Stages, Standings, Participants and **Times**
+— and the last one is the time import read back. `RallyTimesPanel` shows one
+table per stage, in running order: a row per crew, a column per control (START,
+the GTC's the stage uses, FINISH) and the WPT in the cell. It is what an official
+reads once a control has handed its export in — did every crew get a time, and
+which of them came in outside their window — instead of opening 56 cards.
+
+- **A card shows one crew's time column; this is the other way round.** Both are
+  the same numbers: `GET /api/rallies/[id]/times` reads the `timePenalties` rows
+  the sheets already carry (written by `app/lib/rescore.ts`) and scores nothing
+  of its own, so the overview and the controlekaart cannot disagree. Correcting a
+  time still means correcting the sheet or importing the control again.
+- **The key decides the columns**, exactly as it decides the scored rows: a stage
+  gets a column per row with an IPT 0, headed with that IPT 0 (every crew's own
+  ideal time is it plus their EQ). One exception, deliberate: a row that has no
+  IPT 0 but *does* hold an imported WPT gets a column too, in amber — a time on a
+  row the stage does not use is the mistake this page exists to show.
+- A red time was outside its window, `gemist` is a control the crew has no time
+  for at all, and a row with no sheet at all reads as dashes. Every cell can show
+  the ⁺∕₋, the crew's IPT or the strafpunten under the WPT; the last column is the
+  stage's stored `timePenalty`.
+- The response shape lives in `app/types/index.ts` (`RallyTimes`), read by both
+  the route and the panel. It is a **read**, so its guard is `requireSession()`:
+  a data-entry official types the cards and checks the times of the control they
+  are typing from.
+
+## Duplicating a rally
+
+An event is run to the same route year after year: the stages, the answer keys,
+the timetable and the time settings are the work. *Duplicate* — on the rally list
+and in the rally dashboard header — is `POST /api/rallies/[id]/duplicate`, and it
+copies exactly that.
+
+- **The setup is copied, the running of it is not.** Every stage comes over in
+  running order with its `scoreKey` (the appeal answers and the `orderMatters`
+  ticks included), `timeScoreKey`, `merkScoreKey`, `timeConfig` and `cardId`. The
+  entry list, the answer sheets and the printed QR codes stay behind: a duplicate
+  is a rally waiting for its crews, not a second copy of last year's results. It
+  therefore re-scores nothing — it has no sheets, because it has no crews.
+- **The copy is named `<name>-copy`** and takes the code `<CODE>-COPY`, falling
+  back to `-COPY2`, `-COPY3` … while another rally already answers to one: two
+  rallies on one code would make a submission from the app ambiguous. Both are
+  derived in `app/lib/rallyCodes.ts` (`copyRallyName` / `copyRallyCode`, pure and
+  shared, so the confirm dialog can name the copy before the request is sent) and
+  the route loops until the unique index accepts a code, or answers 409.
+- **The stages are stamped one millisecond apart** rather than left to default to
+  the same `Date.now()`: the running order is the creation order, so the copy has
+  to keep the order of the original rather than leave it to the `_id` tie-break.
+- Mongoose gives every subdocument an `_id`; the copies get their own, so the
+  keys are stripped of them on the way over.
+- It takes no body — the rally in the path is the whole request — and its guard
+  is `requireRallyAdmin()`, like everything else that changes a rally.
+
 ## The participants' Android app
 
 The crews type their own cards on their phones. The app
@@ -471,6 +526,8 @@ app/
                   rallies/[id]/participants to list/add the crews of a rally,
                   .../[eq] to read, save or drop one, .../import for an entry list,
                   rallies/[id]/rescore to re-score a whole rally on demand,
+                  rallies/[id]/times for the WPT overview of a whole rally,
+                  rallies/[id]/duplicate to copy a rally's stages and keys,
                   stages/[id]/times/import for the times of one control,
                   stages/[id]/access-codes for the QR codes of one stage,
                   app/card + app/submit, the two public endpoints of the
@@ -482,10 +539,12 @@ app/
                   recovery admin), participants (class letters, shared client + server),
                   spreadsheet + columnMapping + participantImport + timeImport
                   (entry-list and time imports, browser side),
-                  rallyCodes (a rally's public code, shared client + server),
+                  rallyCodes (a rally's public code and the name and code a
+                  duplicate gets, shared client + server),
                   appCards (codes and identifiers of the Android app) + qrcode
   models/         Mongoose schemas
-  rallies/...     pages (rally dashboard, rallies/[id]/edit for its name and
+  rallies/...     pages (rally dashboard — the Stages / Standings / Participants
+                  / Times tabs — rallies/[id]/edit for its name and
                   code, stages, answer sheets, participant view,
                   stages/[stageId]/qr-codes: the printable sheet of QR codes)
   time-import/    the time import wizard (rally -> stage -> control -> file)

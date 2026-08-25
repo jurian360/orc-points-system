@@ -44,3 +44,37 @@ export function parseRallyCode(value: unknown): string | null {
   const normalized = value.trim().toUpperCase();
   return RALLY_CODE_PATTERN.test(normalized) ? normalized : null;
 }
+
+// --- Duplicating a rally ---------------------------------------------------
+
+// The marker a duplicate carries in its name, so the two are told apart in the
+// rally list without opening either.
+export const RALLY_COPY_SUFFIX = '-copy';
+
+// Same bound as `MAX_NAME_LENGTH` in app/lib/validation.ts and as the model's
+// `maxlength`. Repeated rather than imported because those are server-only and
+// this module is shared with the browser: the confirm dialog shows the name the
+// duplicate will get, so it has to be able to derive it too.
+export const RALLY_NAME_MAX_LENGTH = 200;
+
+// What a duplicate of the rally called `name` is called: "SARK Najaar" becomes
+// "SARK Najaar-copy". Trimmed so a rally with a name at the limit still saves,
+// and so duplicating a duplicate never grows past it.
+export function copyRallyName(name: string): string {
+  const base = name.trim().slice(0, RALLY_NAME_MAX_LENGTH - RALLY_COPY_SUFFIX.length).trim();
+  return `${base}${RALLY_COPY_SUFFIX}`;
+}
+
+// The code a duplicate is offered, `attempt` counting the tries that were
+// already taken by another rally: SARK25 -> SARK25-COPY -> SARK25-COPY2 -> ...
+// Two rallies answering to one code would make a submission from the app
+// ambiguous, so the caller loops until the unique index accepts one.
+export function copyRallyCode(code: string, attempt = 0): string {
+  const marker = attempt === 0 ? '-COPY' : `-COPY${attempt + 1}`;
+  const base = code
+    .slice(0, RALLY_CODE_MAX_LENGTH - marker.length)
+    // A code may not end in a dash before the marker is appended: "SARK--COPY"
+    // reads as a typo, and the trimmed tail is what causes it.
+    .replace(/-+$/, '');
+  return `${base}${marker}`;
+}

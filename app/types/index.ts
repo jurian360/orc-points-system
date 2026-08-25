@@ -1,4 +1,4 @@
-import type { StageTimeConfig } from '../lib/timeScoring';
+import type { StageTimeConfig, TimeRowKind } from '../lib/timeScoring';
 import type { ClassificationValue } from '../lib/participants';
 
 // Rally types
@@ -200,4 +200,59 @@ export interface StageAccessCodes {
     cardNumber: number;
   };
   cards: CardAccessRow[];
+}
+
+// --- WPT overview -----------------------------------------------------------
+
+// One of the 10 time rows of a stage, as the rally's WPT overview shows it:
+// which control it is and the IPT 0 the stage key holds for it.
+export interface RallyTimeColumn {
+  rowNumber: number;
+  label: string;
+  kind: TimeRowKind;
+  ipt0: string;
+  // False when the stage does not use this row as a checkpoint (no IPT 0).
+  active: boolean;
+}
+
+// One crew's time on one control, read off the stored sheet — never recomputed,
+// so the overview and the card show the same numbers.
+export interface RallyTimeCell {
+  rowNumber: number;
+  ipt: string;
+  wpt: string;
+  plusMinus: string;
+  strafp: number;
+  outOfWindow: boolean;
+  missing: boolean;
+}
+
+export interface RallyTimeEntry {
+  eq: number;
+  // False when this crew has no sheet for the stage at all.
+  hasSheet: boolean;
+  timePenalty: number;
+  disqualified: boolean;
+  startDelta: number;
+  endDelta: number;
+  cells: RallyTimeCell[];
+}
+
+export interface RallyTimeStage {
+  _id: string;
+  name: string;
+  columns: RallyTimeColumn[];
+  entries: RallyTimeEntry[];
+}
+
+export interface RallyTimes {
+  rally: { _id: string; name: string };
+  // In running order, the same order the stage list shows.
+  stages: RallyTimeStage[];
+  participants: {
+    eq: number;
+    classification: ClassificationValue;
+    driverName: string;
+    navigatorName: string;
+  }[];
 }

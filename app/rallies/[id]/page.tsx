@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ClassificationBadge from '../../components/ClassificationBadge';
 import ParticipantsPanel from '../../components/ParticipantsPanel';
+import RallyTimesPanel from '../../components/RallyTimesPanel';
 import { useAuth } from '../../components/AuthContext';
 import { crewLabel, CLASSIFICATIONS, type ClassificationValue } from '../../lib/participants';
+import { copyRallyName } from '../../lib/rallyCodes';
 
 interface Rally {
   _id: string;
@@ -40,11 +42,11 @@ interface StandingsEntry {
   rank: number;
 }
 
-// The dashboard shows three long lists — the stages, the entry list and the
-// standings. Stacked they run to thousands of pixels on a real rally, so they
-// are tabs: one list at a time, under a header that keeps the actions (and the
-// jump to one EQ's card) in reach from anywhere on the page.
-type Tab = 'stages' | 'standings' | 'participants';
+// The dashboard shows four long lists — the stages, the standings, the entry
+// list and the WPT overview. Stacked they run to thousands of pixels on a real
+// rally, so they are tabs: one list at a time, under a header that keeps the
+// actions (and the jump to one EQ's card) in reach from anywhere on the page.
+type Tab = 'stages' | 'standings' | 'participants' | 'times';
 
 export default function RallyDashboardPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -60,6 +62,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
   const [standings, setStandings] = useState<StandingsEntry[]>([]);
   const [totalStages, setTotalStages] = useState<number>(0);
   const [participantCount, setParticipantCount] = useState<number>(0);
+  // Filled in by the times tab the first time it is opened; until then the tab
+  // is labelled with the stages the overview will hold, which is the same number.
+  const [timesStageCount, setTimesStageCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Set once, when the data is first in: a rally without stages opens on its
@@ -71,6 +76,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
   // Forced recalculation of the whole rally, and what it reported last.
   const [rescoring, setRescoring] = useState(false);
   const [rescoreMessage, setRescoreMessage] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
 
   useEffect(() => {
     const getParams = async () => {
@@ -189,6 +195,39 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
     }
   };
 
+  // A new rally with the stages and the answer keys of this one. The setup is
+  // what an event repeats; the entry list, the answer sheets and the printed QR
+  // codes belong to this running of it and are left behind.
+  const handleDuplicate = async () => {
+    if (!rally) return;
+    const name = copyRallyName(rally.name);
+    if (
+      !window.confirm(
+        `Duplicate this rally as "${name}"? Its stages and their answer keys are copied. ` +
+          'The participants, their answer sheets and the printed QR codes are not.'
+      )
+    ) {
+      return;
+    }
+
+    setDuplicating(true);
+    try {
+      const response = await fetch(`/api/rallies/${rally._id}/duplicate`, { method: 'POST' });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || 'Failed to duplicate rally');
+      }
+      const data = await response.json();
+      // Straight into the copy: what an official does next is check its keys
+      // and import the entry list of the new event.
+      router.push(`/rallies/${data.rally._id}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to duplicate rally. Please try again.');
+      console.error(err);
+      setDuplicating(false);
+    }
+  };
+
   // The standing is the long one: 50+ crews. Filtering it by EQ, name or class
   // is how an official finds the card they are holding without scrolling.
   const visibleStandings = useMemo(() => {
@@ -258,6 +297,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
     { id: 'stages', label: 'Stages', count: stages.length },
     { id: 'standings', label: 'Standings', count: standings.length },
     { id: 'participants', label: 'Participants', count: Math.max(participantCount, standings.length) },
+    { id: 'times', label: 'Times', count: Math.max(timesStageCount, stages.length) },
   ];
 
   return (
@@ -323,6 +363,14 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   >
                     Edit Rally
                   </Link>
+                  <button
+                    onClick={handleDuplicate}
+                    disabled={duplicating}
+                    title="Create a new rally with the stages and answer keys of this one"
+                    className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 font-medium border border-gray-300 disabled:opacity-60"
+                  >
+                    {duplicating ? 'Duplicating…' : 'Duplicate'}
+                  </button>
                   <Link
                     href={`/time-import?rallyId=${rally._id}`}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm"
@@ -486,6 +534,11 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
             onCountChange={setParticipantCount}
             readOnly={!isAdmin}
           />
+        )}
+
+        {/* Times — the WPT of every control of every stage */}
+        {tab === 'times' && (
+          <RallyTimesPanel rallyId={rally._id} onStageCountChange={setTimesStageCount} />
         )}
 
         {/* Standings */}
