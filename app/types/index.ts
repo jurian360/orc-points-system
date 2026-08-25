@@ -31,6 +31,9 @@ export interface Stage {
 export interface ScoreKeyRow {
   rowNumber: number;
   answers: string[];
+  // Further complete answers the row accepts, added by an appeal. The row costs
+  // the least of its accepted answers — see app/lib/scoring.ts.
+  alternativeAnswers?: string[][];
   falseAnswers?: { column: number; value: string }[];
   maxPenalty?: number;
   // The letters of this row have to be given in the order of the key.

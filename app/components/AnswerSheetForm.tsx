@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ClassificationBadge from './ClassificationBadge';
 import { crewLabel, type ClassificationValue } from '../lib/participants';
 import {
+  answerVariants,
   calculateMerkPenalty,
   calculateRowPenalty,
   calculateTotalPenalty,
@@ -476,7 +477,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
   // A stage whose key has no letters at all scores every card 0 on the ORC's;
   // saying so beats a column of zeroes nobody can explain.
   const orcKeyEmpty = useMemo(
-    () => !orcKey.some((row) => (row.answers || []).some(Boolean)),
+    () => !orcKey.some((row) => answerVariants(row).some((variant) => variant.length > 0)),
     [orcKey]
   );
 

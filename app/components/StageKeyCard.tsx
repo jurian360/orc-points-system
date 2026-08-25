@@ -12,6 +12,9 @@ import {
 export interface StageScoreKeyRow {
   rowNumber: number;
   answers: string[];
+  // Answers an appeal ruled equally correct, each a complete answer of its own.
+  // The row costs the least of its accepted answers — see app/lib/scoring.ts.
+  alternativeAnswers?: string[][];
   falseAnswers?: { column: number; value: string }[];
   maxPenalty?: number;
   // The correct letters of this row have to be given in the order of the key.
@@ -103,12 +106,28 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
     </thead>
   );
 
-  // One key row: per column the correct letter (green) above the explicit false
-  // letter (red), the same stacking the stage form uses for entry.
-  const renderKeyRow = (row: StageScoreKeyRow, index: number) => (
+  // One key row: per column the correct letter (green), then any answer an
+  // appeal ruled equally correct (dashed green), above the explicit false letter
+  // (red) — the same stacking the stage form uses for entry.
+  const renderKeyRow = (row: StageScoreKeyRow, index: number) => {
+    const alternatives = (row.alternativeAnswers || []).filter((variant) =>
+      (variant || []).some(Boolean)
+    );
+
+    return (
     <tr key={row.rowNumber} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
       <td className="py-1.5 px-1 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center">
-        {row.rowNumber}
+        <div className="flex flex-col items-center">
+          <span>{row.rowNumber}</span>
+          {alternatives.length > 0 && (
+            <span
+              className="text-[10px] font-bold leading-tight text-green-700"
+              title="This row accepts more than one answer (appeal); it costs the least of them"
+            >
+              of
+            </span>
+          )}
+        </div>
       </td>
       {Array.from({ length: LETTER_COLUMNS }).map((_, colIndex) => {
         const correct = row.answers?.[colIndex] || '';
@@ -127,6 +146,26 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
               >
                 <span className="text-lg font-bold">{correct || '-'}</span>
               </div>
+              {alternatives.map((variant, altIndex) => {
+                const letter = variant[colIndex] || '';
+                return (
+                  <div
+                    key={altIndex}
+                    className={`w-9 h-9 flex items-center justify-center rounded-md shadow-sm border border-dashed ${
+                      letter
+                        ? 'bg-green-50 border-green-400 text-green-800'
+                        : 'bg-gray-50 border-gray-200 text-gray-300'
+                    }`}
+                    title={
+                      letter
+                        ? `Also correct (appeal ${altIndex + 1})`
+                        : `No letter in this column of the alternative answer ${altIndex + 1}`
+                    }
+                  >
+                    <span className="text-lg font-bold">{letter || '-'}</span>
+                  </div>
+                );
+              })}
               <div
                 className={`w-9 h-9 flex items-center justify-center rounded-md shadow-sm border ${
                   wrong
@@ -159,7 +198,8 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
         </div>
       </td>
     </tr>
-  );
+    );
+  };
 
   const orcColumn = (rows: StageScoreKeyRow[]) => (
     <div className="border-2 border-gray-300 rounded-lg shadow-md overflow-x-auto">

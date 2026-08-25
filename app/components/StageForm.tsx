@@ -12,6 +12,10 @@ import {
 interface ScoreKeyRow {
   rowNumber: number;
   answers: string[];
+  // Further complete answers this row accepts, one per appeal the jury upheld:
+  // the row is scored against its own letters and each of these, and costs the
+  // least of them. See app/lib/scoring.ts.
+  alternativeAnswers?: string[][];
   falseAnswers?: { column: number; value: string }[];
   maxPenalty?: number;
   // "Volgorde": the correct letters of this row have to be given in the order
@@ -66,6 +70,10 @@ const ANSWER_ROWS = 30; // ORC's letters (was 40)
 const LETTER_COLUMNS = 4;
 const TIME_ROWS = 10; // IPT / WPT / +/- / strafp
 const MERK_ROWS = 6; // Merk (officials)
+// Extra accepted answers an official can add to an ORC row after an appeal, on
+// top of the row's own. Two is well past what an appeal produces in practice;
+// app/lib/validation.ts caps what the API stores a little higher again.
+const MAX_ALTERNATIVES = 2;
 
 const StageForm: React.FC<StageFormProps> = ({
   onSubmit,
@@ -82,6 +90,7 @@ const StageForm: React.FC<StageFormProps> = ({
     return Array.from({ length: ANSWER_ROWS }, (_, index) => ({
       rowNumber: index + 1,
       answers: Array(LETTER_COLUMNS).fill(''),
+      alternativeAnswers: [],
       falseAnswers: [],
       maxPenalty: 0,
       orderMatters: false,
@@ -128,6 +137,64 @@ const StageForm: React.FC<StageFormProps> = ({
       const answers = [...(next[rowIndex].answers || Array(LETTER_COLUMNS).fill(''))];
       answers[colIndex] = value.toUpperCase();
       next[rowIndex] = { ...next[rowIndex], answers };
+      return next;
+    });
+  };
+
+  // An appeal can rule that a second answer is just as correct as the key's
+  // ("both D R and D R R are right"). Officials record it as an alternative
+  // answer on the row: the scoring charges whichever accepted answer costs the
+  // participant the least, so either one is free and a wrong card is measured
+  // against the nearest of them. See app/lib/scoring.ts.
+  const handleAlternativeAnswerChange = (
+    rowIndex: number,
+    altIndex: number,
+    colIndex: number,
+    value: string
+  ) => {
+    setScoreKey((prev) => {
+      const next = [...prev];
+      const alternatives = (next[rowIndex].alternativeAnswers || []).map((variant) => [
+        ...variant,
+      ]);
+      while (alternatives.length <= altIndex) {
+        alternatives.push(Array(LETTER_COLUMNS).fill(''));
+      }
+
+      const variant = [...alternatives[altIndex]];
+      while (variant.length < LETTER_COLUMNS) variant.push('');
+      variant[colIndex] = value.toUpperCase();
+      alternatives[altIndex] = variant;
+
+      next[rowIndex] = { ...next[rowIndex], alternativeAnswers: alternatives };
+      return next;
+    });
+  };
+
+  const handleAddAlternative = (rowIndex: number) => {
+    setScoreKey((prev) => {
+      const next = [...prev];
+      const alternatives = next[rowIndex].alternativeAnswers || [];
+      if (alternatives.length >= MAX_ALTERNATIVES) return prev;
+
+      next[rowIndex] = {
+        ...next[rowIndex],
+        alternativeAnswers: [...alternatives, Array(LETTER_COLUMNS).fill('')],
+      };
+      return next;
+    });
+  };
+
+  const handleRemoveAlternative = (rowIndex: number) => {
+    setScoreKey((prev) => {
+      const next = [...prev];
+      const alternatives = next[rowIndex].alternativeAnswers || [];
+      if (alternatives.length === 0) return prev;
+
+      next[rowIndex] = {
+        ...next[rowIndex],
+        alternativeAnswers: alternatives.slice(0, -1),
+      };
       return next;
     });
   };
@@ -228,6 +295,12 @@ const StageForm: React.FC<StageFormProps> = ({
     const processedScoreKey = scoreKey.map((row) => ({
       rowNumber: row.rowNumber,
       answers: row.answers.filter((answer) => answer.trim() !== ''),
+      // An alternative nobody filled in is not an accepted answer — an empty
+      // one would make every card on the row free — so the blanks go here and
+      // the API drops them again.
+      alternativeAnswers: (row.alternativeAnswers || [])
+        .map((variant) => variant.filter((answer) => answer.trim() !== ''))
+        .filter((variant) => variant.length > 0),
       falseAnswers: row.falseAnswers || [],
       maxPenalty: row.maxPenalty || 0,
       orderMatters: Boolean(row.orderMatters),
@@ -258,10 +331,39 @@ const StageForm: React.FC<StageFormProps> = ({
   };
 
   // Render one ORC score-key row (letters correct/false + max penalty), used in both columns
-  const renderScoreKeyRow = (row: ScoreKeyRow, rowIndex: number) => (
+  const renderScoreKeyRow = (row: ScoreKeyRow, rowIndex: number) => {
+    const alternatives = row.alternativeAnswers || [];
+
+    return (
     <tr key={row.rowNumber} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
       <td className="py-2 px-1 border-b border-r border-gray-300 font-medium text-base text-gray-800 text-center w-8">
-        {row.rowNumber}
+        <div className="flex flex-col items-center gap-1">
+          <span>{row.rowNumber}</span>
+          <div className="flex items-center gap-0.5">
+            {alternatives.length < MAX_ALTERNATIVES && (
+              <button
+                type="button"
+                className="w-5 h-5 flex items-center justify-center rounded border border-green-300 text-green-700 text-xs font-bold leading-none hover:bg-green-50"
+                onClick={() => handleAddAlternative(rowIndex)}
+                aria-label={`Add an equally correct answer to row ${row.rowNumber}`}
+                title="Beroep: nog een goed antwoord — a second answer the jury ruled equally correct"
+              >
+                +
+              </button>
+            )}
+            {alternatives.length > 0 && (
+              <button
+                type="button"
+                className="w-5 h-5 flex items-center justify-center rounded border border-gray-300 text-gray-600 text-xs font-bold leading-none hover:bg-gray-100"
+                onClick={() => handleRemoveAlternative(rowIndex)}
+                aria-label={`Remove the last alternative answer of row ${row.rowNumber}`}
+                title="Remove the last alternative answer"
+              >
+                &minus;
+              </button>
+            )}
+          </div>
+        </div>
       </td>
       {Array.from({ length: LETTER_COLUMNS }).map((_, colIndex) => (
         <td key={colIndex} className="py-2 px-1 border-b border-r border-gray-300">
@@ -275,6 +377,22 @@ const StageForm: React.FC<StageFormProps> = ({
               aria-label={`Correct answer for row ${row.rowNumber}, column ${colIndex + 1}`}
               title="Correct"
             />
+            {alternatives.map((variant, altIndex) => (
+              <input
+                key={altIndex}
+                type="text"
+                className="w-10 h-10 p-1 border border-dashed border-green-400 bg-green-50 rounded text-center text-lg font-bold focus:border-green-600 focus:ring-1 focus:ring-green-200 text-gray-700"
+                maxLength={1}
+                value={variant[colIndex] || ''}
+                onChange={(e) =>
+                  handleAlternativeAnswerChange(rowIndex, altIndex, colIndex, e.target.value)
+                }
+                aria-label={`Alternative correct answer ${altIndex + 1} for row ${
+                  row.rowNumber
+                }, column ${colIndex + 1}`}
+                title={`Also correct (appeal ${altIndex + 1}) — a complete answer of its own`}
+              />
+            ))}
             <input
               type="text"
               className="w-10 h-10 p-1 border border-red-300 rounded text-center text-lg font-bold focus:border-red-500 focus:ring-1 focus:ring-red-200 text-gray-700"
@@ -308,7 +426,8 @@ const StageForm: React.FC<StageFormProps> = ({
         />
       </td>
     </tr>
-  );
+    );
+  };
 
   const scoreKeyHeader = (
     <thead>
@@ -320,7 +439,7 @@ const StageForm: React.FC<StageFormProps> = ({
           colSpan={LETTER_COLUMNS}
           className="py-2 px-1 border-b border-r border-gray-300 text-xs font-semibold text-gray-800"
         >
-          LETTERS (Correct / False)
+          LETTERS (Correct / Also correct / False)
         </th>
         <th
           className="py-2 px-1 border-b border-r border-gray-300 text-[11px] font-semibold text-gray-800"
@@ -382,6 +501,14 @@ const StageForm: React.FC<StageFormProps> = ({
           {2 * PENALTY_PER_ERROR} — one error for the extra R and one for the extra D. Writing the
           same surplus letter again is the same mistake, so R R R on that key costs{' '}
           {PENALTY_PER_ERROR} for the doubled R on top of the missing D.
+        </p>
+        <p className="text-sm text-gray-600 mt-1">
+          Won an appeal? <span className="font-semibold">+</span> next to the row number adds a
+          second answer the jury ruled equally correct (the dashed green boxes). It is a whole
+          answer of its own, not an extra letter: with D R as the key and D R R added, both are
+          free, D costs {PENALTY_PER_ERROR} for the missing R, D R R R costs {PENALTY_PER_ERROR}{' '}
+          for the extra one, and R R costs {PENALTY_PER_ERROR} for the missing D. Every card of the
+          rally is re-scored the moment the stage is saved.
         </p>
         <p className="text-sm text-gray-600 mt-1">
           Tick <span className="font-semibold">Volgorde</span> on an ORC row whose letters have to

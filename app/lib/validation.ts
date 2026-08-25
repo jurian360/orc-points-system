@@ -29,6 +29,10 @@ export const MAX_ANSWER_ROWS = 60; // forms send 30
 export const MAX_TIME_ROWS = 20; // forms send 10
 export const MAX_MERK_ROWS = 20; // forms send 6
 export const MAX_COLUMNS = 8; // forms send 4
+// Answers an appeal added to an ORC row, on top of the row's own. The stage
+// form offers two, which covers the appeals that occur in practice ("both DR
+// and DRR are correct"); the cap keeps headroom over that.
+export const MAX_ALTERNATIVE_ANSWERS = 4; // forms send up to 2
 export const MAX_FIELD_LENGTH = 64;
 export const MAX_NAME_LENGTH = 200;
 // The controlekaart the Android app renders: 30 ORC rows, then the 6 merk rows.
@@ -129,6 +133,7 @@ export interface NormalizedScoreKey {
   scoreKey: {
     rowNumber: number;
     answers: string[];
+    alternativeAnswers: string[][];
     falseAnswers: { column: number; value: string }[];
     maxPenalty: number;
     orderMatters: boolean;
@@ -186,6 +191,13 @@ export function processScoreKey(body: Record<string, unknown>): NormalizedScoreK
     return {
       rowNumber: num(r.rowNumber),
       answers: rows(r.answers, MAX_COLUMNS).map(str),
+      // The answers an appeal added: a bounded list of bounded rows of letters,
+      // each one a complete answer for this row. Blank ones are dropped here so
+      // a key never stores an empty variant, which would make every card on the
+      // row free (see answerVariants in app/lib/scoring.ts).
+      alternativeAnswers: rows(r.alternativeAnswers, MAX_ALTERNATIVE_ANSWERS)
+        .map((variant) => rows(variant, MAX_COLUMNS).map(str).filter(Boolean))
+        .filter((variant) => variant.length > 0),
       falseAnswers: rows(r.falseAnswers, MAX_COLUMNS).map((fa) => {
         const f = (fa ?? {}) as Record<string, unknown>;
         return { column: num(f.column), value: str(f.value) };
