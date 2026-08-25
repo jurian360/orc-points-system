@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import StageForm from '../../../../components/StageForm';
+import { PAGE_CONTAINER } from '../../../../lib/layout';
 
 export default function NewStagePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -57,7 +58,7 @@ export default function NewStagePage({ params }: { params: Promise<{ id: string 
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-[1700px] mx-auto p-4">
+      <div className={`${PAGE_CONTAINER} py-4`}>
         <div className="mb-6">
           <h1 className="text-2xl font-bold">Add Stage</h1>
           <p className="text-gray-600 mt-2">Enter the stage name and its answer key.</p>

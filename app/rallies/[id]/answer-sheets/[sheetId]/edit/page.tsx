@@ -8,6 +8,7 @@ import type { AnswerSheetInitialData } from '../../../../../components/AnswerShe
 import type { StageTimeConfig, TimeKeyRow } from '../../../../../lib/timeScoring';
 import type { ClassificationValue } from '../../../../../lib/participants';
 import type { ScoreKeyRow } from '../../../../../lib/scoring';
+import { PAGE_CONTAINER } from '../../../../../lib/layout';
 
 interface Stage {
   _id: string;
@@ -172,7 +173,7 @@ export default function EditAnswerSheetPage({
 
   return (
     <div className="min-h-screen bg-gray-100 py-4">
-      <div className="max-w-[1700px] mx-auto px-6">
+      <div className={PAGE_CONTAINER}>
         <div className="mb-4">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">
             Edit Answer Sheet — Participant {sheet.eq}, {stageName}

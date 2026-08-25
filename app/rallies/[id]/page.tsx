@@ -9,6 +9,7 @@ import RallyTimesPanel from '../../components/RallyTimesPanel';
 import { useAuth } from '../../components/AuthContext';
 import { crewLabel, CLASSIFICATIONS, type ClassificationValue } from '../../lib/participants';
 import { copyRallyName } from '../../lib/rallyCodes';
+import { PAGE_CONTAINER } from '../../lib/layout';
 
 interface Rally {
   _id: string;
@@ -293,11 +294,6 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
     );
   }
 
-  // The times tab is a grid as wide as the whole rally — every control of every
-  // stage, side by side — so it takes the window instead of the reading column
-  // the three list tabs are comfortable in.
-  const container = tab === 'times' ? 'w-full px-4' : 'max-w-6xl mx-auto px-4';
-
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: 'stages', label: 'Stages', count: stages.length },
     { id: 'standings', label: 'Standings', count: standings.length },
@@ -308,9 +304,12 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header and tabs stay on screen: the actions of this rally are reachable
-          from the bottom of a 60-row standing without scrolling back up. */}
+          from the bottom of a 60-row standing without scrolling back up.
+          The bar bleeds to the window, its content sits in `PAGE_CONTAINER` —
+          the same width every panel below it uses, so switching a tab moves
+          nothing but the list underneath. */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
-        <div className={container}>
+        <div className={PAGE_CONTAINER}>
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pt-4 pb-3">
             <div className="min-w-0">
               <Link
@@ -419,7 +418,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      <div className={`${container} py-6`}>
+      <div className={`${PAGE_CONTAINER} py-6`}>
         {/* Stages */}
         {tab === 'stages' && (
           <div className="bg-white rounded-lg shadow-lg overflow-hidden">
