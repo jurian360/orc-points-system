@@ -43,7 +43,7 @@ interface StandingsEntry {
 // standings. Stacked they run to thousands of pixels on a real rally, so they
 // are tabs: one list at a time, under a header that keeps the actions (and the
 // jump to one EQ's card) in reach from anywhere on the page.
-type Tab = 'standings' | 'participants' | 'stages';
+type Tab = 'stages' | 'standings' | 'participants';
 
 export default function RallyDashboardPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -248,9 +248,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
   }
 
   const tabs: { id: Tab; label: string; count: number }[] = [
+    { id: 'stages', label: 'Stages', count: stages.length },
     { id: 'standings', label: 'Standings', count: standings.length },
     { id: 'participants', label: 'Participants', count: Math.max(participantCount, standings.length) },
-    { id: 'stages', label: 'Stages', count: stages.length },
   ];
 
   return (
