@@ -93,9 +93,9 @@ interface AnswerSheetFormProps {
   // Every sheet already entered for this rally; used to carry the participant's
   // time delta into the stage being typed.
   sheets?: ExistingSheet[];
-  // The participants of this rally, if they have been recorded. Only used to
-  // show who the typed EQ number is — a card can be entered for an EQ that has
-  // no participant record.
+  // The entry list of this rally: the crews a card can be typed for. A sheet
+  // belongs to a crew, so this is the list the official picks from — an EQ the
+  // rally has no participant for cannot be entered (the API refuses it too).
   participants?: ParticipantDetails[];
   // Set when an already submitted sheet is being corrected: the card starts
   // filled in and the stage it belongs to is fixed (a sheet is identified by
@@ -160,6 +160,39 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     () => (eq === '' ? undefined : participants.find((p) => p.eq === Number(eq))),
     [eq, participants]
   );
+
+  // The entry list in EQ order — the order the officials read it in.
+  const sortedParticipants = useMemo(
+    () => [...participants].sort((a, b) => a.eq - b.eq),
+    [participants]
+  );
+
+  // The crews that already have a sheet for the stage being typed. A stage holds
+  // one sheet per participant, so those cannot be entered a second time: the
+  // time import opens a card as soon as a control hands its times in, and the
+  // letters belong on that sheet — typing a new one would either be refused by
+  // the API or, worse, replace a card that already carries a WPT. The sheet
+  // being corrected is not in the way of itself.
+  const takenEqs = useMemo(() => {
+    if (!stageId) return new Set<number>();
+    return new Set(
+      sheets
+        .filter((sheet) => sheet.stageId === stageId)
+        .filter((sheet) => !(isEditing && sheet.eq === initialData?.eq))
+        .map((sheet) => sheet.eq)
+    );
+  }, [sheets, stageId, isEditing, initialData]);
+
+  // A sheet typed before this rally had an entry list can carry an EQ that is
+  // not on it. It stays selectable on that sheet — a card already scored has to
+  // remain correctable — but it is the only way to reach one.
+  const unlistedEq = useMemo(() => {
+    if (eq === '') return null;
+    return sortedParticipants.some((p) => p.eq === Number(eq)) ? null : Number(eq);
+  }, [eq, sortedParticipants]);
+
+  const eqTaken = eq !== '' && takenEqs.has(Number(eq));
+  const noEntryList = sortedParticipants.length === 0;
 
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -403,15 +436,30 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate EQ
+    // Validate the participant
     if (eq === '' || isNaN(Number(eq)) || Number(eq) < 1 || Number(eq) > 100) {
-      alert('Please enter a valid participant ID (1-100)');
+      alert('Please select a participant');
       return;
     }
 
     // Validate stage selection
     if (!stageId) {
       alert('Please select a stage');
+      return;
+    }
+
+    // The API refuses both of these as well; catching them here keeps a whole
+    // typed card from being thrown away on submit.
+    if (unlistedEq !== null && !isEditing) {
+      alert(`EQ ${unlistedEq} is not a participant of this rally. Import the entry list first.`);
+      return;
+    }
+
+    if (eqTaken) {
+      alert(
+        `EQ ${eq} already has an answer sheet for this stage. ` +
+          'Open that sheet to correct it.'
+      );
       return;
     }
 
@@ -544,21 +592,48 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     <form ref={formRef} onSubmit={handleSubmit} className="w-full mx-auto">
       {/* Header — controlekaart style (compact, single row) */}
       <div className="flex flex-col sm:flex-row sm:items-end gap-4 mb-4">
-        <div className="sm:w-48">
+        {/* Only crews on the entry list can be typed a card, and only one per
+            stage — the numbers that already have a sheet are shown but cannot
+            be picked. */}
+        <div className="sm:w-72">
           <label htmlFor="eq" className="block text-sm font-semibold mb-1 text-gray-800">
-            EQ. No. — Participant ID (1-100)
+            EQ. No. — Participant
           </label>
-          <input
-            type="number"
+          <select
             id="eq"
-            min={1}
-            max={100}
-            className="w-full p-2 border-2 border-gray-300 rounded-lg shadow-sm text-base focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700"
+            className="w-full p-2 border-2 border-gray-300 rounded-lg shadow-sm text-base focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700 disabled:bg-gray-100"
             value={eq}
             onChange={(e) => setEq(e.target.value === '' ? '' : Number(e.target.value))}
-            placeholder="Enter ID (1-100)"
+            disabled={noEntryList && unlistedEq === null}
             required
-          />
+          >
+            <option value="">Select a participant</option>
+            {unlistedEq !== null && (
+              <option value={unlistedEq}>{unlistedEq} &mdash; not on the entry list</option>
+            )}
+            {sortedParticipants.map((participant) => {
+              const taken = takenEqs.has(participant.eq);
+              const name = crewLabel(participant);
+              return (
+                <option key={participant.eq} value={participant.eq} disabled={taken}>
+                  {participant.eq}
+                  {name ? ` — ${name}` : ''}
+                  {taken ? ' (already entered)' : ''}
+                </option>
+              );
+            })}
+          </select>
+          {noEntryList && (
+            <p className="mt-1 text-sm text-red-700">
+              This rally has no entry list yet. Import it before typing cards.
+            </p>
+          )}
+          {eqTaken && (
+            <p className="mt-1 text-sm text-red-700">
+              EQ {eq} already has a sheet for this stage &mdash; open that sheet to add the
+              letters.
+            </p>
+          )}
         </div>
         <div className="sm:w-72">
           <label htmlFor="stageId" className="block text-sm font-semibold mb-1 text-gray-800">
@@ -585,7 +660,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
         <div className="sm:pb-2">
           <span className="block text-sm font-semibold mb-1 text-gray-800">Participant</span>
           {eq === '' ? (
-            <span className="text-sm text-gray-600">Enter an EQ. No.</span>
+            <span className="text-sm text-gray-600">Select a participant.</span>
           ) : (
             <span className="flex flex-wrap items-center gap-2 text-base text-gray-800">
               <ClassificationBadge classification={participantDetails?.classification} />
@@ -726,7 +801,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
             since the previous control. The start of the first stage is free; a control passed
             outside its window costs the maximum and the delta reverts to the last valid one, and a
             control the stage uses but that has no WPT was missed and costs its maximum too.
-            {eq === '' && ' Enter an EQ. No. to see this participant\u2019s own times.'}
+            {eq === '' && ' Select a participant to see their own times.'}
           </p>
           {timeResult?.disqualified && (
             <p className="mt-1 px-2 py-1 rounded bg-red-100 text-red-800 text-xs font-bold">

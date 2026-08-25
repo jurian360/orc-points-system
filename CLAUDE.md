@@ -484,6 +484,15 @@ Do not regress them.**
   takes `initialData` + `isEditing` and the edit page PUTs to
   `/api/answersheets/[id]`. The stage of a sheet is fixed there — a sheet is
   identified by `{stageId, eq}`, so moving it is a delete plus a new sheet.
+- **A sheet belongs to a crew on the entry list.** `AnswerSheetForm` picks the EQ
+  from the rally's participants instead of taking a typed number, and
+  `POST /api/answersheets` — plus a `PUT` that renumbers a sheet — refuses an EQ
+  the rally has no `Participant` for, exactly as the time import does. The picker
+  also greys out the crews that already have a sheet for the chosen stage: a
+  stage holds one sheet per participant, and the time import opens that sheet as
+  soon as a control hands its times in, so those letters are typed by editing it
+  rather than by entering a second card. An EQ that predates the entry list stays
+  selectable on its own sheet, so an already scored card remains correctable.
 - Styling is Tailwind utility classes inline; no component library.
 - Deleting cascades: deleting a rally removes its stages, sheets, participants
   and QR codes; deleting a stage removes its sheets and its QR codes. Keep that
