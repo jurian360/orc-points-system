@@ -25,7 +25,8 @@ interface AnswerSheet extends AnswerSheetInitialData {
   rallyId: string;
 }
 
-// Only used to label the EQ number on the card being corrected.
+// The entry list: it labels the EQ number on the card being corrected and is
+// what a renumbering of that card may pick from.
 interface Participant {
   eq: number;
   classification: ClassificationValue;

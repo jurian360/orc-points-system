@@ -74,8 +74,9 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
 
       if (rallyRes.ok) setRally(await rallyRes.json());
 
-      // Only used to label the EQ numbers — a card can be typed for an EQ that
-      // has no participant record.
+      // The entry list: it labels the EQ numbers in the table below and is the
+      // list the entry form picks from — a card can only be typed for a crew
+      // the rally knows.
       if (participantsRes.ok) setParticipants(await participantsRes.json());
 
       let stagesData: Stage[] = [];

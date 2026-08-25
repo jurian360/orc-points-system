@@ -2,7 +2,7 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../lib/mongodb';
-import { AnswerSheet, Stage } from '../../models';
+import { AnswerSheet, Participant, Stage } from '../../models';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../../lib/scoring';
 import { readBody, requireSession } from '../../lib/api-guard';
 import { rescoreParticipants } from '../../lib/rescore';
@@ -104,6 +104,25 @@ export async function POST(request: NextRequest) {
     const stage = await Stage.findById(stageId);
     if (!stage) {
       return NextResponse.json({ error: 'Stage not found' }, { status: 404 });
+    }
+
+    // A sheet belongs to a crew, not to a bare number: the entry list is what
+    // says who is riding, so an EQ with no `Participant` record is refused
+    // rather than scored — the same guard the time import applies. It is what
+    // keeps a mistyped number from opening a card nobody rides under.
+    const participant = await Participant.findOne({ rallyId: stage.rallyId, eq })
+      .select('eq')
+      .lean();
+
+    if (!participant) {
+      return NextResponse.json(
+        {
+          error:
+            `EQ ${eq} is not a participant of this rally. ` +
+            'Import the entry list first.',
+        },
+        { status: 400 }
+      );
     }
 
     // A participant may only submit one sheet per stage.

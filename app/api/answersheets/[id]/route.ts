@@ -2,7 +2,7 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
-import { AnswerSheet, Stage } from '../../../models';
+import { AnswerSheet, Participant, Stage } from '../../../models';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../../../lib/scoring';
 import { readBody, requireSession } from '../../../lib/api-guard';
 import { rescoreParticipants } from '../../../lib/rescore';
@@ -79,6 +79,27 @@ export async function PUT(
     const sheet = await AnswerSheet.findById(id);
     if (!sheet) {
       return NextResponse.json({ error: 'Answer sheet not found' }, { status: 404 });
+    }
+
+    // Renumbering a sheet hands it to another crew, so the new number has to be
+    // one the rally knows — the same entry-list guard the POST applies. Leaving
+    // the number alone is never blocked: a sheet that predates the entry list
+    // still has to be correctable.
+    if (eq !== null && eq !== sheet.eq) {
+      const participant = await Participant.findOne({ rallyId: sheet.rallyId, eq })
+        .select('eq')
+        .lean();
+
+      if (!participant) {
+        return NextResponse.json(
+          {
+            error:
+              `EQ ${eq} is not a participant of this rally. ` +
+              'Import the entry list first.',
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const stage = await Stage.findById(sheet.stageId);
