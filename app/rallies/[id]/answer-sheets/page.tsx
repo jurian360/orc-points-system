@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import AnswerSheetForm from '../../../components/AnswerSheetForm';
 import { type ClassificationValue } from '../../../lib/participants';
+import type { ScoreKeyRow } from '../../../lib/scoring';
 
 interface Rally {
   _id: string;
@@ -13,9 +14,10 @@ interface Rally {
 interface Stage {
   _id: string;
   name: string;
-  // The order flags of the key, so the entry grid can mark the rows whose
-  // letters are scored on their order too.
-  scoreKey?: { rowNumber: number; orderMatters?: boolean }[];
+  // The full ORC key: the entry grid scores every row against it while the card
+  // is typed — the strafpunten are computed, not entered — and marks the rows
+  // whose letters are scored on their order too.
+  scoreKey?: ScoreKeyRow[];
   timeScoreKey?: { rowNumber: number; ipt?: string }[];
   // The merk key: the entry form scores the merk column live against it.
   merkScoreKey?: { rowNumber: number; merk?: string; maxPenalty?: number }[];

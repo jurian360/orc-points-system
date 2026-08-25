@@ -225,13 +225,17 @@ export function processScoreKey(body: Record<string, unknown>): NormalizedScoreK
 
 // --- Answer sheets ---------------------------------------------------------
 
+// Only the letters are taken from the client: what a row costs is scored
+// against the stage's answer key server-side (see app/lib/rescore.ts), so
+// accepting a `strafp` here would let a sheet claim a total it did not earn —
+// the same rule the time and merk rows follow.
 export function parseAnswerRows(value: unknown) {
   return rows(value, MAX_ANSWER_ROWS).map((row) => {
     const r = (row ?? {}) as Record<string, unknown>;
     return {
       rowNumber: num(r.rowNumber),
       selectedAnswers: rows(r.selectedAnswers, MAX_COLUMNS).map(str),
-      strafp: num(r.strafp),
+      strafp: 0,
     };
   });
 }

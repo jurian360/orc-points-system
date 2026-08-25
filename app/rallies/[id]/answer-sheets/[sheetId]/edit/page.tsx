@@ -7,13 +7,15 @@ import AnswerSheetForm from '../../../../../components/AnswerSheetForm';
 import type { AnswerSheetInitialData } from '../../../../../components/AnswerSheetForm';
 import type { StageTimeConfig, TimeKeyRow } from '../../../../../lib/timeScoring';
 import type { ClassificationValue } from '../../../../../lib/participants';
+import type { ScoreKeyRow } from '../../../../../lib/scoring';
 
 interface Stage {
   _id: string;
   name: string;
-  // The order flags of the key, so the entry grid can mark the rows whose
-  // letters are scored on their order too.
-  scoreKey?: { rowNumber: number; orderMatters?: boolean }[];
+  // The full ORC key: the entry grid scores every row against it while the card
+  // is typed — the strafpunten are computed, not entered — and marks the rows
+  // whose letters are scored on their order too.
+  scoreKey?: ScoreKeyRow[];
   timeScoreKey?: TimeKeyRow[];
   // The merk key: the entry form scores the merk column live against it.
   merkScoreKey?: { rowNumber: number; merk?: string; maxPenalty?: number }[];
