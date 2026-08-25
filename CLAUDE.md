@@ -58,10 +58,14 @@ Rally ──< Stage ──< AnswerSheet
 ```
 
 - `Stage.scoreKey` — 30 rows:
-  `{ rowNumber, answers[], falseAnswers[{column,value}], maxPenalty, orderMatters }`.
+  `{ rowNumber, answers[], alternativeAnswers[][], falseAnswers[{column,value}],
+  maxPenalty, orderMatters }`.
   `orderMatters` is the officials' "volgorde" tick: the row's letters have to be
   given in the order of the key. Only ORC rows carry it — the time and merk
   columns hold single values and have no order.
+  `alternativeAnswers` holds the answers an **appeal** added, each one a
+  complete answer for the row rather than an extra letter; empty on every key
+  until a jury rules a second answer equally correct.
   `timeScoreKey` (10 rows) holds the stage timetable — `ipt` is the ideal
   passage time of participant 0 — and `timeConfig` its time-penalty settings
   (windows, maximum, break after the stage). `merkScoreKey` (6 rows) holds one
@@ -138,6 +142,21 @@ Rally ──< Stage ──< AnswerSheet
    order** → **+30**, once, on top of what the letters themselves cost.
 5. The row total is then **capped at `maxPenalty`** when `maxPenalty > 0`
    (`0` / undefined means no cap).
+
+A row can accept **more than one answer**. After a rally, participants may
+appeal a key, and the sport's rules answer an upheld appeal by accepting both
+the original answer and the appealed one — `DR` and `DRR` are then equally
+right. Officials record the second answer in `alternativeAnswers` (the `+` next
+to the row number on the stage form); rules 1-4 are then run against **every**
+accepted answer and the participant is charged the **cheapest** result, capped
+after the fact by rule 5. So both answers cost nothing and a wrong card is
+measured against whichever accepted answer it came closest to: on `DR` with
+`DRR` added, `D` costs 30 (missing R), `DRRR` costs 30 (extra R), `R` and `RR`
+cost 30 (missing D), `RRR` costs 60 and an empty row costs 60. The false letters
+and the cap belong to the row, not to one of its answers, so they cost the same
+against each variant and never decide which one wins. `matchedAnswerVariant`
+reports the answer a row was scored against — `OrcAnswerGrid` colours the card's
+letters against it, so a cell of a free card is never left uncoloured.
 
 The **key** decides which rows are scored, never the sheet. A row the
 participant did not answer costs its missing letters whether the sheet holds a
@@ -480,7 +499,8 @@ Do not regress them.**
 - `ControlekaartCard` is the shared read-only rendering of a scored sheet
   (single-sheet view and per-participant view). Prefer extending it over adding
   a parallel layout. `StageKeyCard` is its counterpart for a stage *key* — the
-  same four columns, but showing the correct/false letters, which rows are scored
+  same four columns, but showing the correct/false letters and the answers an
+  appeal added (dashed, marked `of` on the row number), which rows are scored
   on their order, the IPT 0 timetable with the stage's time settings and the
   maximum each part can cost. A row whose order counts is marked `1→2` in the key
   card, in the scored card and in the entry grid.

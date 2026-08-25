@@ -7,8 +7,10 @@
 // stage's answer key (scoreKey). Each wrong, missing, or doubled correct
 // answer costs 30 penalty points, and so does the wrong order on a row whose
 // key asks for one, capped per row by the row's maxPenalty (when
-// maxPenalty > 0). Both the doubles and the letters the key rules out are
-// counted per letter, exactly as in the merk column: every key letter written
+// maxPenalty > 0). A row can hold more than one accepted answer — see
+// `alternativeAnswers` below — and is then scored against the one that costs
+// the participant the least. Both the doubles and the letters the key rules
+// out are counted per letter, exactly as in the merk column: every key letter written
 // too often is its own 30 points, while writing the same surplus or ruled-out
 // letter again is the same mistake, not a new one. The same algorithm powers
 // the scoring detail view and the server-side total stored on each answer
@@ -27,6 +29,14 @@ export const PENALTY_PER_ERROR = 30;
 export interface ScoreKeyRow {
   rowNumber: number;
   answers: string[];
+  // Further answers that are equally correct, each one a complete answer for
+  // this row. This is where an appeal is recorded: when the jury rules that
+  // both "D R" and "D R R" are right, the second one is kept here and the row
+  // is scored against whichever of the two costs the participant the least, so
+  // either answer is free and everything else is measured against the nearest
+  // of them. Absent or empty is the single-answer key every stage held before
+  // appeals could be written down.
+  alternativeAnswers?: string[][];
   falseAnswers?: { column: number; value: string }[];
   maxPenalty?: number;
   // The letters of this row have to be given in the order of the key ("volgorde").
@@ -39,7 +49,21 @@ export interface AnswerRow {
   selectedAnswers: string[];
 }
 
-// Did the participant give the correct letters of an ordered row out of order?
+// Every complete answer a row accepts: the key itself first, then the answers
+// an appeal added. Variants with no letters are dropped — the stage form sends
+// an empty one for an alternative nobody filled in — and a row that keeps no
+// letters at all is left with a single empty variant, which is the free row of
+// an ORC question the stage does not use.
+export function answerVariants(scoreKeyRow: ScoreKeyRow | undefined): string[][] {
+  const variants = [scoreKeyRow?.answers || [], ...(scoreKeyRow?.alternativeAnswers || [])]
+    .map((variant) => (variant || []).filter(Boolean))
+    .filter((variant) => variant.length > 0);
+
+  return variants.length > 0 ? variants : [[]];
+}
+
+// Did the participant give the correct letters of an ordered row out of order,
+// measured against one accepted answer?
 //
 // Only the letters that are in the key say anything about the order, so false
 // and unknown letters are ignored. The given letters are in order exactly when
@@ -51,18 +75,10 @@ export interface AnswerRow {
 //   - fewer than two correct letters given — a single letter cannot be out of
 //     order, so a participant who wrote only "N" of the key "NW" pays for the
 //     missing W and nothing more.
-export function hasOrderError(
-  scoreKeyRow: ScoreKeyRow,
-  participantRow: AnswerRow | undefined
-): boolean {
-  if (!scoreKeyRow?.orderMatters) return false;
-
-  const key = (scoreKeyRow.answers || []).filter(Boolean);
+function variantOrderError(key: string[], selected: string[]): boolean {
   if (key.length < 2) return false;
 
-  const given = (participantRow?.selectedAnswers || []).filter(
-    (answer) => answer && key.includes(answer)
-  );
+  const given = selected.filter((answer) => answer && key.includes(answer));
   if (given.length < 2) return false;
 
   // Greedy subsequence match: every given letter has to appear in the rest of
@@ -77,28 +93,23 @@ export function hasOrderError(
   return false;
 }
 
-// Penalty points for a single row given its answer-key row and the
-// participant's answers for that row.
-//
-// A missing `participantRow` is an unanswered row, not an unscored one: it is
-// scored as a row with no letters, which costs the key's letters as missing.
-// A key row with no letters of its own still costs nothing, so the rows a stage
-// does not use stay free.
-export function calculateRowPenalty(
+// What one accepted answer costs, before the row's cap. `calculateRowPenalty`
+// runs this over every variant of the row and charges the lowest.
+function variantPenalty(
   scoreKeyRow: ScoreKeyRow,
-  participantRow: AnswerRow | undefined
+  key: string[],
+  selected: string[]
 ): number {
-  if (!scoreKeyRow) return 0;
-
   let rowPenalty = 0;
-  const selected = participantRow?.selectedAnswers || [];
 
   // 1. A letter the key rules out costs 30 points — but writing it again is the
   //    same error, not a new one: the key rules a letter out once, so a row of
   //    four D's on a key that says D is wrong costs 30, not 120. A key that
   //    rules the same letter out in more than one column asks for it that many
   //    times, and then it can be charged that many times (two false D's in the
-  //    key: at most 60 on that row).
+  //    key: at most 60 on that row). The false letters belong to the row, not
+  //    to one of its accepted answers, so they cost the same against every
+  //    variant and never decide which variant is the cheapest.
   const falseAllowance = new Map<string, number>();
   (scoreKeyRow.falseAnswers || []).forEach((falseAnswer) => {
     const letter = falseAnswer?.value;
@@ -120,7 +131,7 @@ export function calculateRowPenalty(
   //    letter again is the same mistake, so R R R against the key R D costs the
   //    30 of the doubled R once (plus the 30 for the missing D).
   const expectedCounts = new Map<string, number>();
-  scoreKeyRow.answers.forEach((answer) => {
+  key.forEach((answer) => {
     if (!answer) return;
     expectedCounts.set(answer, (expectedCounts.get(answer) || 0) + 1);
   });
@@ -136,7 +147,7 @@ export function calculateRowPenalty(
   });
 
   // 3. Each missing required correct answer costs 30 points.
-  const requiredAnswers = [...scoreKeyRow.answers];
+  const requiredAnswers = [...key];
   selected.forEach((answer) => {
     const index = requiredAnswers.indexOf(answer);
     if (index >= 0) {
@@ -147,9 +158,98 @@ export function calculateRowPenalty(
 
   // 4. The wrong order on a row that asks for one costs 30 points, once,
   //    on top of whatever the letters themselves cost.
-  if (hasOrderError(scoreKeyRow, participantRow)) {
+  if (scoreKeyRow.orderMatters && variantOrderError(key, selected)) {
     rowPenalty += PENALTY_PER_ERROR;
   }
+
+  return rowPenalty;
+}
+
+// How many of a variant's letters the participant wrote in the column the
+// variant holds them in. Only a tie-break for which answer a row is shown
+// against; it never changes what the row costs.
+function positionalMatches(key: string[], selected: string[]): number {
+  return key.reduce(
+    (count, letter, index) => (letter && selected[index] === letter ? count + 1 : count),
+    0
+  );
+}
+
+// The accepted answer a row is scored against: the variant that costs the
+// participant the least.
+//
+// Ties go first to the variant that matches most of the letters where the
+// participant wrote them — so a card reading D R R against the key D R with
+// D R R accepted is coloured against D R R, the answer the crew was going for
+// — and then to the earlier variant, which is the key itself before the
+// answers an appeal added. Both tie-breaks are display only: tied variants cost
+// the same by definition.
+export function matchedAnswerVariant(
+  scoreKeyRow: ScoreKeyRow | undefined,
+  participantRow: AnswerRow | undefined
+): string[] {
+  if (!scoreKeyRow) return [];
+
+  const selected = participantRow?.selectedAnswers || [];
+  const variants = answerVariants(scoreKeyRow);
+
+  let best = variants[0];
+  let bestPenalty = variantPenalty(scoreKeyRow, best, selected);
+  let bestMatches = positionalMatches(best, selected);
+
+  variants.slice(1).forEach((variant) => {
+    const penalty = variantPenalty(scoreKeyRow, variant, selected);
+    const matches = positionalMatches(variant, selected);
+    if (penalty < bestPenalty || (penalty === bestPenalty && matches > bestMatches)) {
+      best = variant;
+      bestPenalty = penalty;
+      bestMatches = matches;
+    }
+  });
+
+  return best;
+}
+
+// Did the participant give the correct letters of an ordered row out of order?
+// Measured against the answer the row is scored against, so a row with more
+// than one accepted answer is only marked when the cheapest of them is out of
+// order.
+export function hasOrderError(
+  scoreKeyRow: ScoreKeyRow,
+  participantRow: AnswerRow | undefined
+): boolean {
+  if (!scoreKeyRow?.orderMatters) return false;
+
+  return variantOrderError(
+    matchedAnswerVariant(scoreKeyRow, participantRow),
+    participantRow?.selectedAnswers || []
+  );
+}
+
+// Penalty points for a single row given its answer-key row and the
+// participant's answers for that row.
+//
+// A missing `participantRow` is an unanswered row, not an unscored one: it is
+// scored as a row with no letters, which costs the key's letters as missing.
+// A key row with no letters of its own still costs nothing, so the rows a stage
+// does not use stay free.
+//
+// A row that accepts more than one answer costs the least of them: every
+// variant is scored in full and the cheapest one is what the participant pays,
+// which is what makes both answers of an appeal free and measures a wrong card
+// against whichever of them it came closest to.
+export function calculateRowPenalty(
+  scoreKeyRow: ScoreKeyRow,
+  participantRow: AnswerRow | undefined
+): number {
+  if (!scoreKeyRow) return 0;
+
+  const selected = participantRow?.selectedAnswers || [];
+  let rowPenalty = Math.min(
+    ...answerVariants(scoreKeyRow).map((variant) =>
+      variantPenalty(scoreKeyRow, variant, selected)
+    )
+  );
 
   // Cap by the row's maximum penalty (only when a cap is set).
   if (

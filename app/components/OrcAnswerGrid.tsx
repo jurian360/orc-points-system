@@ -1,5 +1,5 @@
 import React from 'react';
-import { calculateRowPenalty, hasOrderError } from '../lib/scoring';
+import { calculateRowPenalty, hasOrderError, matchedAnswerVariant } from '../lib/scoring';
 import type { AnswerRow, ScoreKeyRow } from '../lib/scoring';
 
 interface OrcAnswerGridProps {
@@ -15,8 +15,12 @@ interface OrcAnswerGridProps {
 // own grid, so the caller decides the surrounding layout — ControlekaartCard
 // places them alongside the time and merk columns of the same card.
 const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
-  const isAnswerCorrect = (row: ScoreKeyRow, colIndex: number, answer: string): boolean =>
-    Boolean(answer) && row.answers[colIndex] === answer;
+  // Green means "this is what the key asked for here". A row can accept more
+  // than one answer after an appeal, so the letters are compared with the
+  // accepted answer the row was actually scored against — otherwise a card
+  // costing 0 could still show a letter as neither correct nor false.
+  const isAnswerCorrect = (keyLetters: string[], colIndex: number, answer: string): boolean =>
+    Boolean(answer) && keyLetters[colIndex] === answer;
 
   const isAnswerFalse = (row: ScoreKeyRow, colIndex: number, answer: string): boolean =>
     Boolean(answer) && Boolean(row.falseAnswers?.some((fa) => fa.value === answer));
@@ -52,6 +56,7 @@ const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
     // the letters were given out of order — the 30 points for that are part of
     // the row penalty on the right.
     const orderError = hasOrderError(row, participantRow);
+    const keyLetters = matchedAnswerVariant(row, participantRow);
 
     return (
       <tr key={row.rowNumber} className={row.rowNumber % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
@@ -74,7 +79,7 @@ const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
         </td>
         {[0, 1, 2, 3].map((colIndex) => {
           const answer = participantRow?.selectedAnswers[colIndex] || '';
-          const isCorrect = isAnswerCorrect(row, colIndex, answer);
+          const isCorrect = isAnswerCorrect(keyLetters, colIndex, answer);
           const isFalse = isAnswerFalse(row, colIndex, answer);
 
           let cellClass = 'bg-gray-100 text-gray-400';

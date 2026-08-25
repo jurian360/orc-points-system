@@ -74,6 +74,15 @@ const StageSchema = new mongoose.Schema({
   scoreKey: [{
     rowNumber: Number,
     answers: [String], // Array of up to 4 correct answers for each row
+    // Further answers that are equally correct, each one a complete answer for
+    // this row: where an appeal is recorded ("both DR and DRR are correct").
+    // The row is scored against `answers` and each of these, and costs the
+    // lowest of them — see app/lib/scoring.ts. Empty on every key that has one
+    // accepted answer, which is all of them until an appeal says otherwise.
+    alternativeAnswers: {
+      type: [[String]],
+      default: undefined
+    },
     falseAnswers: [{
       column: Number,
       value: String
