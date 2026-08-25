@@ -257,12 +257,15 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
         focusCell(grid, row + 1, col, 1);
         break;
       case 'Tab': {
-        // Tab / Shift+Tab move down / up a row; at the grid edge let the browser
-        // move focus out of the grid as usual.
+        // Tab / Shift+Tab move down / up a row and back to the first column, so
+        // a card is typed row by row: finish a row wherever you are in it, Tab,
+        // and you start the next one. The time and merk grids have one column
+        // anyway. At the grid edge let the browser move focus out of the grid
+        // as usual.
         const step = e.shiftKey ? -1 : 1;
         const nextRow = row + step;
         if (nextRow >= 0 && nextRow < GRID_DIMS[grid].rows) {
-          if (focusCell(grid, nextRow, col, step)) e.preventDefault();
+          if (focusCell(grid, nextRow, 0, step)) e.preventDefault();
         }
         break;
       }
