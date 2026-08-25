@@ -293,6 +293,11 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
     );
   }
 
+  // The times tab is a grid as wide as the whole rally — every control of every
+  // stage, side by side — so it takes the window instead of the reading column
+  // the three list tabs are comfortable in.
+  const container = tab === 'times' ? 'w-full px-4' : 'max-w-6xl mx-auto px-4';
+
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: 'stages', label: 'Stages', count: stages.length },
     { id: 'standings', label: 'Standings', count: standings.length },
@@ -305,7 +310,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
       {/* Header and tabs stay on screen: the actions of this rally are reachable
           from the bottom of a 60-row standing without scrolling back up. */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4">
+        <div className={container}>
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pt-4 pb-3">
             <div className="min-w-0">
               <Link
@@ -414,7 +419,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className={`${container} py-6`}>
         {/* Stages */}
         {tab === 'stages' && (
           <div className="bg-white rounded-lg shadow-lg overflow-hidden">
