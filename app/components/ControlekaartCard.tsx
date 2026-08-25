@@ -11,6 +11,9 @@ export interface TimePenaltyRow {
   plusMinus?: string;
   strafp?: number;
   outOfWindow?: boolean;
+  // A control of the stage the participant has no time for: charged its
+  // maximum, and shown like a blown window.
+  missing?: boolean;
 }
 
 export interface MerkScoreRow {
@@ -90,7 +93,11 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                   <tr
                     key={row.rowNumber}
                     className={
-                      row.outOfWindow ? 'bg-red-50' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                      row.outOfWindow || row.missing
+                        ? 'bg-red-50'
+                        : index % 2 === 0
+                          ? 'bg-white'
+                          : 'bg-gray-50'
                     }
                   >
                     <td className="py-1.5 px-1 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center">
@@ -110,7 +117,7 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                     </td>
                     <td
                       className={`py-1.5 px-1 border-b border-gray-300 text-center text-base font-bold ${
-                        row.outOfWindow ? 'text-red-700' : 'text-gray-900'
+                        row.outOfWindow || row.missing ? 'text-red-700' : 'text-gray-900'
                       }`}
                     >
                       {row.strafp || 0}

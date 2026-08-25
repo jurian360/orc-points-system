@@ -295,6 +295,14 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
                 </td>
               </tr>
               <tr>
+                <td className="py-1 px-3 border-b border-r border-gray-300 text-sm font-semibold text-gray-800">
+                  Max strafpunten gemiste finish
+                </td>
+                <td className="py-1 px-3 border-b border-gray-300 text-right text-base font-bold text-gray-900">
+                  {config.missingFinishPenalty}
+                </td>
+              </tr>
+              <tr>
                 <td className="py-1 px-3 border-r border-gray-300 text-sm font-semibold text-gray-800">
                   Pauze na deze etappe
                 </td>
@@ -309,7 +317,12 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
         <p className="text-sm text-gray-600 mt-2">
           {isFinalStage
             ? 'This is the last stage of the rally: a participant outside the finish window is disqualified.'
-            : `Another stage follows this one, so a blown finish window costs the maximum plus the break (${config.outOfWindowPenalty} + ${config.breakMinutes} = ${config.outOfWindowPenalty + config.breakMinutes}).`}
+            : `Another stage follows this one, so a blown finish window costs the maximum plus the break (${config.outOfWindowPenalty} + ${config.breakMinutes} = ${config.outOfWindowPenalty + config.breakMinutes}).`}{' '}
+          {`A control with an IPT but no WPT was missed and costs its maximum as well: ${config.outOfWindowPenalty} for a GTC, ${
+            isFinalStage
+              ? config.missingFinishPenalty
+              : `${config.missingFinishPenalty} + ${config.breakMinutes} = ${config.missingFinishPenalty + config.breakMinutes}`
+          } for the finish.`}
         </p>
       </div>
 

@@ -521,6 +521,16 @@ const StageForm: React.FC<StageFormProps> = ({
                   />
                 </label>
                 <label className="text-sm text-gray-700">
+                  Max strafpunten gemiste finish
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full h-10 p-1 border border-gray-300 rounded text-center text-base text-gray-700"
+                    value={timeConfig.missingFinishPenalty}
+                    onChange={(e) => handleTimeConfigChange('missingFinishPenalty', e.target.value)}
+                  />
+                </label>
+                <label className="text-sm text-gray-700">
                   Pauze na deze etappe (min)
                   <input
                     type="number"
@@ -537,10 +547,17 @@ const StageForm: React.FC<StageFormProps> = ({
                 followed by another one the break is charged on top ({timeConfig.outOfWindowPenalty} +{' '}
                 {timeConfig.breakMinutes} ={' '}
                 {timeConfig.outOfWindowPenalty + timeConfig.breakMinutes}); on the finish of the last
-                stage the same window means a disqualification. Defaults:{' '}
+                stage the same window means a disqualification. A control this stage uses but that
+                has no WPT at all was missed and costs its maximum too: a GTC{' '}
+                {timeConfig.outOfWindowPenalty}, the finish {timeConfig.missingFinishPenalty}
+                {isFinalStage
+                  ? ''
+                  : ` + ${timeConfig.breakMinutes} = ${timeConfig.missingFinishPenalty + timeConfig.breakMinutes}`}
+                . Defaults:{' '}
                 {DEFAULT_TIME_CONFIG.gtcEarlyWindow}/{DEFAULT_TIME_CONFIG.gtcLateWindow} for a GTC,{' '}
                 {DEFAULT_TIME_CONFIG.finishEarlyWindow}/{DEFAULT_TIME_CONFIG.finishLateWindow} for the
-                finish.
+                finish, {DEFAULT_TIME_CONFIG.outOfWindowPenalty} /{' '}
+                {DEFAULT_TIME_CONFIG.missingFinishPenalty} strafpunten.
               </p>
             </div>
           </div>

@@ -373,6 +373,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
         delta: null,
         strafp: 0,
         outOfWindow: false,
+        missing: false,
         disqualified: false,
         free: false,
       }));
@@ -665,7 +666,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
                   <tr
                     key={row.rowNumber}
                     className={
-                      row.outOfWindow
+                      row.outOfWindow || row.missing
                         ? 'bg-red-50'
                         : row.active
                           ? rowIndex % 2 === 0
@@ -708,7 +709,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
                     </td>
                     <td
                       className={`py-0.5 px-1 border-b border-gray-300 text-center text-sm font-bold ${
-                        row.outOfWindow ? 'text-red-700' : 'text-gray-900'
+                        row.outOfWindow || row.missing ? 'text-red-700' : 'text-gray-900'
                       }`}
                     >
                       {row.strafp}
@@ -723,7 +724,8 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
             Type the WPT (e.g. 8:05). The IPT is this participant&apos;s ideal time — the stage&apos;s
             IPT 0 plus their EQ in minutes — and the strafpunten follow from how far the delta moved
             since the previous control. The start of the first stage is free; a control passed
-            outside its window costs the maximum and the delta reverts to the last valid one.
+            outside its window costs the maximum and the delta reverts to the last valid one, and a
+            control the stage uses but that has no WPT was missed and costs its maximum too.
             {eq === '' && ' Enter an EQ. No. to see this participant\u2019s own times.'}
           </p>
           {timeResult?.disqualified && (

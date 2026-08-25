@@ -35,6 +35,7 @@ interface Stage {
     finishEarlyWindow: number;
     finishLateWindow: number;
     outOfWindowPenalty: number;
+    missingFinishPenalty: number;
   };
 }
 

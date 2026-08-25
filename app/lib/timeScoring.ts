@@ -37,6 +37,13 @@
 //     the stage, because the break itself varies per stage;
 //   * the finish of the last stage has a wider window (default 15 early / 60
 //     late); outside it the participant is disqualified;
+//   * a control the stage *does* use (it has an IPT 0) but that has no WPT is a
+//     control the participant missed, and it is charged like one: a GTC costs
+//     the same flat maximum (default 60), the finish costs its own, higher
+//     maximum (`missingFinishPenalty`, default 90) plus the break after the
+//     stage when another stage follows. Like a blown window it never moves the
+//     delta. The start row has no window and so has no maximum either: an
+//     untimed start costs nothing and leaves the delta where it was;
 //   * the delta keeps running across stages, up to the last one.
 //
 // The windows, the maximum and the break are stage settings (`timeConfig`) so
@@ -66,8 +73,13 @@ export interface StageTimeConfig {
   // Finish window, in minutes early / late around the participant's IPT.
   finishEarlyWindow: number;
   finishLateWindow: number;
-  // Flat penalty for a control passed outside its window.
+  // Flat penalty for a control passed outside its window, and for a GTC the
+  // participant has no time for at all.
   outOfWindowPenalty: number;
+  // Penalty for a finish with no WPT — a finish the participant missed. Higher
+  // than `outOfWindowPenalty`, and charged plus the break after the stage while
+  // this is not the last stage.
+  missingFinishPenalty: number;
 }
 
 export const DEFAULT_TIME_CONFIG: StageTimeConfig = {
@@ -77,6 +89,7 @@ export const DEFAULT_TIME_CONFIG: StageTimeConfig = {
   finishEarlyWindow: 15,
   finishLateWindow: 60,
   outOfWindowPenalty: 60,
+  missingFinishPenalty: 90,
 };
 
 // A stage's time key row: the ideal passage time of participant 0.
@@ -102,6 +115,9 @@ export interface ScoredTimeRow {
   delta: number | null;
   strafp: number;
   outOfWindow: boolean;
+  // True when the stage uses this control but the sheet has no WPT for it: the
+  // participant missed it, and it is charged its maximum.
+  missing: boolean;
   disqualified: boolean;
   // The start of the first stage of a rally: shown, but never scored.
   free: boolean;
@@ -238,6 +254,7 @@ export function scoreStageTimes({
         delta: null,
         strafp: 0,
         outOfWindow: false,
+        missing: false,
         disqualified: false,
         free: false,
       };
@@ -249,8 +266,23 @@ export function scoreStageTimes({
 
     const free = kind === 'start' && isFirstStage;
 
-    // The checkpoint exists but has not been timed yet.
+    // The stage uses this control, but the sheet has no usable WPT for it: the
+    // participant missed it (or nobody typed it in), and a missed control costs
+    // its maximum. Exceptions: the free start of the first stage, and the start
+    // of any other stage — a start has no window, so it has no maximum either.
     if (actual === null) {
+      let missingStrafp = 0;
+      if (!free && kind === 'gtc') {
+        missingStrafp = config.outOfWindowPenalty;
+      } else if (!free && kind === 'finish') {
+        // The break after the stage is lost with the finish, exactly as it is
+        // when the finish is passed outside its window.
+        missingStrafp =
+          config.missingFinishPenalty + (isFinalStage ? 0 : config.breakMinutes);
+      }
+      // `runningDelta` is left alone: a control with no time never moves it.
+      totalPenalty += missingStrafp;
+
       return {
         rowNumber,
         kind,
@@ -259,8 +291,9 @@ export function scoreStageTimes({
         wpt,
         plusMinus: '',
         delta: null,
-        strafp: 0,
+        strafp: missingStrafp,
         outOfWindow: false,
+        missing: missingStrafp > 0,
         disqualified: false,
         free,
       };
@@ -282,6 +315,7 @@ export function scoreStageTimes({
         delta,
         strafp: 0,
         outOfWindow: false,
+        missing: false,
         disqualified: false,
         free,
       };
@@ -328,6 +362,7 @@ export function scoreStageTimes({
       delta,
       strafp,
       outOfWindow,
+      missing: false,
       disqualified: rowDisqualified,
       free,
     };
@@ -372,7 +407,8 @@ export function scoreRallyTimes(
 }
 
 // Highest time penalty a stage can hand out, used for the "max" overview on the
-// stage form. The start row is left out: it has no window, so no maximum.
+// stage form. The start row is left out: it has no window, so no maximum — an
+// untimed start is free too.
 export function maxStageTimePenalty(
   timeScoreKey: TimeKeyRow[] | null | undefined,
   timeConfig: Partial<StageTimeConfig> | null | undefined,
@@ -384,8 +420,15 @@ export function maxStageTimePenalty(
     const kind = timeRowKind(row.rowNumber);
     if (kind === 'start') return total;
     if (kind === 'finish') {
-      return total + config.outOfWindowPenalty + (isFinalStage ? 0 : config.breakMinutes);
+      // A finish can cost the out-of-window maximum or, when it was missed
+      // altogether, the (higher) missing-finish maximum; both lose the break.
+      return (
+        total +
+        Math.max(config.outOfWindowPenalty, config.missingFinishPenalty) +
+        (isFinalStage ? 0 : config.breakMinutes)
+      );
     }
+    // A GTC costs the same maximum whether it was blown or missed.
     return total + config.outOfWindowPenalty;
   }, 0);
 }

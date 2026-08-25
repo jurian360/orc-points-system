@@ -115,6 +115,9 @@ const StageSchema = new mongoose.Schema({
     finishEarlyWindow: { type: Number, default: 15 },
     finishLateWindow: { type: Number, default: 60 },
     outOfWindowPenalty: { type: Number, default: 60 },
+    // A finish with no WPT at all — the participant missed it — costs more than
+    // a blown window, plus the break when another stage follows.
+    missingFinishPenalty: { type: Number, default: 90 },
   },
   // Merk key of the stage, 6 rows: one correct letter and one explicitly false
   // letter per row. The merk column is scored vertically — the column as a whole
@@ -225,6 +228,12 @@ const AnswerSheetSchema = new mongoose.Schema({
       default: 0
     },
     outOfWindow: {
+      type: Boolean,
+      default: false
+    },
+    // True when the stage uses this control but the sheet has no WPT for it:
+    // the participant missed it and was charged its maximum.
+    missing: {
       type: Boolean,
       default: false
     }

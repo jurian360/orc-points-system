@@ -104,6 +104,7 @@ export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {
                     plusMinus: row.plusMinus,
                     strafp: row.strafp,
                     outOfWindow: row.outOfWindow,
+                    missing: row.missing,
                   }))
                 : sheet.timePenalties,
               timePenalty,
