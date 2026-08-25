@@ -7,6 +7,7 @@ import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
 import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
 import ClassificationBadge from './ClassificationBadge';
 import ParticipantDetailsForm from './ParticipantDetailsForm';
+import { useAuth } from './AuthContext';
 import { crewLabel, type ClassificationValue } from '../lib/participants';
 
 interface Rally {
@@ -64,6 +65,7 @@ const formatDate = (dateString: string) =>
 // paper card the answers were copied from. Stages the participant has no sheet
 // for are listed as missing so the gaps are visible.
 const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId, eq }) => {
+  const { can } = useAuth();
   const router = useRouter();
   const [rally, setRally] = useState<Rally | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -242,25 +244,30 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
               stage&apos;s answer key.
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => setEditingDetails((editing) => !editing)}
-              disabled={busy}
-              className="px-5 py-3 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-base shadow-md transition-colors disabled:opacity-60"
-            >
-              {editingDetails ? 'Close' : details ? 'Edit Details' : 'Add Details'}
-            </button>
-            {(sheets.length > 0 || details) && (
+          {/* The crew behind the number is the entry list, which is an admin's.
+              The sheets below are not: typing and correcting them is what a
+              data-entry account is for. */}
+          {can('manage:rally') && (
+            <div className="flex flex-wrap gap-3">
               <button
-                onClick={handleDeleteParticipant}
+                onClick={() => setEditingDetails((editing) => !editing)}
                 disabled={busy}
-                className="px-5 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-base shadow-md transition-colors disabled:opacity-60"
-                title={`Delete the details and every answer sheet of participant ${eq} in this rally`}
+                className="px-5 py-3 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 font-medium text-base shadow-md transition-colors disabled:opacity-60"
               >
-                Delete Participant {eq}
+                {editingDetails ? 'Close' : details ? 'Edit Details' : 'Add Details'}
               </button>
-            )}
-          </div>
+              {(sheets.length > 0 || details) && (
+                <button
+                  onClick={handleDeleteParticipant}
+                  disabled={busy}
+                  className="px-5 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-base shadow-md transition-colors disabled:opacity-60"
+                  title={`Delete the details and every answer sheet of participant ${eq} in this rally`}
+                >
+                  Delete Participant {eq}
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {editingDetails && (

@@ -3,7 +3,7 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../../lib/mongodb';
 import { AnswerSheet, Participant, Rally } from '../../../../../models';
-import { readBody, requireSession } from '../../../../../lib/api-guard';
+import { readBody, requireSession, requireRallyAdmin } from '../../../../../lib/api-guard';
 import {
   parseClassification,
   parseEqParam,
@@ -48,8 +48,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; eq: string }> }
 ) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireSession();
+  if (!session.ok) return session.response;
 
   try {
     const { id, eq: eqParam } = await params;
@@ -81,8 +81,8 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; eq: string }> }
 ) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireRallyAdmin();
+  if (!session.ok) return session.response;
 
   const parsed = await readBody(request);
   if (!parsed.ok) return parsed.response;
@@ -159,8 +159,8 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; eq: string }> }
 ) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireRallyAdmin();
+  if (!session.ok) return session.response;
 
   try {
     const { id, eq: eqParam } = await params;

@@ -3,13 +3,13 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../lib/mongodb';
 import { Rally } from '../../models';
-import { readBody, requireSession } from '../../lib/api-guard';
+import { readBody, requireSession, requireRallyAdmin } from '../../lib/api-guard';
 import { parseName } from '../../lib/validation';
 import { parseRallyCode, slugFromName } from '../../lib/rallyCodes';
 
 export async function GET() {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireSession();
+  if (!session.ok) return session.response;
 
   try {
     await dbConnect();
@@ -22,8 +22,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireRallyAdmin();
+  if (!session.ok) return session.response;
 
   const parsed = await readBody(request);
   if (!parsed.ok) return parsed.response;

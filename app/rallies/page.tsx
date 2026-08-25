@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useAuth } from '../components/AuthContext';
 
 interface Rally {
   _id: string;
@@ -10,6 +11,10 @@ interface Rally {
 }
 
 export default function RalliesPage() {
+  // Creating and deleting a rally is an admin's. Hiding the buttons only keeps
+  // a data-entry official from clicking what /api/rallies would refuse.
+  const { can } = useAuth();
+  const isAdmin = can('manage:rally');
   const [rallies, setRallies] = useState<Rally[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,12 +75,14 @@ export default function RalliesPage() {
       <div className="max-w-6xl mx-auto px-4">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800">Rally Management</h1>
-          <Link
-            href="/rallies/new"
-            className="px-5 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-lg font-medium shadow-md transition duration-150"
-          >
-            Create New Rally
-          </Link>
+          {isAdmin && (
+            <Link
+              href="/rallies/new"
+              className="px-5 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-lg font-medium shadow-md transition duration-150"
+            >
+              Create New Rally
+            </Link>
+          )}
         </div>
 
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
@@ -89,13 +96,19 @@ export default function RalliesPage() {
             </div>
           ) : rallies.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-lg text-gray-600 mb-4">No rallies found. Create your first rally to get started.</p>
-              <Link
-                href="/rallies/new"
-                className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block"
-              >
-                Create New Rally
-              </Link>
+              <p className="text-lg text-gray-600 mb-4">
+                {isAdmin
+                  ? 'No rallies found. Create your first rally to get started.'
+                  : 'No rallies found. An admin creates the rally before cards can be typed.'}
+              </p>
+              {isAdmin && (
+                <Link
+                  href="/rallies/new"
+                  className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block"
+                >
+                  Create New Rally
+                </Link>
+              )}
             </div>
           ) : (
             <table className="min-w-full divide-y divide-gray-200">
@@ -129,12 +142,14 @@ export default function RalliesPage() {
                         >
                           Open
                         </Link>
-                        <button
-                          onClick={() => handleDeleteRally(rally._id)}
-                          className="text-red-600 hover:text-red-900 font-medium text-base"
-                        >
-                          Delete
-                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDeleteRally(rally._id)}
+                            className="text-red-600 hover:text-red-900 font-medium text-base"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

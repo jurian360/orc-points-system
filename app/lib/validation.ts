@@ -8,6 +8,15 @@ import {
   type StageTimeConfig,
 } from './timeScoring';
 import { isClassification, type ClassificationValue } from './participants';
+import {
+  isRole,
+  isValidUsername,
+  MAX_PASSWORD_LENGTH,
+  MAX_USERNAME_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  normalizeUsername,
+  type Role,
+} from './roles';
 
 // Input validation and normalization for the API routes.
 //
@@ -106,6 +115,30 @@ export function parseOptionalName(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > MAX_NAME_LENGTH ? null : trimmed;
+}
+
+// --- Accounts --------------------------------------------------------------
+
+// A username, normalised the way it is stored. The rules live in
+// app/lib/roles.ts because the login and user forms check them too — a name the
+// form accepts must not be refused here.
+export function parseUsername(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = normalizeUsername(value.slice(0, MAX_USERNAME_LENGTH + 1));
+  return isValidUsername(normalized) ? normalized : null;
+}
+
+// A password as it is typed. Not trimmed — leading and trailing spaces are part
+// of a password — and bounded, because scrypt over an unbounded string is a
+// CPU-exhaustion vector.
+export function parsePassword(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  if (value.length < MIN_PASSWORD_LENGTH || value.length > MAX_PASSWORD_LENGTH) return null;
+  return value;
+}
+
+export function parseRole(value: unknown): Role | null {
+  return isRole(value) ? value : null;
 }
 
 // Row of the time column an import writes into: 1 (the start), 2-9 (the GTC's)

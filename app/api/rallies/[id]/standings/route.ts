@@ -21,8 +21,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireSession();
+  if (!session.ok) return session.response;
 
   try {
     await dbConnect();

@@ -1,9 +1,15 @@
 // Signed session tokens.
 //
-// The token is `<issuedAt>.<nonce>.<hmac>`, where the HMAC covers
-// `<issuedAt>.<nonce>` using SESSION_SECRET. A client cannot mint or modify a
-// token without the secret, and cannot backdate one because the timestamp is
-// inside the signed payload.
+// The token is `<payload>.<hmac>`, where `<payload>` is a base64url-encoded
+// JSON claim set and the HMAC covers it using SESSION_SECRET. A client cannot
+// mint or modify a token without the secret, and cannot backdate one because
+// the timestamp is inside the signed payload.
+//
+// The claims name the account: which user this is and what role they had when
+// they signed in. That is what lets middleware gate an admin-only page at the
+// edge, where there is no database. It is *not* the last word on the role —
+// `requireAdmin()` re-reads the user server-side, so a demoted account loses
+// its admin pages on its next request rather than when its token expires.
 //
 // This module uses Web Crypto (not node:crypto) deliberately: middleware.ts
 // runs on the Edge runtime, where node:crypto is unavailable. Web Crypto is
@@ -11,8 +17,13 @@
 // cannot drift apart.
 
 import { requireEnv } from './env';
+import { isRole, type Role } from './roles';
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// A token is a cookie, and a cookie that grows without bound is a header that
+// gets dropped. The claims are four short fields; this is generous headroom.
+const MAX_TOKEN_LENGTH = 1024;
 
 // Cache the imported key per secret so we do not re-import on every request.
 let cachedKey: { secret: string; key: Promise<CryptoKey> } | null = null;
@@ -65,23 +76,56 @@ async function sign(payload: string): Promise<string> {
   return toBase64Url(new Uint8Array(signature));
 }
 
-export async function createSessionToken(): Promise<string> {
+// The subject of the break-glass admin from the environment. It is not a
+// database id on purpose: that account has no `User` document, so nothing can
+// delete it or take its role away (see app/lib/users.ts).
+export const ENV_ADMIN_SUBJECT = 'env';
+
+export interface SessionUser {
+  // The user's `_id` as a string, or ENV_ADMIN_SUBJECT for the environment admin.
+  sub: string;
+  username: string;
+  role: Role;
+  // When the session was issued, in epoch milliseconds. `requireSession()`
+  // compares it with the user's `passwordChangedAt`, so changing a password
+  // signs the account's other sessions out.
+  issuedAt: number;
+}
+
+export async function createSessionToken(user: {
+  sub: string;
+  username: string;
+  role: Role;
+}): Promise<string> {
   // The nonce makes each session individually identifiable, which is what a
   // future revocation list would key on.
   const nonce = toBase64Url(crypto.getRandomValues(new Uint8Array(16)));
-  const payload = `${Date.now()}.${nonce}`;
+  const claims = {
+    iat: Date.now(),
+    nonce,
+    sub: user.sub,
+    usr: user.username,
+    role: user.role,
+  };
+
+  const payload = toBase64Url(new TextEncoder().encode(JSON.stringify(claims)));
   return `${payload}.${await sign(payload)}`;
 }
 
-export async function verifySessionToken(token: string | undefined | null): Promise<boolean> {
-  if (!token || token.length > 512) return false;
+// Verify the signature and the expiry, and return who the token says this is.
+// `null` means "no session" — malformed, forged, or expired are one answer to
+// every caller.
+export async function readSessionToken(
+  token: string | undefined | null
+): Promise<SessionUser | null> {
+  if (!token || token.length > MAX_TOKEN_LENGTH) return null;
 
   const separator = token.lastIndexOf('.');
-  if (separator <= 0) return false;
+  if (separator <= 0) return null;
 
   const payload = token.slice(0, separator);
   const signature = fromBase64Url(token.slice(separator + 1));
-  if (!signature) return false;
+  if (!signature) return null;
 
   // crypto.subtle.verify compares in constant time.
   let valid: boolean;
@@ -93,18 +137,50 @@ export async function verifySessionToken(token: string | undefined | null): Prom
       new TextEncoder().encode(payload)
     );
   } catch {
-    return false;
+    return null;
   }
-  if (!valid) return false;
+  if (!valid) return null;
+
+  // Only now is the payload worth parsing: it is proven to be ours.
+  const decoded = fromBase64Url(payload);
+  if (!decoded) return null;
+
+  let claims: Record<string, unknown>;
+  try {
+    claims = JSON.parse(new TextDecoder().decode(decoded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  const { iat, sub, usr, role } = claims;
+  if (typeof iat !== 'number' || !Number.isFinite(iat)) return null;
+  if (typeof sub !== 'string' || !sub) return null;
+  if (typeof usr !== 'string' || !usr) return null;
+  if (!isRole(role)) return null;
 
   // Expiry is enforced here, server-side. The cookie's maxAge is only a hint to
   // the browser and says nothing about a replayed or exported cookie value.
-  const issuedAt = Number(payload.slice(0, payload.indexOf('.')));
-  if (!Number.isFinite(issuedAt)) return false;
+  const age = Date.now() - iat;
+  if (age < 0 || age >= MAX_AGE_MS) return null;
 
-  const age = Date.now() - issuedAt;
-  return age >= 0 && age < MAX_AGE_MS;
+  return { sub, username: usr, role, issuedAt: iat };
 }
 
 export const SESSION_COOKIE = 'session';
 export const SESSION_MAX_AGE_SECONDS = MAX_AGE_MS / 1000;
+
+// The attributes every write of the session cookie uses. Login, logout and the
+// re-issue after a password change all set the cookie; sharing the options is
+// what keeps the browser replacing the cookie rather than keeping a
+// differently-scoped second one.
+export const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  // Unconditional: a misconfigured NODE_ENV must not downgrade the session
+  // cookie onto plaintext HTTP. Browsers treat localhost as a secure context,
+  // so local development still works.
+  secure: true,
+  // Blocks the cross-site form post that would otherwise reach these endpoints,
+  // since request.json() ignores Content-Type.
+  sameSite: 'lax',
+  path: '/',
+} as const;

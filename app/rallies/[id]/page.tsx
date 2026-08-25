@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ClassificationBadge from '../../components/ClassificationBadge';
 import ParticipantsPanel from '../../components/ParticipantsPanel';
+import { useAuth } from '../../components/AuthContext';
 import { crewLabel, CLASSIFICATIONS, type ClassificationValue } from '../../lib/participants';
 
 interface Rally {
@@ -47,6 +48,12 @@ type Tab = 'stages' | 'standings' | 'participants';
 
 export default function RallyDashboardPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
+  // Setting the rally up — its stages and keys, the entry list, the imports,
+  // the QR codes, the on-demand re-score — is an admin's. A data-entry official
+  // reads this page and types cards from it, so what stays visible is View,
+  // Enter Answer Sheets and the standings.
+  const { can } = useAuth();
+  const isAdmin = can('manage:rally');
   const [rallyId, setRallyId] = useState<string>('');
   const [rally, setRally] = useState<Rally | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -307,19 +314,23 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   Open EQ
                 </button>
               </form>
-              <Link
-                href={`/rallies/${rally._id}/edit`}
-                className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 font-medium border border-gray-300"
-                title="Change the name or the code of this rally"
-              >
-                Edit Rally
-              </Link>
-              <Link
-                href={`/time-import?rallyId=${rally._id}`}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm"
-              >
-                Import Times
-              </Link>
+              {isAdmin && (
+                <>
+                  <Link
+                    href={`/rallies/${rally._id}/edit`}
+                    className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 font-medium border border-gray-300"
+                    title="Change the name or the code of this rally"
+                  >
+                    Edit Rally
+                  </Link>
+                  <Link
+                    href={`/time-import?rallyId=${rally._id}`}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm"
+                  >
+                    Import Times
+                  </Link>
+                </>
+              )}
               <Link
                 href={`/rallies/${rally._id}/answer-sheets`}
                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium shadow-sm"
@@ -366,24 +377,30 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   In running order — the last one is the stage whose finish disqualifies.
                 </p>
               </div>
-              <Link
-                href={`/rallies/${rally._id}/stages/new`}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm whitespace-nowrap"
-              >
-                Add Stage
-              </Link>
+              {isAdmin && (
+                <Link
+                  href={`/rallies/${rally._id}/stages/new`}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm whitespace-nowrap"
+                >
+                  Add Stage
+                </Link>
+              )}
             </div>
             {stages.length === 0 ? (
               <div className="p-8 text-center">
                 <p className="text-lg text-gray-600 mb-4">
-                  No stages yet. Add the first stage and its answer key.
+                  {isAdmin
+                    ? 'No stages yet. Add the first stage and its answer key.'
+                    : 'No stages yet. An admin adds the stages and their answer keys.'}
                 </p>
-                <Link
-                  href={`/rallies/${rally._id}/stages/new`}
-                  className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block"
-                >
-                  Add Stage
-                </Link>
+                {isAdmin && (
+                  <Link
+                    href={`/rallies/${rally._id}/stages/new`}
+                    className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-block"
+                  >
+                    Add Stage
+                  </Link>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -421,30 +438,34 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                             >
                               View
                             </Link>
-                            <Link
-                              href={`/rallies/${rally._id}/stages/${stage._id}/edit`}
-                              className="text-indigo-600 hover:text-indigo-900 font-medium text-base"
-                            >
-                              Edit
-                            </Link>
-                            <Link
-                              href={`/rallies/${rally._id}/stages/${stage._id}/qr-codes`}
-                              className="text-green-700 hover:text-green-900 font-medium text-base"
-                            >
-                              QR Codes
-                            </Link>
-                            <Link
-                              href={`/time-import?rallyId=${rally._id}&stageId=${stage._id}`}
-                              className="text-emerald-700 hover:text-emerald-900 font-medium text-base"
-                            >
-                              Import Times
-                            </Link>
-                            <button
-                              onClick={() => handleDeleteStage(stage._id)}
-                              className="text-red-600 hover:text-red-900 font-medium text-base"
-                            >
-                              Delete
-                            </button>
+                            {isAdmin && (
+                              <>
+                                <Link
+                                  href={`/rallies/${rally._id}/stages/${stage._id}/edit`}
+                                  className="text-indigo-600 hover:text-indigo-900 font-medium text-base"
+                                >
+                                  Edit
+                                </Link>
+                                <Link
+                                  href={`/rallies/${rally._id}/stages/${stage._id}/qr-codes`}
+                                  className="text-green-700 hover:text-green-900 font-medium text-base"
+                                >
+                                  QR Codes
+                                </Link>
+                                <Link
+                                  href={`/time-import?rallyId=${rally._id}&stageId=${stage._id}`}
+                                  className="text-emerald-700 hover:text-emerald-900 font-medium text-base"
+                                >
+                                  Import Times
+                                </Link>
+                                <button
+                                  onClick={() => handleDeleteStage(stage._id)}
+                                  className="text-red-600 hover:text-red-900 font-medium text-base"
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -463,6 +484,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
             sheetEqs={standings.map((entry) => entry.eq)}
             onChanged={() => loadData(false)}
             onCountChange={setParticipantCount}
+            readOnly={!isAdmin}
           />
         )}
 
@@ -481,14 +503,16 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={handleRecalculate}
-                  disabled={rescoring}
-                  title="Re-score every sheet of this rally against the stage keys as they are now"
-                  className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-md hover:bg-amber-200 font-medium disabled:opacity-60"
-                >
-                  {rescoring ? 'Recalculating…' : 'Recalculate Scores'}
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={handleRecalculate}
+                    disabled={rescoring}
+                    title="Re-score every sheet of this rally against the stage keys as they are now"
+                    className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-md hover:bg-amber-200 font-medium disabled:opacity-60"
+                  >
+                    {rescoring ? 'Recalculating…' : 'Recalculate Scores'}
+                  </button>
+                )}
                 <input
                   type="search"
                   value={search}
@@ -640,12 +664,14 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                             >
                               Sheets
                             </Link>
-                            <button
-                              onClick={() => handleDeleteParticipant(entry.eq)}
-                              className="text-red-600 hover:text-red-900 font-medium text-base"
-                            >
-                              Delete
-                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleDeleteParticipant(entry.eq)}
+                                className="text-red-600 hover:text-red-900 font-medium text-base"
+                              >
+                                Delete
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

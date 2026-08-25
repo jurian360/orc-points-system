@@ -3,7 +3,7 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/mongodb';
 import { Participant, Rally } from '../../../../models';
-import { readBody, requireSession } from '../../../../lib/api-guard';
+import { readBody, requireSession, requireRallyAdmin } from '../../../../lib/api-guard';
 import {
   parseClassification,
   parseEq,
@@ -22,8 +22,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireSession();
+  if (!session.ok) return session.response;
 
   try {
     const { id } = await params;
@@ -52,8 +52,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireRallyAdmin();
+  if (!session.ok) return session.response;
 
   const parsed = await readBody(request);
   if (!parsed.ok) return parsed.response;

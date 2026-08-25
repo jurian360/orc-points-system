@@ -5,7 +5,7 @@ import mongoose from 'mongoose';
 
 import dbConnect from '../../../../lib/mongodb';
 import { AnswerSheet, CardAccess, Participant, Rally, Stage } from '../../../../models';
-import { readBody, requireSession } from '../../../../lib/api-guard';
+import { readBody, requireRallyAdmin } from '../../../../lib/api-guard';
 import { parseEq } from '../../../../lib/validation';
 import {
   ensureCardAccess,
@@ -106,8 +106,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  // Admin only, unlike most reads: these codes are the crews' credentials, and
+  // handing them out is what the printed QR sheet does.
+  const session = await requireRallyAdmin();
+  if (!session.ok) return session.response;
 
   try {
     const { id } = await params;
@@ -133,8 +135,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauthorized = await requireSession();
-  if (unauthorized) return unauthorized;
+  const session = await requireRallyAdmin();
+  if (!session.ok) return session.response;
 
   const parsed = await readBody(request);
   if (!parsed.ok) return parsed.response;
