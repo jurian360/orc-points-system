@@ -339,7 +339,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <form onSubmit={handleJump} className="flex items-center gap-2 mr-1">
+              {/* Quick jump — read-only, so it stands apart from the actions
+                  that change the rally. */}
+              <form onSubmit={handleJump} className="flex items-center gap-2">
                 <input
                   type="number"
                   min={1}
@@ -358,8 +360,14 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   Open EQ
                 </button>
               </form>
+
               {isAdmin && (
                 <>
+                  {/* Rally-wide setup and maintenance actions, grouped together
+                      and set off from the quick jump and the two actions an
+                      official reaches for constantly (Import Times, Enter
+                      Answer Sheets) below. */}
+                  <span className="hidden sm:block w-px h-8 bg-gray-200 mx-1" aria-hidden="true" />
                   <Link
                     href={`/rallies/${rally._id}/edit`}
                     className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 font-medium border border-gray-300"
@@ -375,13 +383,26 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   >
                     {duplicating ? 'Duplicating…' : 'Duplicate'}
                   </button>
-                  <Link
-                    href={`/time-import?rallyId=${rally._id}`}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm"
+                  <button
+                    onClick={handleRecalculate}
+                    disabled={rescoring}
+                    title="Re-score every sheet of this rally against the stage keys as they are now"
+                    className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-md hover:bg-amber-200 font-medium disabled:opacity-60"
                   >
-                    Import Times
-                  </Link>
+                    {rescoring ? 'Recalculating…' : 'Recalculate Scores'}
+                  </button>
                 </>
+              )}
+
+              <span className="hidden sm:block w-px h-8 bg-gray-200 mx-1" aria-hidden="true" />
+
+              {isAdmin && (
+                <Link
+                  href={`/time-import?rallyId=${rally._id}`}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm"
+                >
+                  Import Times
+                </Link>
               )}
               <Link
                 href={`/rallies/${rally._id}/answer-sheets`}
@@ -419,6 +440,14 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
       </div>
 
       <div className={`${PAGE_CONTAINER} py-6`}>
+        {/* Feedback from a rally-wide action (Recalculate Scores) — shown above
+            whichever tab is open, since a recalculation touches all of them. */}
+        {rescoreMessage && (
+          <p className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-md text-sm font-medium text-amber-900">
+            {rescoreMessage}
+          </p>
+        )}
+
         {/* Stages */}
         {tab === 'stages' && (
           <div className="bg-white rounded-lg shadow-lg overflow-hidden">
@@ -560,16 +589,6 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {isAdmin && (
-                  <button
-                    onClick={handleRecalculate}
-                    disabled={rescoring}
-                    title="Re-score every sheet of this rally against the stage keys as they are now"
-                    className="px-4 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-md hover:bg-amber-200 font-medium disabled:opacity-60"
-                  >
-                    {rescoring ? 'Recalculating…' : 'Recalculate Scores'}
-                  </button>
-                )}
                 <input
                   type="search"
                   value={search}
@@ -593,11 +612,6 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 </select>
               </div>
             </div>
-            {rescoreMessage && (
-              <p className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-sm font-medium text-amber-900">
-                {rescoreMessage}
-              </p>
-            )}
             {standings.length === 0 ? (
               <div className="p-8 text-center">
                 <p className="text-lg text-gray-600">
