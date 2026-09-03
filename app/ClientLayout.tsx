@@ -19,7 +19,7 @@ const Navigation: React.FC = () => {
             <div className="flex-shrink-0 flex items-center">
               <Link href="/" className="flex items-center gap-2.5 text-white text-xl font-bold">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/sark-logo.svg" alt="" className="h-9 w-9 rounded-full shadow-sm" />
+                <img src="/sark-logo.png" alt="" className="h-9 w-9 rounded-full shadow-sm" />
                 ORC Points System
               </Link>
             </div>

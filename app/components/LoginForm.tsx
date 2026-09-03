@@ -51,7 +51,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
         <div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/sark-logo.svg"
+            src="/sark-logo.png"
             alt="SARK — Surinaamse Auto Rally Klub"
             className="mx-auto h-20 w-20"
           />
