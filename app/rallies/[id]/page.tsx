@@ -114,7 +114,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
         setTotalStages(data.totalStages || 0);
       }
 
-      setTab((current) => current ?? (stagesData.length === 0 ? 'stages' : 'standings'));
+      setTab((current) => current ?? 'stages');
     } catch (err) {
       setError('Failed to load rally. Please try again later.');
       console.error(err);
