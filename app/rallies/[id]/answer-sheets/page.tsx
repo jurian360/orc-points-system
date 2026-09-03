@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import AnswerSheetForm from '../../../components/AnswerSheetForm';
-import { type ClassificationValue } from '../../../lib/participants';
+import ClassificationBadge from '../../../components/ClassificationBadge';
+import { crewLabel, type ClassificationValue } from '../../../lib/participants';
 import type { ScoreKeyRow } from '../../../lib/scoring';
 import { PAGE_CONTAINER } from '../../../lib/layout';
 
@@ -45,6 +47,7 @@ interface AnswerSheet {
 }
 
 export default function AnswerSheetsPage({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter();
   const [rallyId, setRallyId] = useState<string>('');
   const [rally, setRally] = useState<Rally | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -54,6 +57,12 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // The wizard: pick a stage (skipped when there is only one), then pick the
+  // EQ whose card is being typed, then the card itself.
+  const [stageId, setStageId] = useState<string>('');
+  const [eq, setEq] = useState<number | null>(null);
+  const [eqSearch, setEqSearch] = useState('');
 
   useEffect(() => {
     const getParams = async () => {
@@ -95,6 +104,54 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
     loadData();
   }, [loadData]);
 
+  // The stage step only exists to choose between two or more stages — with
+  // just one, there is nothing to pick.
+  useEffect(() => {
+    if (!stageId && stages.length === 1) setStageId(stages[0]._id);
+  }, [stages, stageId]);
+
+  const stage = useMemo(() => stages.find((candidate) => candidate._id === stageId) || null, [
+    stages,
+    stageId,
+  ]);
+
+  // The sheets already entered for the stage being typed, by EQ — so the
+  // participant step can send an already-entered EQ straight to editing
+  // instead of listing it as available.
+  const sheetsByEq = useMemo(() => {
+    const map = new Map<number, AnswerSheet>();
+    sheets.filter((sheet) => sheet.stageId === stageId).forEach((sheet) => map.set(sheet.eq, sheet));
+    return map;
+  }, [sheets, stageId]);
+
+  // The entry list, plus any EQ that already has a sheet for this stage but
+  // predates the entry list — that card still has to be reachable to correct
+  // it, exactly as the old single-select did.
+  const eqRows = useMemo(() => {
+    const byEq = new Map<number, Participant | undefined>();
+    participants.forEach((participant) => byEq.set(participant.eq, participant));
+    sheetsByEq.forEach((_sheet, eqNumber) => {
+      if (!byEq.has(eqNumber)) byEq.set(eqNumber, undefined);
+    });
+    return Array.from(byEq.entries())
+      .map(([eqNumber, participant]) => ({
+        eq: eqNumber,
+        participant,
+        sheet: sheetsByEq.get(eqNumber),
+      }))
+      .sort((a, b) => a.eq - b.eq);
+  }, [participants, sheetsByEq]);
+
+  const visibleEqRows = useMemo(() => {
+    const term = eqSearch.trim().toLowerCase();
+    if (!term) return eqRows;
+    return eqRows.filter(
+      (row) =>
+        String(row.eq).startsWith(term) ||
+        (row.participant ? crewLabel(row.participant).toLowerCase().includes(term) : false)
+    );
+  }, [eqRows, eqSearch]);
+
   const handleSubmit = async (answerSheet: any) => {
     setSubmitting(true);
     setError(null);
@@ -112,14 +169,33 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
         throw new Error(errorData.error || 'Failed to submit answer sheet');
       }
 
-      setSuccess('Answer sheet submitted successfully!');
-      loadData();
+      setSuccess(`Answer sheet for EQ ${answerSheet.eq} submitted successfully!`);
+      // Back to the participant step — a stage's cards are usually typed one
+      // after another, so the next crew should be one click away.
+      setEq(null);
+      setEqSearch('');
+      await loadData();
     } catch (err: any) {
       setError(err.message || 'Failed to submit answer sheet. Please try again.');
       console.error(err);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const needsStageStep = stages.length > 1;
+  const stageChosen = Boolean(stageId);
+
+  const backToStageStep = () => {
+    setStageId('');
+    setEq(null);
+    setEqSearch('');
+    setSuccess(null);
+  };
+
+  const backToEqStep = () => {
+    setEq(null);
+    setSuccess(null);
   };
 
   return (
@@ -130,7 +206,9 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
             Answer Sheets{rally ? ` — ${rally.name}` : ''}
           </h1>
           <p className="text-gray-700 text-base">
-            Type a participant&apos;s control card for one of the stages of this rally.
+            {needsStageStep
+              ? 'Pick the stage, then the EQ number, to type or correct a control card.'
+              : 'Pick the EQ number to type or correct a control card.'}
           </p>
         </div>
 
@@ -147,8 +225,22 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
         )}
 
         <div className="bg-white rounded-xl shadow-xl overflow-hidden mb-6">
-          <div className="px-6 py-3 border-b-2 border-gray-200">
-            <h2 className="text-lg font-bold text-gray-800">Enter New Answer Sheet</h2>
+          <div className="px-6 py-3 border-b-2 border-gray-200 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-bold text-gray-800">
+              {!stageChosen
+                ? '1. Select Stage'
+                : eq === null
+                  ? `${needsStageStep ? '2' : '1'}. Select Participant — ${stage?.name}`
+                  : `Controlekaart — ${stage?.name}, EQ ${eq}`}
+            </h2>
+            {stageChosen && needsStageStep && (
+              <button
+                onClick={backToStageStep}
+                className="text-sm font-medium text-blue-600 hover:underline"
+              >
+                &larr; Change stage
+              </button>
+            )}
           </div>
           <div className="p-4">
             {loading ? (
@@ -167,12 +259,113 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
                   Add Stage
                 </Link>
               </div>
+            ) : !stageChosen ? (
+              // Step 1 — only shown when there is more than one stage to pick
+              // from; a single-stage rally skips straight to the EQ step.
+              <div className="p-2">
+                <p className="text-sm text-gray-600 mb-3">
+                  This rally has {stages.length} stages — pick which controlekaart you are typing.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {stages.map((candidate, index) => {
+                    const count = sheets.filter((sheet) => sheet.stageId === candidate._id).length;
+                    return (
+                      <button
+                        key={candidate._id}
+                        type="button"
+                        onClick={() => setStageId(candidate._id)}
+                        className="flex items-center justify-between gap-3 px-4 py-3 border-2 border-gray-200 rounded-lg text-left hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                      >
+                        <span className="font-semibold text-gray-900">
+                          <span className="text-gray-400 mr-2">{index + 1}.</span>
+                          {candidate.name}
+                        </span>
+                        <span className="text-sm text-gray-500 whitespace-nowrap">
+                          {count} sheet{count === 1 ? '' : 's'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : eq === null ? (
+              // Step 2 — pick the EQ. A crew that already has a sheet for this
+              // stage opens it for editing instead of being greyed out.
+              <div className="p-2">
+                {participants.length === 0 && eqRows.length === 0 ? (
+                  <p className="text-base text-red-700 bg-red-50 border border-red-200 rounded-lg p-4">
+                    This rally has no entry list yet.{' '}
+                    <Link href={`/rallies/${rallyId}`} className="underline font-semibold">
+                      Import it
+                    </Link>{' '}
+                    before typing cards.
+                  </p>
+                ) : (
+                  <>
+                    <input
+                      type="search"
+                      value={eqSearch}
+                      onChange={(event) => setEqSearch(event.target.value)}
+                      placeholder="Search EQ or crew"
+                      aria-label="Search participants"
+                      className="w-full sm:w-72 mb-3 px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {visibleEqRows.length === 0 ? (
+                      <p className="text-base text-gray-600">No participant matches this search.</p>
+                    ) : (
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 max-h-[32rem] overflow-y-auto pr-1">
+                        {visibleEqRows.map((row) => {
+                          const taken = Boolean(row.sheet);
+                          const name = row.participant ? crewLabel(row.participant) : '';
+                          return (
+                            <button
+                              key={row.eq}
+                              type="button"
+                              onClick={() =>
+                                taken
+                                  ? router.push(`/rallies/${rallyId}/answer-sheets/${row.sheet!._id}/edit`)
+                                  : setEq(row.eq)
+                              }
+                              className={`flex items-center justify-between gap-2 px-3 py-2 border-2 rounded-lg text-left transition-colors ${
+                                taken
+                                  ? 'border-amber-200 bg-amber-50 hover:border-amber-400'
+                                  : 'border-gray-200 hover:border-green-500 hover:bg-green-50'
+                              }`}
+                            >
+                              <span className="flex items-center gap-2 min-w-0">
+                                <span className="font-bold text-gray-900">{row.eq}</span>
+                                {row.participant && (
+                                  <ClassificationBadge classification={row.participant.classification} />
+                                )}
+                                <span className="truncate text-sm text-gray-700">
+                                  {name || (row.participant ? '' : 'not on entry list')}
+                                </span>
+                              </span>
+                              <span
+                                className={`text-xs font-semibold whitespace-nowrap ${
+                                  taken ? 'text-amber-800' : 'text-green-700'
+                                }`}
+                              >
+                                {taken ? 'Edit sheet' : 'Enter sheet'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             ) : (
+              // Step 3 — the card itself, for the stage and EQ already picked.
               <AnswerSheetForm
                 onSubmit={handleSubmit}
                 stages={stages}
                 sheets={sheets}
                 participants={participants}
+                initialData={{ eq, stageId }}
+                lockSelection
+                onChangeSelection={backToEqStep}
               />
             )}
           </div>

@@ -49,7 +49,13 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/sark-logo.png"
+            alt="SARK — Surinaamse Auto Rally Klub"
+            className="mx-auto h-20 w-20"
+          />
+          <h2 className="mt-4 text-center text-3xl font-extrabold text-gray-900">
             ORC Points System
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">

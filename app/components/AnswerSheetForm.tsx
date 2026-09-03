@@ -115,6 +115,13 @@ interface AnswerSheetFormProps {
   // {stage, eq}, so moving it to another stage is a delete plus a new sheet).
   initialData?: AnswerSheetInitialData;
   isEditing?: boolean;
+  // Set when the stage and the EQ were already picked in a step before this
+  // form was shown (the answer-sheets wizard): the two selects are replaced
+  // with a plain summary of what was picked, and `onChangeSelection` is the
+  // link back to that step. Ignored while editing — a submitted sheet keeps
+  // its own selects (the stage fixed, the EQ still open to renumbering).
+  lockSelection?: boolean;
+  onChangeSelection?: () => void;
 }
 
 // Layout constants matching the SARK controlekaart
@@ -160,6 +167,8 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
   participants = [],
   initialData,
   isEditing = false,
+  lockSelection = false,
+  onChangeSelection,
 }) => {
   const [eq, setEq] = useState<number | ''>(initialData?.eq ?? '');
   const [stageId, setStageId] = useState(initialData?.stageId || '');
@@ -654,69 +663,100 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     <form ref={formRef} onSubmit={handleSubmit} className="w-full mx-auto">
       {/* Header — controlekaart style (compact, single row) */}
       <div className="flex flex-col sm:flex-row sm:items-end gap-4 mb-4">
-        {/* Only crews on the entry list can be typed a card, and only one per
-            stage — the numbers that already have a sheet are shown but cannot
-            be picked. */}
-        <div className="sm:w-72">
-          <label htmlFor="eq" className="block text-sm font-semibold mb-1 text-gray-800">
-            EQ. No. — Participant
-          </label>
-          <select
-            id="eq"
-            className="w-full p-2 border-2 border-gray-300 rounded-lg shadow-sm text-base focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700 disabled:bg-gray-100"
-            value={eq}
-            onChange={(e) => setEq(e.target.value === '' ? '' : Number(e.target.value))}
-            disabled={noEntryList && unlistedEq === null}
-            required
-          >
-            <option value="">Select a participant</option>
-            {unlistedEq !== null && (
-              <option value={unlistedEq}>{unlistedEq} &mdash; not on the entry list</option>
+        {lockSelection && !isEditing ? (
+          <>
+            {/* The stage and the EQ were already picked in the steps before
+                this card — shown here as a fixed summary rather than editable
+                selects, with a way back to that step. */}
+            <div className="sm:w-56">
+              <span className="block text-sm font-semibold mb-1 text-gray-800">Stage</span>
+              <div className="p-2 border-2 border-gray-200 rounded-lg bg-gray-50 text-base font-semibold text-gray-800 truncate">
+                {stages.find((stage) => stage._id === stageId)?.name || '—'}
+              </div>
+            </div>
+            <div className="sm:w-40">
+              <span className="block text-sm font-semibold mb-1 text-gray-800">EQ. No.</span>
+              <div className="p-2 border-2 border-gray-200 rounded-lg bg-gray-50 text-base font-semibold text-gray-800">
+                {eq}
+              </div>
+            </div>
+            {onChangeSelection && (
+              <button
+                type="button"
+                onClick={onChangeSelection}
+                className="text-sm font-medium text-blue-600 hover:underline sm:pb-2.5"
+              >
+                &larr; Change participant
+              </button>
             )}
-            {sortedParticipants.map((participant) => {
-              const taken = takenEqs.has(participant.eq);
-              const name = crewLabel(participant);
-              return (
-                <option key={participant.eq} value={participant.eq} disabled={taken}>
-                  {participant.eq}
-                  {name ? ` — ${name}` : ''}
-                  {taken ? ' (already entered)' : ''}
-                </option>
-              );
-            })}
-          </select>
-          {noEntryList && (
-            <p className="mt-1 text-sm text-red-700">
-              This rally has no entry list yet. Import it before typing cards.
-            </p>
-          )}
-          {eqTaken && (
-            <p className="mt-1 text-sm text-red-700">
-              EQ {eq} already has a sheet for this stage &mdash; open that sheet to add the
-              letters.
-            </p>
-          )}
-        </div>
-        <div className="sm:w-72">
-          <label htmlFor="stageId" className="block text-sm font-semibold mb-1 text-gray-800">
-            Select Stage (Controlekaart)
-          </label>
-          <select
-            id="stageId"
-            className="w-full p-2 border-2 border-gray-300 rounded-lg shadow-sm text-base focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700 disabled:bg-gray-100"
-            value={stageId}
-            onChange={(e) => setStageId(e.target.value)}
-            disabled={isEditing}
-            required
-          >
-            <option value="">Select a stage</option>
-            {stages.map((stage) => (
-              <option key={stage._id} value={stage._id}>
-                {stage.name}
-              </option>
-            ))}
-          </select>
-        </div>
+          </>
+        ) : (
+          <>
+            {/* Only crews on the entry list can be typed a card, and only one
+                per stage — the numbers that already have a sheet are shown but
+                cannot be picked. */}
+            <div className="sm:w-72">
+              <label htmlFor="eq" className="block text-sm font-semibold mb-1 text-gray-800">
+                EQ. No. — Participant
+              </label>
+              <select
+                id="eq"
+                className="w-full p-2 border-2 border-gray-300 rounded-lg shadow-sm text-base focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700 disabled:bg-gray-100"
+                value={eq}
+                onChange={(e) => setEq(e.target.value === '' ? '' : Number(e.target.value))}
+                disabled={noEntryList && unlistedEq === null}
+                required
+              >
+                <option value="">Select a participant</option>
+                {unlistedEq !== null && (
+                  <option value={unlistedEq}>{unlistedEq} &mdash; not on the entry list</option>
+                )}
+                {sortedParticipants.map((participant) => {
+                  const taken = takenEqs.has(participant.eq);
+                  const name = crewLabel(participant);
+                  return (
+                    <option key={participant.eq} value={participant.eq} disabled={taken}>
+                      {participant.eq}
+                      {name ? ` — ${name}` : ''}
+                      {taken ? ' (already entered)' : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              {noEntryList && (
+                <p className="mt-1 text-sm text-red-700">
+                  This rally has no entry list yet. Import it before typing cards.
+                </p>
+              )}
+              {eqTaken && (
+                <p className="mt-1 text-sm text-red-700">
+                  EQ {eq} already has a sheet for this stage &mdash; open that sheet to add the
+                  letters.
+                </p>
+              )}
+            </div>
+            <div className="sm:w-72">
+              <label htmlFor="stageId" className="block text-sm font-semibold mb-1 text-gray-800">
+                Select Stage (Controlekaart)
+              </label>
+              <select
+                id="stageId"
+                className="w-full p-2 border-2 border-gray-300 rounded-lg shadow-sm text-base focus:border-blue-500 focus:ring focus:ring-blue-200 text-gray-700 disabled:bg-gray-100"
+                value={stageId}
+                onChange={(e) => setStageId(e.target.value)}
+                disabled={isEditing}
+                required
+              >
+                <option value="">Select a stage</option>
+                {stages.map((stage) => (
+                  <option key={stage._id} value={stage._id}>
+                    {stage.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
         {/* Who this EQ number is, so a mistyped number is caught before the
             whole card has been entered. */}
         <div className="sm:pb-2">
