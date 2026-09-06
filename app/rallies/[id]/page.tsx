@@ -610,6 +610,17 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                     </option>
                   ))}
                 </select>
+                {/* The results on paper: one A4 per class, ranked within that
+                    class. The class filter travels with it, so printing from a
+                    filtered standing prints the class on screen. */}
+                <Link
+                  href={`/rallies/${rally._id}/standings/print${
+                    classFilter ? `?class=${classFilter}` : ''
+                  }`}
+                  className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 font-medium text-base transition-colors"
+                >
+                  Print
+                </Link>
               </div>
             </div>
             {standings.length === 0 ? (
