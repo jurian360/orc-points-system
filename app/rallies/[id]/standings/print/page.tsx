@@ -5,24 +5,32 @@ import Link from 'next/link';
 
 import { CLASSIFICATIONS, type ClassificationValue } from '../../../../lib/participants';
 
-// The standings on paper, one sheet per classification.
+// The standings on paper.
 //
 // The dashboard's standings tab is one long table of the whole field, which is
-// what an official reads on a screen. What goes on the wall at the finish is
-// something else: a class rides against its own class, so every class gets its
-// own A4 with its own 1, 2, 3 — the rank here is the crew's place *within their
-// class*, not their place in the field.
+// what an official reads on a screen. What goes on the wall at the finish is a
+// result sheet, and there are two of those:
+//
+//   * **Per klasse** — one A4 per classification, each with its own 1, 2, 3,
+//     because a class rides against its own class.
+//   * **Algemeen klassement** — every class together in one ranking, the whole
+//     field on one sheet. It is the same order the dashboard shows, so the rank
+//     here is the API's own: a crew's place in the rally.
 //
 // The columns are the ones a result sheet needs and no more: the place, the EQ,
 // the crew (navigator and driver in their own columns, so the names line up
 // down the page instead of running into one string) and the four numbers —
-// ORC's, Tijd, Diversen and the total that decides it. Nothing here is scored:
-// it is `GET /api/rallies/[id]/standings` read onto paper, so a printed sheet
-// and the screen cannot disagree.
+// ORC's, Tijd, Diversen and the total that decides it. The combined sheet adds
+// the class letter, because that is the one sheet where a reader cannot tell
+// which class a crew rode in from the heading.
 //
-// A crew whose class was never recorded is not dropped — they get a sheet of
-// their own at the back, because a missing class is a gap in the entry list, not
-// a reason to leave a scored crew off the results.
+// Nothing here is scored: it is `GET /api/rallies/[id]/standings` read onto
+// paper, so a printed sheet and the screen cannot disagree.
+//
+// A crew whose class was never recorded is not dropped — they are on the
+// combined sheet like everybody else, and get a sheet of their own at the back
+// of the per-class print, because a missing class is a gap in the entry list,
+// not a reason to leave a scored crew off the results.
 //
 // This is the one full-page view that does not use `PAGE_CONTAINER`, for the
 // same reason a form does not: its width is not the window but the paper. The
@@ -49,16 +57,35 @@ interface StandingsEntry {
   rank: number;
 }
 
-// The sheets, in order: the five classes as they are written on the entry list,
-// then the crews without one.
+// A crew on a sheet: a standings entry plus the place it takes *on that sheet*
+// — the rally rank on the combined sheet, the place within the class on a class
+// sheet.
+type SheetEntry = StandingsEntry & { placing: number };
+
+interface Sheet {
+  key: string;
+  title: string;
+  // The combined sheet mixes the classes, so it names the class of every crew;
+  // a class sheet has it in the heading already.
+  showClass: boolean;
+  entries: SheetEntry[];
+}
+
+// What the print covers. `combined` is the whole field on one sheet, `classes`
+// is a sheet per class, and a bare class letter (or `''`, the crews without one)
+// is that single class.
+type PrintMode = 'combined' | 'classes' | ClassificationValue;
+
+// The class sheets, in order: the five classes as they are written on the entry
+// list, then the crews without one.
 const SECTION_CLASSES: ClassificationValue[] = [...CLASSIFICATIONS, ''];
 
 const classLabel = (value: ClassificationValue) =>
   value ? `Klasse ${value}` : 'Zonder klasse';
 
 // Print rules that Tailwind has no utility for: the paper size itself, the page
-// break between two classes and the header row that repeats when a class runs
-// over one sheet. Kept on this page rather than in globals.css — the QR sheet
+// break between two sheets and the header row that repeats when a sheet runs
+// over one page. Kept on this page rather than in globals.css — the QR sheet
 // prints its cards on the browser's own default page and should stay that way.
 const PRINT_STYLES = `
   @media print {
@@ -67,7 +94,7 @@ const PRINT_STYLES = `
       margin: 14mm 12mm;
     }
 
-    /* Each class starts on a fresh sheet; the last one does not add a blank. */
+    /* Each sheet starts on a fresh page; the last one does not add a blank. */
     .standings-sheet {
       break-after: page;
       page-break-after: always;
@@ -78,7 +105,7 @@ const PRINT_STYLES = `
       page-break-after: auto;
     }
 
-    /* A class longer than one sheet keeps its column headings on every page. */
+    /* A sheet longer than one page keeps its column headings on every page. */
     .standings-sheet thead {
       display: table-header-group;
     }
@@ -100,10 +127,10 @@ export default function StandingsPrintPage({
   const [standings, setStandings] = useState<StandingsEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Which classes to print: every one that has crews, or a single sheet. The
-  // dashboard passes its own filter along in `?class=`, so Print from a filtered
-  // standing prints what is on screen.
-  const [selected, setSelected] = useState<ClassificationValue | 'all'>('all');
+  // What to print. The dashboard passes its own filter along — `?class=` for a
+  // single class, `?view=combined` for the whole field — so Print from the
+  // standings prints what is on screen.
+  const [mode, setMode] = useState<PrintMode>('classes');
 
   useEffect(() => {
     const resolve = async () => {
@@ -113,13 +140,20 @@ export default function StandingsPrintPage({
     resolve();
   }, [params]);
 
-  // Read the class the dashboard was filtered on. It is only a preselection —
-  // the select below is what decides what is printed.
+  // Read what the dashboard was showing. It is only a preselection — the select
+  // below is what decides what is printed.
   useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get('class');
+    const query = new URLSearchParams(window.location.search);
+
+    if (query.get('view') === 'combined') {
+      setMode('combined');
+      return;
+    }
+
+    const requested = query.get('class');
     if (requested === null) return;
     if (requested === '' || (CLASSIFICATIONS as readonly string[]).includes(requested)) {
-      setSelected(requested as ClassificationValue);
+      setMode(requested as ClassificationValue);
     }
   }, []);
 
@@ -151,28 +185,42 @@ export default function StandingsPrintPage({
     load();
   }, [load]);
 
-  // One section per class that has crews. The standings arrive ranked over the
-  // whole field — disqualified last, then on total, then on EQ — and filtering
-  // keeps that order, so the place within a class is simply the position in what
-  // is left.
-  const sections = useMemo(
+  // The whole field on one sheet, in the order the API ranked it: disqualified
+  // last, then on total, then on EQ. The place is that rank — this sheet is the
+  // rally's own result, so it does not re-number anything.
+  const combinedSheet = useMemo<Sheet | null>(
     () =>
-      SECTION_CLASSES.map((classification) => ({
-        classification,
-        entries: standings
-          .filter((entry) => (entry.classification || '') === classification)
-          .map((entry, index) => ({ ...entry, classRank: index + 1 })),
-      })).filter((section) => section.entries.length > 0),
+      standings.length === 0
+        ? null
+        : {
+            key: 'combined',
+            title: 'Algemeen klassement',
+            showClass: true,
+            entries: standings.map((entry) => ({ ...entry, placing: entry.rank })),
+          },
     [standings]
   );
 
-  const printedSections = useMemo(
+  // One sheet per class that has crews. Filtering keeps the API's order, so the
+  // place within a class is simply the position in what is left.
+  const classSheets = useMemo<Sheet[]>(
     () =>
-      selected === 'all'
-        ? sections
-        : sections.filter((section) => section.classification === selected),
-    [sections, selected]
+      SECTION_CLASSES.map((classification) => ({
+        key: classification || 'none',
+        title: classLabel(classification),
+        showClass: false,
+        entries: standings
+          .filter((entry) => (entry.classification || '') === classification)
+          .map((entry, index) => ({ ...entry, placing: index + 1 })),
+      })).filter((sheet) => sheet.entries.length > 0),
+    [standings]
   );
+
+  const printedSheets = useMemo<Sheet[]>(() => {
+    if (mode === 'combined') return combinedSheet ? [combinedSheet] : [];
+    if (mode === 'classes') return classSheets;
+    return classSheets.filter((sheet) => sheet.key === (mode || 'none'));
+  }, [mode, combinedSheet, classSheets]);
 
   const printedOn = useMemo(
     () =>
@@ -221,26 +269,30 @@ export default function StandingsPrintPage({
             Print Standings — {rally.name}
           </h1>
           <p className="text-gray-700 text-base">
-            One A4 sheet per classification, each ranked within its own class. The numbers are the
-            standings as they are on screen — printing scores nothing of its own.
+            The results on A4: every class together in one ranking, or a sheet per classification
+            with its own 1, 2, 3. The numbers are the standings as they are on screen — printing
+            scores nothing of its own.
           </p>
         </div>
 
         <div className="bg-white rounded-xl shadow-xl border-2 border-gray-200 mb-6 px-6 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="flex items-center gap-2">
-            <label htmlFor="print-class" className="text-base font-medium text-gray-700">
+            <label htmlFor="print-mode" className="text-base font-medium text-gray-700">
               Print:
             </label>
             <select
-              id="print-class"
-              value={selected}
-              onChange={(event) => setSelected(event.target.value as ClassificationValue | 'all')}
+              id="print-mode"
+              value={mode}
+              onChange={(event) => setMode(event.target.value as PrintMode)}
               className="px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="all">All classes — one sheet each</option>
-              {sections.map((section) => (
-                <option key={section.classification || 'none'} value={section.classification}>
-                  {classLabel(section.classification)} ({section.entries.length})
+              <option value="combined">
+                Algemeen klassement — all classes on one sheet ({standings.length})
+              </option>
+              <option value="classes">Per class — one sheet each</option>
+              {classSheets.map((sheet) => (
+                <option key={sheet.key} value={sheet.key === 'none' ? '' : sheet.key}>
+                  {sheet.title} ({sheet.entries.length})
                 </option>
               ))}
             </select>
@@ -248,12 +300,12 @@ export default function StandingsPrintPage({
 
           <div className="flex items-center gap-3">
             <span className="text-base text-gray-700">
-              {printedSections.length} sheet{printedSections.length === 1 ? '' : 's'} ·{' '}
-              {printedSections.reduce((total, section) => total + section.entries.length, 0)} crews
+              {printedSheets.length} sheet{printedSheets.length === 1 ? '' : 's'} ·{' '}
+              {printedSheets.reduce((total, sheet) => total + sheet.entries.length, 0)} crews
             </span>
             <button
               onClick={() => window.print()}
-              disabled={printedSections.length === 0}
+              disabled={printedSheets.length === 0}
               className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium text-base transition-colors disabled:opacity-50"
             >
               Print
@@ -263,7 +315,7 @@ export default function StandingsPrintPage({
 
         {error && <p className="text-red-600 font-medium text-base mb-4">{error}</p>}
 
-        {printedSections.length === 0 && (
+        {printedSheets.length === 0 && (
           <div className="bg-white rounded-xl shadow border-2 border-gray-200 p-8 text-center">
             <p className="text-lg text-gray-600">
               Nothing to print yet. A crew appears on the standings once they have an answer sheet.
@@ -274,24 +326,24 @@ export default function StandingsPrintPage({
 
       {/* The sheets themselves: an A4 page on screen, an A4 page on paper */}
       <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 print:max-w-none print:px-0">
-        {printedSections.map((section) => (
+        {printedSheets.map((sheet) => (
           <section
-            key={section.classification || 'none'}
+            key={sheet.key}
             className="standings-sheet bg-white rounded-lg shadow-lg border border-gray-200 p-8 mb-6 print:shadow-none print:rounded-none print:border-0 print:p-0 print:mb-0"
           >
             <header className="flex justify-between items-end border-b-2 border-gray-800 pb-2 mb-3">
               <div>
                 <h2 className="text-xl font-bold text-black">
                   {rally.name}
-                  {rally.code ? <span className="ml-2 text-base font-normal">({rally.code})</span> : null}
+                  {rally.code ? (
+                    <span className="ml-2 text-base font-normal">({rally.code})</span>
+                  ) : null}
                 </h2>
-                <p className="text-lg font-semibold text-black">
-                  Uitslag — {classLabel(section.classification)}
-                </p>
+                <p className="text-lg font-semibold text-black">Uitslag — {sheet.title}</p>
               </div>
               <div className="text-right text-xs text-gray-600">
                 <p>
-                  {section.entries.length} equipe{section.entries.length === 1 ? '' : 's'}
+                  {sheet.entries.length} equipe{sheet.entries.length === 1 ? '' : 's'}
                 </p>
                 <p>{printedOn}</p>
               </div>
@@ -305,6 +357,7 @@ export default function StandingsPrintPage({
               <colgroup>
                 <col className="w-14" />
                 <col className="w-10" />
+                {sheet.showClass && <col className="w-10" />}
                 <col />
                 <col />
                 <col className="w-14" />
@@ -320,6 +373,11 @@ export default function StandingsPrintPage({
                   <th className="py-1 px-1 text-left text-xs font-bold uppercase tracking-wide">
                     EQ
                   </th>
+                  {sheet.showClass && (
+                    <th className="py-1 px-1 text-left text-xs font-bold uppercase tracking-wide">
+                      Kl.
+                    </th>
+                  )}
                   <th className="py-1 px-1 text-left text-xs font-bold uppercase tracking-wide">
                     Navigator
                   </th>
@@ -344,10 +402,10 @@ export default function StandingsPrintPage({
                 </tr>
               </thead>
               <tbody>
-                {section.entries.map((entry) => (
+                {sheet.entries.map((entry) => (
                   <tr key={entry.eq} className="border-b border-gray-300">
                     <td className="py-1 pr-1 text-sm font-bold">
-                      {entry.classRank}
+                      {entry.placing}
                       {entry.disqualified && (
                         <span className="ml-1 text-xs font-bold" title="Disqualified">
                           DQ
@@ -355,12 +413,13 @@ export default function StandingsPrintPage({
                       )}
                     </td>
                     <td className="py-1 px-1 text-sm font-bold">{entry.eq}</td>
+                    {sheet.showClass && (
+                      <td className="py-1 px-1 text-sm">{entry.classification || '—'}</td>
+                    )}
                     <td className="py-1 px-1 text-sm break-words">
                       {entry.navigatorName || '—'}
                     </td>
-                    <td className="py-1 px-1 text-sm break-words">
-                      {entry.driverName || '—'}
-                    </td>
+                    <td className="py-1 px-1 text-sm break-words">{entry.driverName || '—'}</td>
                     <td className="py-1 px-1 text-sm text-right tabular-nums">
                       {entry.orcPenalty}
                     </td>

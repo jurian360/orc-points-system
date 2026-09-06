@@ -610,12 +610,13 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                     </option>
                   ))}
                 </select>
-                {/* The results on paper: one A4 per class, ranked within that
-                    class. The class filter travels with it, so printing from a
-                    filtered standing prints the class on screen. */}
+                {/* The results on A4. The button prints what is on screen:
+                    the whole field as one algemeen klassement, or the class the
+                    standings are filtered on. The print page itself also offers
+                    a sheet per class, each ranked within its own class. */}
                 <Link
-                  href={`/rallies/${rally._id}/standings/print${
-                    classFilter ? `?class=${classFilter}` : ''
+                  href={`/rallies/${rally._id}/standings/print?${
+                    classFilter ? `class=${classFilter}` : 'view=combined'
                   }`}
                   className="px-4 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 font-medium text-base transition-colors"
                 >

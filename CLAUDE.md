@@ -404,31 +404,40 @@ came in outside their window — instead of opening 56 cards.
 ## Printing the standings
 
 The standings tab is the whole field in one table, which is what an official
-reads on a screen. What goes on the wall at the finish is a **result sheet per
-class**: `/rallies/[id]/standings/print` (the *Print* button next to the
-standings filters) lays the same numbers out as one A4 per classification.
+reads on a screen. What goes on the wall at the finish is a **result sheet**:
+`/rallies/[id]/standings/print` (the *Print* button next to the standings
+filters) lays the same numbers out on A4, in one of two shapes.
 
-- **A class rides against its own class**, so the rank on a sheet is the crew's
-  place *within* their class — the page filters the ranked standings and
-  re-numbers what is left. The order itself is the API's (disqualified last,
-  then on total, then on EQ), so a sheet and the screen cannot disagree.
+- **Algemeen klassement** — every class together in one ranking, the whole field
+  on one sheet. The place is the API's own rank, so this sheet *is* the standings
+  tab on paper. It is the one sheet that carries a **Kl.** column: a reader
+  cannot tell a crew's class from the heading when the classes are mixed.
+- **Per class** — one A4 per classification, each with its own 1, 2, 3, because
+  a class rides against its own class. The page filters the ranked standings and
+  re-numbers what is left; the order itself is still the API's (disqualified
+  last, then on total, then on EQ), so no sheet can disagree with the screen.
+  A single class can be printed on its own.
 - **It scores nothing.** It is `GET /api/rallies/[id]/standings` read onto paper,
   like `RallyTimesPanel` is for the times, and its guard is that route's
   `requireSession()`: reading the standings is a data-entry official's too, so
   the page is not in `RESTRICTED_PAGES`.
-- The columns are the result-sheet ones: Stand, EQ, Navigator, Bestuurder and the
-  four numbers (ORC's, Tijd, Div., Totaal). Navigator and driver get a column
-  each here rather than the dashboard's `crewLabel` string, so the names line up
-  down the page.
-- **A crew without a class still gets printed**, on a *Zonder klasse* sheet at
-  the back: a missing class is a gap in the entry list, not a reason to leave a
+- The columns are the result-sheet ones: Stand, EQ, (Kl.,) Navigator, Bestuurder
+  and the four numbers (ORC's, Tijd, Div., Totaal). Navigator and driver get a
+  column each here rather than the dashboard's `crewLabel` string, so the names
+  line up down the page.
+- **A crew without a class still gets printed**: on the combined sheet like
+  everybody else, and on a *Zonder klasse* sheet at the back of the per-class
+  print. A missing class is a gap in the entry list, not a reason to leave a
   scored crew off the results.
-- The page size, the break between two classes and the header row that repeats
-  when a class runs over one sheet are the `@page` / `break-after` rules
+- **The dashboard's Print button prints what is on screen**: `?view=combined`
+  from the unfiltered standings, `?class=<letter>` from a filtered one. Both are
+  only a preselection — the select on the print page is what decides.
+- The page size, the break between two sheets and the header row that repeats
+  when a sheet runs over one page are the `@page` / `break-after` rules
   Tailwind has no utility for. They live in a `<style>` on that page only — the
-  QR sheet prints on the browser's own default page and stays that way. The
-  dashboard's class filter travels along in `?class=`, and it is the one
-  full-page view that does not use `PAGE_CONTAINER`: its width is the paper.
+  QR sheet prints on the browser's own default page and stays that way. It is
+  the one full-page view that does not use `PAGE_CONTAINER`: its width is the
+  paper.
 
 ## Duplicating a rally
 
