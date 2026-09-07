@@ -406,23 +406,34 @@ came in outside their window — instead of opening 56 cards.
 The standings tab is the whole field in one table, which is what an official
 reads on a screen. What goes on the wall at the finish is a **result sheet**:
 `/rallies/[id]/standings/print` (the *Print* button next to the standings
-filters) lays the same numbers out on A4, in one of two shapes.
+filters) lays the same numbers out on A4, in one of three shapes.
 
 - **Algemeen klassement** — every class together in one ranking, the whole field
   on one sheet. The place is the API's own rank, so this sheet *is* the standings
-  tab on paper. It is the one sheet that carries a **Kl.** column: a reader
-  cannot tell a crew's class from the heading when the classes are mixed.
+  tab on paper. Like the wedstrijdklasse it carries a **Kl.** column, because a
+  reader cannot tell a crew's class from the heading when the classes are mixed.
 - **Per class** — one A4 per classification, each with its own 1, 2, 3, because
   a class rides against its own class. The page filters the ranked standings and
   re-numbers what is left; the order itself is still the API's (disqualified
   last, then on total, then on EQ), so no sheet can disagree with the screen.
   A single class can be printed on its own.
+- **Wedstrijdklasse** — the classes that ride one competition, `A` and `H`, on
+  one sheet with its own 1, 2, 3. It is not a class a crew is entered in:
+  `WEDSTRIJDKLASSE_CLASSES` in `app/lib/participants.ts` says which classes it
+  reads together, `CLASSIFICATIONS` deliberately does not hold it, and nothing
+  outside the printed results knows about it. A crew of those classes is printed
+  twice — on their own class sheet and on this one — because they are placed in
+  both, and it carries a **Kl.** column for the same reason the combined sheet
+  does. *Per class* prints it first, ahead of the class sheets it combines; it
+  can also be printed on its own (`?view=wedstrijd`), and no crews in either
+  class means no sheet.
 - **It scores nothing.** It is `GET /api/rallies/[id]/standings` read onto paper,
   like `RallyTimesPanel` is for the times, and its guard is that route's
   `requireSession()`: reading the standings is a data-entry official's too, so
   the page is not in `RESTRICTED_PAGES`.
 - The columns are the result-sheet ones: Stand, EQ, (Kl.,) Navigator, Bestuurder
-  and the four numbers (ORC's, Tijd, Div., Totaal). Navigator and driver get a
+  and the four numbers (ORC's, Tijd, Div., Totaal). The Kl. column is on the
+  combined and the wedstrijdklasse sheet only. Navigator and driver get a
   column each here rather than the dashboard's `crewLabel` string, so the names
   line up down the page.
 - **A crew without a class still gets printed**: on the combined sheet like
@@ -430,8 +441,10 @@ filters) lays the same numbers out on A4, in one of two shapes.
   print. A missing class is a gap in the entry list, not a reason to leave a
   scored crew off the results.
 - **The dashboard's Print button prints what is on screen**: `?view=combined`
-  from the unfiltered standings, `?class=<letter>` from a filtered one. Both are
-  only a preselection — the select on the print page is what decides.
+  from the unfiltered standings, `?class=<letter>` from a filtered one — the
+  standings tab filters on a single class, so it never sends `?view=wedstrijd`.
+  All of them are only a preselection — the select on the print page is what
+  decides.
 - The page size, the break between two sheets and the header row that repeats
   when a sheet runs over one page are the `@page` / `break-after` rules
   Tailwind has no utility for. They live in a `<style>` on that page only — the
@@ -588,7 +601,9 @@ app/
                   layout (PAGE_CONTAINER, the one page width of the app),
                   api-guard, roles (the two roles and their permissions, shared
                   client + server), passwords (scrypt), users (accounts + the
-                  recovery admin), participants (class letters, shared client + server),
+                  recovery admin), participants (class letters and the
+                  wedstrijdklasse the results group A and H into, shared
+                  client + server),
                   spreadsheet + columnMapping + participantImport + timeImport
                   (entry-list and time imports, browser side),
                   rallyCodes (a rally's public code and the name and code a
