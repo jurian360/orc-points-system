@@ -11,7 +11,10 @@ import mongoose from 'mongoose';
 // Ranked ascending — the lowest total penalty is the winner.
 //
 // Each entry splits its total into the ORC's (letters), the Tijd (time) and the
-// Diversen (merk) part, so the standings show where a crew lost their points.
+// Diversen (merk) part, so the standings show where a crew lost their points —
+// and carries the same three parts per stage (`stagePenalties`), against the
+// `stages` running order this route also returns, so a result sheet can show
+// what each leg of the rally cost a crew.
 //
 // Each entry also carries the participant's class and crew names when they have
 // been recorded, so the table can show who an EQ is. Only participants with
@@ -38,7 +41,13 @@ export async function GET(
       return NextResponse.json({ error: 'Rally not found' }, { status: 404 });
     }
 
-    const totalStages = await Stage.countDocuments({ rallyId: id });
+    // The stages in running order — their creation order, the same sort the
+    // re-scoring uses — so the per-stage parts below come back in the order the
+    // rally is ridden and a result sheet can head a column with its stage.
+    const stages = await Stage.find({ rallyId: id })
+      .select('name')
+      .sort({ createdAt: 1, _id: 1 });
+    const totalStages = stages.length;
     const sheets = await AnswerSheet.find({ rallyId: id });
     const participants = await Participant.find({ rallyId: id });
 
@@ -53,6 +62,20 @@ export async function GET(
     // part is what is left of the stored total after the stored time and merk
     // parts — they are written together by app/lib/rescore.ts, so no sheet has
     // to be re-scored here.
+    //
+    // The same three parts are kept per stage as well (`stagePenalties`, keyed
+    // by stage id): one sheet is one stage, so a crew's rally total is these
+    // added up. It lets a result sheet show what a stage cost a crew instead of
+    // only what the rally did. A stage a crew has no sheet for gets no entry,
+    // which is not the same as a stage that cost them nothing.
+    type StageScore = {
+      totalPenalty: number;
+      orcPenalty: number;
+      timePenalty: number;
+      merkPenalty: number;
+      disqualified: boolean;
+    };
+
     const byParticipant = new Map<
       number,
       {
@@ -61,6 +84,7 @@ export async function GET(
         orcPenalty: number;
         timePenalty: number;
         merkPenalty: number;
+        stagePenalties: Record<string, StageScore>;
         sheetsSubmitted: number;
         disqualified: boolean;
       }
@@ -73,16 +97,27 @@ export async function GET(
         orcPenalty: 0,
         timePenalty: 0,
         merkPenalty: 0,
+        stagePenalties: {} as Record<string, StageScore>,
         sheetsSubmitted: 0,
         disqualified: false,
       };
       const totalPenalty = sheet.totalPenalty || 0;
       const timePenalty = sheet.timePenalty || 0;
       const merkPenalty = sheet.merkPenalty || 0;
+      const orcPenalty = totalPenalty - timePenalty - merkPenalty;
       existing.totalPenalty += totalPenalty;
-      existing.orcPenalty += totalPenalty - timePenalty - merkPenalty;
+      existing.orcPenalty += orcPenalty;
       existing.timePenalty += timePenalty;
       existing.merkPenalty += merkPenalty;
+      // One sheet per participant per stage (the unique index says so), so this
+      // never overwrites a stage a crew already has a score for.
+      existing.stagePenalties[String(sheet.stageId)] = {
+        totalPenalty,
+        orcPenalty,
+        timePenalty,
+        merkPenalty,
+        disqualified: Boolean(sheet.disqualified),
+      };
       existing.sheetsSubmitted += 1;
       existing.disqualified = existing.disqualified || Boolean(sheet.disqualified);
       byParticipant.set(sheet.eq, existing);
@@ -108,7 +143,11 @@ export async function GET(
         };
       });
 
-    return NextResponse.json({ totalStages, standings });
+    return NextResponse.json({
+      totalStages,
+      stages: stages.map((stage) => ({ _id: String(stage._id), name: stage.name })),
+      standings,
+    });
   } catch (error) {
     console.error('Failed to compute standings:', error);
     return NextResponse.json({ error: 'Failed to compute standings' }, { status: 500 });

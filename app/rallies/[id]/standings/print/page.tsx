@@ -34,6 +34,14 @@ import {
 // and the wedstrijdklasse add the class letter, because those are the sheets
 // where a reader cannot tell which class a crew rode in from the heading.
 //
+// A rally of **more than one stage** puts those same four numbers per stage in
+// front of the rally total, in running order and headed with the stage's name,
+// so a crew can read where in the rally they lost their points and not only how
+// many. One stage means the per-stage numbers *are* the rally total, so the
+// sheet keeps the plain four columns rather than printing everything twice. The
+// numbers per stage come from the standings route with the totals; a stage a
+// crew has no sheet for reads as a dash, which is not the same as a zero.
+//
 // Nothing here is scored: it is `GET /api/rallies/[id]/standings` read onto
 // paper, so a printed sheet and the screen cannot disagree.
 //
@@ -56,6 +64,23 @@ interface Rally {
   code?: string;
 }
 
+// One stage of the rally, in running order: the heading of a per-stage group of
+// columns.
+interface StandingsStage {
+  _id: string;
+  name: string;
+}
+
+// What a crew scored on one stage — the three parts of that one sheet and its
+// own total.
+interface StageScore {
+  totalPenalty: number;
+  orcPenalty: number;
+  timePenalty: number;
+  merkPenalty: number;
+  disqualified: boolean;
+}
+
 interface StandingsEntry {
   eq: number;
   classification: ClassificationValue;
@@ -65,6 +90,9 @@ interface StandingsEntry {
   orcPenalty: number;
   timePenalty: number;
   merkPenalty: number;
+  // The same three parts per stage, keyed by stage id. A stage the crew has no
+  // sheet for is simply absent.
+  stagePenalties?: Record<string, StageScore>;
   sheetsSubmitted: number;
   disqualified: boolean;
   rank: number;
@@ -100,6 +128,18 @@ const SECTION_CLASSES: ClassificationValue[] = [...CLASSIFICATIONS, ''];
 
 const classLabel = (value: ClassificationValue) =>
   value ? `Klasse ${value}` : 'Zonder klasse';
+
+// Four columns per stage plus four for the rally total is a lot of numbers on
+// one line, and the sheet has one A4 landscape page to put them on. A rally
+// with more stages therefore gets narrower, smaller per-stage columns rather
+// than a stage left off the sheet — the crew names keep whatever is left, and a
+// name that still does not fit wraps as it always did.
+const stageSizing = (stageCount: number) => {
+  if (stageCount >= 7) return { col: 'w-6', body: 'text-[8px]', head: 'text-[7px]' };
+  if (stageCount >= 5) return { col: 'w-7', body: 'text-[9px]', head: 'text-[8px]' };
+  if (stageCount >= 3) return { col: 'w-8', body: 'text-[10px]', head: 'text-[9px]' };
+  return { col: 'w-10', body: 'text-[10px]', head: 'text-[10px]' };
+};
 
 // Print rules that Tailwind has no utility for: the paper size itself, the page
 // break between two sheets and the header row that repeats when a sheet runs
@@ -146,6 +186,7 @@ export default function StandingsPrintPage({
   const [rallyId, setRallyId] = useState('');
   const [rally, setRally] = useState<Rally | null>(null);
   const [standings, setStandings] = useState<StandingsEntry[]>([]);
+  const [stages, setStages] = useState<StandingsStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // What to print. The dashboard passes its own filter along — `?class=` for a
@@ -194,6 +235,7 @@ export default function StandingsPrintPage({
       if (!standingsRes.ok) throw new Error('Failed to fetch standings');
       const data = await standingsRes.json();
       setStandings(data.standings || []);
+      setStages(data.stages || []);
       setError(null);
     } catch (err) {
       console.error(err);
@@ -266,6 +308,12 @@ export default function StandingsPrintPage({
     return classSheets.filter((sheet) => sheet.key === (mode || 'none'));
   }, [mode, combinedSheet, wedstrijdSheet, classSheets]);
 
+  // A rally of one stage scores the same numbers twice — the stage total *is*
+  // the rally total — so the per-stage columns only appear once there is more
+  // than one stage to tell apart.
+  const showStages = stages.length > 1;
+  const sizing = useMemo(() => stageSizing(stages.length), [stages.length]);
+
   const printedOn = useMemo(
     () =>
       new Date().toLocaleString('en-GB', {
@@ -318,6 +366,12 @@ export default function StandingsPrintPage({
             ranked as one competition. The numbers are the standings as they are on screen —
             printing scores nothing of its own.
           </p>
+          {showStages && (
+            <p className="text-gray-700 text-base mt-2">
+              {stages.length} stages, so every sheet shows the ORC&apos;s, Tijd, Diversen and the
+              subtotal per stage in running order, with the rally total behind them.
+            </p>
+          )}
         </div>
 
         <div className="bg-white rounded-xl shadow-xl border-2 border-gray-200 mb-6 px-6 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
@@ -379,123 +433,253 @@ export default function StandingsPrintPage({
 
       {/* The sheets themselves: an A4 page on screen, an A4 page on paper */}
       <div className="mx-auto w-full max-w-[1120px] px-4 sm:px-6 print:max-w-none print:px-0">
-        {printedSheets.map((sheet) => (
-          <section
-            key={sheet.key}
-            className="standings-sheet bg-white rounded-lg shadow-lg border border-gray-200 p-8 mb-6 print:shadow-none print:rounded-none print:border-0 print:p-0 print:mb-0"
-          >
-            <header className="flex justify-between items-end border-b-2 border-gray-800 pb-2 mb-3">
-              <div>
-                <h2 className="text-xl font-bold text-black">
-                  {rally.name}
-                  {rally.code ? (
-                    <span className="ml-2 text-base font-normal">({rally.code})</span>
-                  ) : null}
-                </h2>
-                <p className="text-lg font-semibold text-black">Uitslag — {sheet.title}</p>
-              </div>
-              <div className="text-right text-xs text-gray-600">
-                <p>
-                  {sheet.entries.length} equipe{sheet.entries.length === 1 ? '' : 's'}
-                </p>
-                <p>{printedOn}</p>
-              </div>
-            </header>
+        {printedSheets.map((sheet) => {
+          // The fixed left-hand columns. On a sheet with per-stage columns they
+          // span both header rows, so their label sits beside the sub-headings
+          // of the groups rather than above them.
+          const headSpan = showStages ? 2 : 1;
+          const fixedHeaders = (
+            <>
+              <th
+                rowSpan={headSpan}
+                className="py-0.5 pr-1 text-left align-bottom text-[10px] font-bold uppercase tracking-wide"
+              >
+                #
+              </th>
+              <th
+                rowSpan={headSpan}
+                className="py-0.5 px-1 text-left align-bottom text-[10px] font-bold uppercase tracking-wide"
+              >
+                EQ
+              </th>
+              {sheet.showClass && (
+                <th
+                  rowSpan={headSpan}
+                  className="py-0.5 px-1 text-left align-bottom text-[10px] font-bold uppercase tracking-wide"
+                >
+                  Kl.
+                </th>
+              )}
+              <th
+                rowSpan={headSpan}
+                className="py-0.5 px-1 text-left align-bottom text-[10px] font-bold uppercase tracking-wide"
+              >
+                Navigator
+              </th>
+              <th
+                rowSpan={headSpan}
+                className="py-0.5 px-1 text-left align-bottom text-[10px] font-bold uppercase tracking-wide"
+              >
+                Bestuurder
+              </th>
+            </>
+          );
 
-            <table className="w-full table-fixed border-collapse text-black">
-              {/* The numbers get exactly the room four digits need; what is
-                  left is the crew's, because a name that does not fit is the one
-                  thing on this sheet that cannot be abbreviated. A long name
-                  wraps onto a second line rather than being cut off. */}
-              <colgroup>
-                <col className="w-14" />
-                <col className="w-10" />
-                {sheet.showClass && <col className="w-10" />}
-                <col />
-                <col />
-                <col className="w-14" />
-                <col className="w-14" />
-                <col className="w-14" />
-                <col className="w-14" />
-              </colgroup>
-              <thead>
-                <tr className="border-b-2 border-gray-800">
-                  <th className="py-1 pr-1 text-left text-xs font-bold uppercase tracking-wide">
-                    Stand
-                  </th>
-                  <th className="py-1 px-1 text-left text-xs font-bold uppercase tracking-wide">
-                    EQ
-                  </th>
-                  {sheet.showClass && (
-                    <th className="py-1 px-1 text-left text-xs font-bold uppercase tracking-wide">
-                      Kl.
-                    </th>
+          // The rally total, at the right-hand end of every sheet: the
+          // per-stage numbers added up when the sheet shows them, and the only
+          // numbers on the sheet when it does not.
+          const totalHeaders = (
+            <>
+              <th
+                className={`py-0.5 px-1 text-right align-bottom text-[10px] font-bold uppercase tracking-wide${
+                  showStages ? ' border-l-2 border-gray-800' : ''
+                }`}
+              >
+                ORC&apos;s
+              </th>
+              <th className="py-0.5 px-1 text-right align-bottom text-[10px] font-bold uppercase tracking-wide">
+                Tijd
+              </th>
+              <th
+                className="py-0.5 px-1 text-right align-bottom text-[10px] font-bold uppercase tracking-wide"
+                title="The merk column of every sheet"
+              >
+                Div.
+              </th>
+              <th className="py-0.5 pl-1 text-right align-bottom text-[10px] font-bold uppercase tracking-wide">
+                Totaal
+              </th>
+            </>
+          );
+
+          return (
+            <section
+              key={sheet.key}
+              className="standings-sheet bg-white rounded-lg shadow-lg border border-gray-200 p-8 mb-6 print:shadow-none print:rounded-none print:border-0 print:p-0 print:mb-0"
+            >
+              <header className="flex justify-between items-end border-b-2 border-gray-800 pb-2 mb-3">
+                <div>
+                  <h2 className="text-lg font-bold text-black">
+                    {rally.name}
+                    {rally.code ? (
+                      <span className="ml-2 text-base font-normal">({rally.code})</span>
+                    ) : null}
+                  </h2>
+                  <p className="text-base font-semibold text-black">Uitslag — {sheet.title}</p>
+                </div>
+                <div className="text-right text-xs text-gray-600">
+                  <p>
+                    {sheet.entries.length} equipe{sheet.entries.length === 1 ? '' : 's'}
+                  </p>
+                  <p>{printedOn}</p>
+                </div>
+              </header>
+
+              <table className="w-full table-fixed border-collapse text-black">
+                {/* The numbers get exactly the room their digits need; what is
+                    left is the crew's, because a name that does not fit is the
+                    one thing on this sheet that cannot be abbreviated. A long
+                    name wraps onto a second line rather than being cut off. */}
+                <colgroup>
+                  <col className={showStages ? 'w-9' : 'w-11'} />
+                  <col className={showStages ? 'w-8' : 'w-10'} />
+                  {sheet.showClass && <col className={showStages ? 'w-8' : 'w-10'} />}
+                  <col />
+                  <col />
+                  {showStages &&
+                    stages.map((stage) => (
+                      <React.Fragment key={stage._id}>
+                        <col className={sizing.col} />
+                        <col className={sizing.col} />
+                        <col className={sizing.col} />
+                        <col className={sizing.col} />
+                      </React.Fragment>
+                    ))}
+                  <col className="w-12" />
+                  <col className="w-12" />
+                  <col className="w-12" />
+                  <col className="w-12" />
+                </colgroup>
+                <thead>
+                  {showStages ? (
+                    <>
+                      {/* One heading per stage, over the four numbers it cost */}
+                      <tr>
+                        {fixedHeaders}
+                        {stages.map((stage) => (
+                          <th
+                            key={stage._id}
+                            colSpan={4}
+                            className={`py-0.5 px-1 text-center font-bold uppercase tracking-wide break-words border-l border-gray-500 ${sizing.head}`}
+                          >
+                            {stage.name}
+                          </th>
+                        ))}
+                        <th
+                          colSpan={4}
+                          className={`py-0.5 px-1 text-center font-bold uppercase tracking-wide border-l-2 border-gray-800 ${sizing.head}`}
+                        >
+                          Eindtotaal
+                        </th>
+                      </tr>
+                      <tr className="border-b-2 border-gray-800">
+                        {stages.map((stage) => (
+                          <React.Fragment key={stage._id}>
+                            <th
+                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase border-l border-gray-500 ${sizing.head}`}
+                            >
+                              ORC
+                            </th>
+                            <th
+                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${sizing.head}`}
+                            >
+                              Tijd
+                            </th>
+                            <th
+                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${sizing.head}`}
+                            >
+                              Div.
+                            </th>
+                            <th
+                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${sizing.head}`}
+                            >
+                              Sub
+                            </th>
+                          </React.Fragment>
+                        ))}
+                        {totalHeaders}
+                      </tr>
+                    </>
+                  ) : (
+                    <tr className="border-b-2 border-gray-800">
+                      {fixedHeaders}
+                      {totalHeaders}
+                    </tr>
                   )}
-                  <th className="py-1 px-1 text-left text-xs font-bold uppercase tracking-wide">
-                    Navigator
-                  </th>
-                  <th className="py-1 px-1 text-left text-xs font-bold uppercase tracking-wide">
-                    Bestuurder
-                  </th>
-                  <th className="py-1 px-1 text-right text-xs font-bold uppercase tracking-wide">
-                    ORC&apos;s
-                  </th>
-                  <th className="py-1 px-1 text-right text-xs font-bold uppercase tracking-wide">
-                    Tijd
-                  </th>
-                  <th
-                    className="py-1 px-1 text-right text-xs font-bold uppercase tracking-wide"
-                    title="The merk column of every sheet"
-                  >
-                    Div.
-                  </th>
-                  <th className="py-1 pl-1 text-right text-xs font-bold uppercase tracking-wide">
-                    Totaal
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sheet.entries.map((entry) => (
-                  <tr key={entry.eq} className="border-b border-gray-300">
-                    <td className="py-1 pr-1 text-sm font-bold">
-                      {entry.placing}
-                      {entry.disqualified && (
-                        <span className="ml-1 text-xs font-bold" title="Disqualified">
-                          DQ
-                        </span>
+                </thead>
+                <tbody>
+                  {sheet.entries.map((entry) => (
+                    <tr key={entry.eq} className="border-b border-gray-300">
+                      {/* A disqualified crew has no place in the result: they
+                          are ranked behind the field because the standings have
+                          to put them somewhere, not because they came 32nd. The
+                          sheet says what happened instead — they did not finish
+                          the rally. */}
+                      <td className="py-0.5 pr-1 text-xs font-bold">
+                        {entry.disqualified ? 'DNF' : entry.placing}
+                      </td>
+                      <td className="py-0.5 px-1 text-xs font-bold">{entry.eq}</td>
+                      {sheet.showClass && (
+                        <td className="py-0.5 px-1 text-xs">{entry.classification || '—'}</td>
                       )}
-                    </td>
-                    <td className="py-1 px-1 text-sm font-bold">{entry.eq}</td>
-                    {sheet.showClass && (
-                      <td className="py-1 px-1 text-sm">{entry.classification || '—'}</td>
-                    )}
-                    <td className="py-1 px-1 text-sm break-words">
-                      {entry.navigatorName || '—'}
-                    </td>
-                    <td className="py-1 px-1 text-sm break-words">{entry.driverName || '—'}</td>
-                    <td className="py-1 px-1 text-sm text-right tabular-nums">
-                      {entry.orcPenalty}
-                    </td>
-                    <td className="py-1 px-1 text-sm text-right tabular-nums">
-                      {entry.timePenalty}
-                    </td>
-                    <td className="py-1 px-1 text-sm text-right tabular-nums">
-                      {entry.merkPenalty}
-                    </td>
-                    <td className="py-1 pl-1 text-sm text-right font-bold tabular-nums">
-                      {entry.totalPenalty}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      {/* The crew names run a shade smaller than the rest of
+                          the row: they are the widest thing on the sheet and
+                          the only one that wraps, so the size they are set at
+                          is what decides how many crews fit on a page. */}
+                      <td className="py-0.5 px-1 text-[0.65rem]/[0.85rem] break-words">
+                        {entry.navigatorName || '—'}
+                      </td>
+                      <td className="py-0.5 px-1 text-[0.65rem]/[0.85rem] break-words">
+                        {entry.driverName || '—'}
+                      </td>
+                      {showStages &&
+                        stages.map((stage) => {
+                          // No sheet for this stage is not a zero: the crew has
+                          // not been scored on it at all, so it reads as a dash
+                          // rather than as a clean card.
+                          const score = entry.stagePenalties?.[stage._id];
+                          const cell = `py-0.5 px-0.5 text-right tabular-nums ${sizing.body}`;
 
-            <p className="mt-3 text-xs text-gray-600">
-              Strafpunten — het laagste totaal wint. Een gediskwalificeerde equipe (DQ) staat achter
-              iedereen die de rally nog rijdt.
-            </p>
-          </section>
-        ))}
+                          return (
+                            <React.Fragment key={stage._id}>
+                              <td className={`${cell} border-l border-gray-500`}>
+                                {score ? score.orcPenalty : ''}
+                              </td>
+                              <td className={cell}>{score ? score.timePenalty : ''}</td>
+                              <td className={cell}>{score ? score.merkPenalty : ''}</td>
+                              <td className={`${cell} font-semibold`}>
+                                {score ? (
+                                  score.totalPenalty
+                                ) : (
+                                  <span className="text-gray-500">—</span>
+                                )}
+                              </td>
+                            </React.Fragment>
+                          );
+                        })}
+                      <td
+                        className={`py-0.5 px-1 text-xs text-right tabular-nums${
+                          showStages ? ' border-l-2 border-gray-800' : ''
+                        }`}
+                      >
+                        {entry.orcPenalty}
+                      </td>
+                      <td className="py-0.5 px-1 text-xs text-right tabular-nums">
+                        {entry.timePenalty}
+                      </td>
+                      <td className="py-0.5 px-1 text-xs text-right tabular-nums">
+                        {entry.merkPenalty}
+                      </td>
+                      <td className="py-0.5 pl-1 text-xs text-right font-bold tabular-nums">
+                        {entry.totalPenalty}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          );
+        })}
       </div>
     </div>
   );

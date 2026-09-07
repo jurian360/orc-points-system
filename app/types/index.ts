@@ -129,6 +129,24 @@ export interface MerkScoreRow {
   strafp: number;
 }
 
+// One stage of a rally as the standings name it: the running order, so a
+// per-stage column can be headed with the stage it belongs to.
+export interface StandingsStage {
+  _id: string;
+  name: string;
+}
+
+// What one participant scored on one stage — the same three parts as their
+// rally total, taken from that one sheet. A stage a crew has no sheet for has
+// no entry at all, so a printed sheet can tell "nothing yet" from "zero".
+export interface StandingsStageScore {
+  totalPenalty: number;
+  orcPenalty: number;
+  timePenalty: number;
+  merkPenalty: number;
+  disqualified: boolean;
+}
+
 // Standings entry for a rally (one row per participant)
 export interface StandingsEntry {
   eq: number;
@@ -143,6 +161,10 @@ export interface StandingsEntry {
   orcPenalty: number;
   timePenalty: number;
   merkPenalty: number;
+  // The same three parts per stage, keyed by stage id, so the results can show
+  // where in the rally a crew lost their points instead of only the sum. The
+  // rally totals above are these added up; they are not recomputed from this.
+  stagePenalties: Record<string, StandingsStageScore>;
   sheetsSubmitted: number;
   disqualified: boolean;
   rank: number;

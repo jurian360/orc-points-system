@@ -431,11 +431,28 @@ filters) lays the same numbers out on A4, in one of three shapes.
   like `RallyTimesPanel` is for the times, and its guard is that route's
   `requireSession()`: reading the standings is a data-entry official's too, so
   the page is not in `RESTRICTED_PAGES`.
-- The columns are the result-sheet ones: Stand, EQ, (Kl.,) Navigator, Bestuurder
+- The columns are the result-sheet ones: # (the place), EQ, (Kl.,) Navigator, Bestuurder
   and the four numbers (ORC's, Tijd, Div., Totaal). The Kl. column is on the
   combined and the wedstrijdklasse sheet only. Navigator and driver get a
   column each here rather than the dashboard's `crewLabel` string, so the names
-  line up down the page.
+  line up down the page. A name too long for its column **wraps** onto a second
+  line: a crew's name is the one thing on a result sheet that may not be cut
+  off, so it costs a taller row rather than an ellipsis.
+- **A rally of more than one stage prints those four numbers per stage too**, in
+  running order and headed with the stage's name, ahead of the rally total: a
+  crew reads where in the rally they lost their points, not only how many. One
+  stage means the stage total *is* the rally total, so that sheet keeps the
+  plain four columns instead of printing everything twice. The per-stage numbers
+  come from the standings route, which now returns the rally's `stages` in
+  running order and a `stagePenalties` record per entry (keyed by stage id, the
+  same three parts as the totals, taken from that one sheet) — so the sheet
+  still scores nothing and a stage a crew has no sheet for reads as a dash,
+  which is not a zero. More stages make the per-stage columns narrower and
+  smaller (`stageSizing`) rather than pushing a stage off the sheet.
+- **A disqualified crew is printed as `DNF`, not as a place.** They are ranked
+  behind the field because the standings have to put them somewhere, not because
+  they finished last, so the place column says what happened instead of giving
+  them a number. Their points are printed as they stand.
 - **A crew without a class still gets printed**: on the combined sheet like
   everybody else, and on a *Zonder klasse* sheet at the back of the per-class
   print. A missing class is a gap in the entry list, not a reason to leave a
