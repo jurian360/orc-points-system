@@ -11,8 +11,11 @@ const Navigation: React.FC = () => {
   const { user, loading, can, logout } = useAuth();
   const isAdmin = can('manage:rally');
 
+  // The nav is never printed. Every printable view of this app — the results
+  // on A4, the sheet of QR codes — is a page of paper an official hands out,
+  // and the app's own header on top of it is not part of the document.
   return (
-    <nav className="bg-blue-600 shadow-md">
+    <nav className="bg-blue-600 shadow-md print:hidden">
       <div className={PAGE_CONTAINER}>
         <div className="flex justify-between items-center h-16">
           <div className="flex">

@@ -445,12 +445,20 @@ filters) lays the same numbers out on A4, in one of three shapes.
   standings tab filters on a single class, so it never sends `?view=wedstrijd`.
   All of them are only a preselection — the select on the print page is what
   decides.
-- The page size, the break between two sheets and the header row that repeats
-  when a sheet runs over one page are the `@page` / `break-after` rules
-  Tailwind has no utility for. They live in a `<style>` on that page only — the
-  QR sheet prints on the browser's own default page and stays that way. It is
-  the one full-page view that does not use `PAGE_CONTAINER`: its width is the
+- **It prints A4 landscape**, always: the sheet is a wide table — place, EQ,
+  class, navigator, bestuurder and four numbers — and the crew names are what
+  runs out of room on a portrait page. The on-screen sheets are laid out at
+  roughly that width, so what an official sees is what comes out of the printer.
+- The page size and orientation, the break between two sheets and the header row
+  that repeats when a sheet runs over one page are the `@page` / `break-after`
+  rules Tailwind has no utility for. They live in a `<style>` on that page only
+  — the QR sheet prints on the browser's own default page and stays that way. It
+  is the one full-page view that does not use `PAGE_CONTAINER`: its width is the
   paper.
+- **The app's navigation is not on the paper.** `ClientLayout` marks the nav
+  `print:hidden`, so a printed sheet starts at its own heading instead of at the
+  app's header and menu — for the QR sheet as much as for the results. Anything
+  else added around the pages themselves belongs behind `print:hidden` too.
 
 ## Duplicating a rally
 
