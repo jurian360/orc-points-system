@@ -44,8 +44,11 @@ import {
 //
 // This is the one full-page view that does not use `PAGE_CONTAINER`, for the
 // same reason a form does not: its width is not the window but the paper. The
-// sheets are laid out at roughly an A4 column so what an official sees on screen
-// is what comes out of the printer.
+// paper is A4 **landscape** — a result sheet is a wide table and it is the crew
+// names that run out of room on a portrait page — and the sheets are laid out
+// at roughly that width on screen, so what an official sees is what comes out
+// of the printer. The app's navigation is not on it: `ClientLayout` hides the
+// nav for print, so the sheet starts at its own heading.
 
 interface Rally {
   _id: string;
@@ -105,8 +108,11 @@ const classLabel = (value: ClassificationValue) =>
 const PRINT_STYLES = `
   @media print {
     @page {
-      size: A4 portrait;
-      margin: 14mm 12mm;
+      /* Landscape, always: the result sheet is a wide table — the place, the
+         EQ, the class, two names and four numbers — and the names are what
+         runs out of room first on a portrait page. */
+      size: A4 landscape;
+      margin: 12mm 14mm;
     }
 
     /* Each sheet starts on a fresh page; the last one does not add a blank. */
@@ -298,7 +304,7 @@ export default function StandingsPrintPage({
       <style dangerouslySetInnerHTML={{ __html: PRINT_STYLES }} />
 
       {/* Everything in here is for the official at the screen, not for paper */}
-      <div className="print:hidden mx-auto w-full max-w-[900px] px-4 sm:px-6">
+      <div className="print:hidden mx-auto w-full max-w-[1120px] px-4 sm:px-6">
         <div className="mb-4">
           <Link href={`/rallies/${rallyId}`} className="text-blue-600 hover:underline text-base">
             &larr; Back to {rally.name}
@@ -372,7 +378,7 @@ export default function StandingsPrintPage({
       </div>
 
       {/* The sheets themselves: an A4 page on screen, an A4 page on paper */}
-      <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 print:max-w-none print:px-0">
+      <div className="mx-auto w-full max-w-[1120px] px-4 sm:px-6 print:max-w-none print:px-0">
         {printedSheets.map((sheet) => (
           <section
             key={sheet.key}
