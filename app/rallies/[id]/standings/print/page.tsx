@@ -3,16 +3,26 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
-import { CLASSIFICATIONS, type ClassificationValue } from '../../../../lib/participants';
+import {
+  CLASSIFICATIONS,
+  WEDSTRIJDKLASSE_CLASSES,
+  WEDSTRIJDKLASSE_LABEL,
+  inWedstrijdklasse,
+  type ClassificationValue,
+} from '../../../../lib/participants';
 
 // The standings on paper.
 //
 // The dashboard's standings tab is one long table of the whole field, which is
 // what an official reads on a screen. What goes on the wall at the finish is a
-// result sheet, and there are two of those:
+// result sheet, and there are three of those:
 //
 //   * **Per klasse** — one A4 per classification, each with its own 1, 2, 3,
 //     because a class rides against its own class.
+//   * **Wedstrijdklasse** — the classes that ride one competition
+//     (`WEDSTRIJDKLASSE_CLASSES`: A and H) ranked together on one sheet, with
+//     its own 1, 2, 3. A crew of those classes is therefore printed twice — on
+//     their own class sheet and on this one — because they are placed in both.
 //   * **Algemeen klassement** — every class together in one ranking, the whole
 //     field on one sheet. It is the same order the dashboard shows, so the rank
 //     here is the API's own: a crew's place in the rally.
@@ -20,9 +30,9 @@ import { CLASSIFICATIONS, type ClassificationValue } from '../../../../lib/parti
 // The columns are the ones a result sheet needs and no more: the place, the EQ,
 // the crew (navigator and driver in their own columns, so the names line up
 // down the page instead of running into one string) and the four numbers —
-// ORC's, Tijd, Diversen and the total that decides it. The combined sheet adds
-// the class letter, because that is the one sheet where a reader cannot tell
-// which class a crew rode in from the heading.
+// ORC's, Tijd, Diversen and the total that decides it. The algemeen klassement
+// and the wedstrijdklasse add the class letter, because those are the sheets
+// where a reader cannot tell which class a crew rode in from the heading.
 //
 // Nothing here is scored: it is `GET /api/rallies/[id]/standings` read onto
 // paper, so a printed sheet and the screen cannot disagree.
@@ -59,7 +69,7 @@ interface StandingsEntry {
 
 // A crew on a sheet: a standings entry plus the place it takes *on that sheet*
 // — the rally rank on the combined sheet, the place within the class on a class
-// sheet.
+// sheet, the place within A and H together on the wedstrijdklasse.
 type SheetEntry = StandingsEntry & { placing: number };
 
 interface Sheet {
@@ -72,9 +82,14 @@ interface Sheet {
 }
 
 // What the print covers. `combined` is the whole field on one sheet, `classes`
-// is a sheet per class, and a bare class letter (or `''`, the crews without one)
-// is that single class.
-type PrintMode = 'combined' | 'classes' | ClassificationValue;
+// is a sheet per class (the wedstrijdklasse included), `wedstrijd` is that
+// combined ranking on its own, and a bare class letter (or `''`, the crews
+// without one) is that single class.
+type PrintMode = 'combined' | 'classes' | 'wedstrijd' | ClassificationValue;
+
+// The key of the wedstrijdklasse sheet. It cannot collide with a class letter
+// or with `'none'`, so a sheet is still addressed by its key alone.
+const WEDSTRIJD_KEY = 'wedstrijd';
 
 // The class sheets, in order: the five classes as they are written on the entry
 // list, then the crews without one.
@@ -145,8 +160,9 @@ export default function StandingsPrintPage({
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
 
-    if (query.get('view') === 'combined') {
-      setMode('combined');
+    const view = query.get('view');
+    if (view === 'combined' || view === 'wedstrijd') {
+      setMode(view);
       return;
     }
 
@@ -216,11 +232,33 @@ export default function StandingsPrintPage({
     [standings]
   );
 
+  // The wedstrijdklasse: A and H read as one ranking. Filtering keeps the API's
+  // order, so the place is the position in what is left — the same way a class
+  // sheet is numbered. It names the class of every crew, because this sheet
+  // mixes them. No crews in either class means no sheet at all.
+  const wedstrijdSheet = useMemo<Sheet | null>(() => {
+    const entries = standings
+      .filter((entry) => inWedstrijdklasse(entry.classification || ''))
+      .map((entry, index) => ({ ...entry, placing: index + 1 }));
+
+    return entries.length === 0
+      ? null
+      : {
+          key: WEDSTRIJD_KEY,
+          title: `${WEDSTRIJDKLASSE_LABEL} (${WEDSTRIJDKLASSE_CLASSES.join(' + ')})`,
+          showClass: true,
+          entries,
+        };
+  }, [standings]);
+
   const printedSheets = useMemo<Sheet[]>(() => {
     if (mode === 'combined') return combinedSheet ? [combinedSheet] : [];
-    if (mode === 'classes') return classSheets;
+    if (mode === 'wedstrijd') return wedstrijdSheet ? [wedstrijdSheet] : [];
+    // Per class prints the wedstrijdklasse first: it is the ranking the two
+    // classes ride for, and their own sheets follow it.
+    if (mode === 'classes') return wedstrijdSheet ? [wedstrijdSheet, ...classSheets] : classSheets;
     return classSheets.filter((sheet) => sheet.key === (mode || 'none'));
-  }, [mode, combinedSheet, classSheets]);
+  }, [mode, combinedSheet, wedstrijdSheet, classSheets]);
 
   const printedOn = useMemo(
     () =>
@@ -269,9 +307,10 @@ export default function StandingsPrintPage({
             Print Standings — {rally.name}
           </h1>
           <p className="text-gray-700 text-base">
-            The results on A4: every class together in one ranking, or a sheet per classification
-            with its own 1, 2, 3. The numbers are the standings as they are on screen — printing
-            scores nothing of its own.
+            The results on A4: every class together in one ranking, a sheet per classification
+            with its own 1, 2, 3, or the wedstrijdklasse — {WEDSTRIJDKLASSE_CLASSES.join(' and ')}{' '}
+            ranked as one competition. The numbers are the standings as they are on screen —
+            printing scores nothing of its own.
           </p>
         </div>
 
@@ -289,7 +328,15 @@ export default function StandingsPrintPage({
               <option value="combined">
                 Algemeen klassement — all classes on one sheet ({standings.length})
               </option>
-              <option value="classes">Per class — one sheet each</option>
+              <option value="classes">
+                Per class — one sheet each
+                {wedstrijdSheet ? ', wedstrijdklasse first' : ''}
+              </option>
+              {wedstrijdSheet && (
+                <option value={WEDSTRIJD_KEY}>
+                  {wedstrijdSheet.title} ({wedstrijdSheet.entries.length})
+                </option>
+              )}
               {classSheets.map((sheet) => (
                 <option key={sheet.key} value={sheet.key === 'none' ? '' : sheet.key}>
                   {sheet.title} ({sheet.entries.length})

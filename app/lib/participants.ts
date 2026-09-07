@@ -28,6 +28,24 @@ export function isClassification(value: unknown): value is Classification {
   return typeof value === 'string' && (CLASSIFICATIONS as readonly string[]).includes(value);
 }
 
+// The **wedstrijdklasse**: the classes that are ranked together as one
+// competition. `A` and `H` ride the same rally against each other, so the
+// results carry a combined ranking of the two next to their own class sheets.
+//
+// It is not a class a crew can be entered in — nothing is ever recorded as a
+// wedstrijdklasse on the entry list, and `CLASSIFICATIONS` deliberately does
+// not hold it. It is a way of *reading* the standings, which is why it only
+// exists on the printed results.
+export const WEDSTRIJDKLASSE_CLASSES: readonly Classification[] = ['A', 'H'];
+
+export const WEDSTRIJDKLASSE_LABEL = 'Wedstrijdklasse';
+
+// True for a crew that rides in the wedstrijdklasse. A crew without a recorded
+// class is not in it — a gap in the entry list is not a class.
+export function inWedstrijdklasse(value: ClassificationValue): boolean {
+  return value !== '' && WEDSTRIJDKLASSE_CLASSES.includes(value);
+}
+
 // "Jan Jansen / Piet Peters", or just the name that is known. Empty when
 // neither has been entered, so callers can fall back to the EQ number.
 export function crewLabel(
