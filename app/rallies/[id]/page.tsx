@@ -39,6 +39,9 @@ interface StandingsEntry {
   timePenalty: number;
   merkPenalty: number;
   sheetsSubmitted: number;
+  // The stages this crew has no sheet for. Each one is charged the maximum that
+  // stage can cost, and those points are already in the totals above.
+  missingSheets: number;
   disqualified: boolean;
   rank: number;
 }
@@ -582,7 +585,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 <h2 className="text-xl font-semibold text-gray-800">Standings</h2>
                 <p className="text-gray-600 text-sm mt-1">
                   Total penalty points (ORC&apos;s + Tijd + Diversen) over every sheet — lowest
-                  wins. A
+                  wins. A stage a crew has no sheet for is charged that stage&apos;s maximum. A
                   disqualified participant is ranked behind everyone still in the rally. Editing a
                   stage key or a sheet re-scores what it touches; Recalculate Scores redoes the
                   whole rally.
@@ -719,8 +722,25 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                             {crewLabel(entry) || <span className="text-gray-400">—</span>}
                           </span>
                         </td>
+                        {/* A crew short of a card is marked here: the stages
+                            they have no sheet for are in their total at the
+                            stage's maximum, which is why their points can be
+                            high without a bad card behind them. */}
                         <td className="px-4 py-2 whitespace-nowrap">
-                          <span className="text-base text-gray-600">
+                          <span
+                            className={`text-base ${
+                              entry.missingSheets > 0
+                                ? 'font-semibold text-amber-700'
+                                : 'text-gray-600'
+                            }`}
+                            title={
+                              entry.missingSheets > 0
+                                ? `${entry.missingSheets} stage${
+                                    entry.missingSheets === 1 ? '' : 's'
+                                  } without a sheet — charged at the stage maximum`
+                                : undefined
+                            }
+                          >
                             {entry.sheetsSubmitted}
                             {totalStages > 0 ? ` / ${totalStages}` : ''}
                           </span>

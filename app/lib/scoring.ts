@@ -263,6 +263,37 @@ export function calculateRowPenalty(
   return rowPenalty;
 }
 
+// The most one ORC row can cost a participant.
+//
+// The row's cap is the answer when the officials set one — that is what the cap
+// is for, and it is the number the stage form and the key card show. Without a
+// cap it is what the worst possible card costs on the row: every letter of the
+// answer missing (the cheapest accepted answer, because a row is always charged
+// the cheapest one) plus every letter the key rules out. An unanswered row costs
+// the missing letters already, so a row can never cost more than this.
+export function maxRowPenalty(scoreKeyRow: ScoreKeyRow | undefined): number {
+  if (!scoreKeyRow) return 0;
+
+  const falseCount = (scoreKeyRow.falseAnswers || []).filter(
+    (falseAnswer) => falseAnswer?.value
+  ).length;
+  const missing = Math.min(
+    ...answerVariants(scoreKeyRow).map((variant) => variant.length)
+  );
+  const worst = (missing + falseCount) * PENALTY_PER_ERROR;
+
+  const cap = scoreKeyRow.maxPenalty;
+  return cap !== undefined && cap > 0 ? Math.min(cap, worst) : worst;
+}
+
+// The most the ORC's of a whole stage can cost — the counterpart of
+// `maxMerkPenalty` and `maxStageTimePenalty` (app/lib/timeScoring.ts). It is the
+// "max" overview of the stage form and the key card, and it is what a stage a
+// crew handed no card in for is charged (see app/lib/stageMaximums.ts).
+export function maxOrcPenalty(scoreKey: ScoreKeyRow[] | undefined): number {
+  return (scoreKey || []).reduce((total, row) => total + maxRowPenalty(row), 0);
+}
+
 // Total penalty for a whole answer sheet against a stage's answer key.
 export function calculateTotalPenalty(
   scoreKey: ScoreKeyRow[],

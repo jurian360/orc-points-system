@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/mongodb';
 import { Rally, Stage, AnswerSheet, Participant } from '../../../../models';
 import { requireSession } from '../../../../lib/api-guard';
+import { stageMaxPenalties } from '../../../../lib/stageMaximums';
 import mongoose from 'mongoose';
 
 // Returns the rally standings: one entry per participant (eq), with the total
@@ -16,10 +17,19 @@ import mongoose from 'mongoose';
 // `stages` running order this route also returns, so a result sheet can show
 // what each leg of the rally cost a crew.
 //
+// A stage a crew has **no sheet for** is charged the maximum that stage can
+// cost (app/lib/stageMaximums.ts): the maximum of the ORC's, of the time column
+// and of the merk column. A crew is not scored on a stage they handed no card in
+// for, so leaving it out would put them ahead of the whole field on a fraction
+// of the points — and would make handing in a card worse than handing in
+// nothing. Those stages are marked `missingSheet` so the screen and the paper
+// can say where the points came from.
+//
 // Each entry also carries the participant's class and crew names when they have
 // been recorded, so the table can show who an EQ is. Only participants with
-// sheets are ranked: a registered crew that has not handed in a card yet has no
-// score to rank, and would otherwise lead the standings on zero points.
+// sheets are ranked: a registered crew that has not handed in a card at all has
+// nothing to rank — they have not started the rally as far as this app knows,
+// and a crew with a card for one stage is what the maximums above are for.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -44,8 +54,10 @@ export async function GET(
     // The stages in running order — their creation order, the same sort the
     // re-scoring uses — so the per-stage parts below come back in the order the
     // rally is ridden and a result sheet can head a column with its stage.
+    // The keys come with them: the maximum a stage can cost is read off its
+    // keys, and that is what a crew with no sheet for the stage is charged.
     const stages = await Stage.find({ rallyId: id })
-      .select('name')
+      .select('name scoreKey timeScoreKey merkScoreKey timeConfig')
       .sort({ createdAt: 1, _id: 1 });
     const totalStages = stages.length;
     const sheets = await AnswerSheet.find({ rallyId: id });
@@ -66,14 +78,17 @@ export async function GET(
     // The same three parts are kept per stage as well (`stagePenalties`, keyed
     // by stage id): one sheet is one stage, so a crew's rally total is these
     // added up. It lets a result sheet show what a stage cost a crew instead of
-    // only what the rally did. A stage a crew has no sheet for gets no entry,
-    // which is not the same as a stage that cost them nothing.
+    // only what the rally did. A stage a crew has no sheet for is filled in
+    // below with what that stage can cost at worst, marked `missingSheet`.
     type StageScore = {
       totalPenalty: number;
       orcPenalty: number;
       timePenalty: number;
       merkPenalty: number;
       disqualified: boolean;
+      // True when this is not a scored card but the stage's maximum, charged
+      // because the crew has no sheet for the stage at all.
+      missingSheet: boolean;
     };
 
     const byParticipant = new Map<
@@ -86,6 +101,9 @@ export async function GET(
         merkPenalty: number;
         stagePenalties: Record<string, StageScore>;
         sheetsSubmitted: number;
+        // The stages this crew handed no card in for — the ones charged at the
+        // stage maximum below.
+        missingSheets: number;
         disqualified: boolean;
       }
     >();
@@ -99,6 +117,7 @@ export async function GET(
         merkPenalty: 0,
         stagePenalties: {} as Record<string, StageScore>,
         sheetsSubmitted: 0,
+        missingSheets: 0,
         disqualified: false,
       };
       const totalPenalty = sheet.totalPenalty || 0;
@@ -117,10 +136,46 @@ export async function GET(
         timePenalty,
         merkPenalty,
         disqualified: Boolean(sheet.disqualified),
+        missingSheet: false,
       };
       existing.sheetsSubmitted += 1;
       existing.disqualified = existing.disqualified || Boolean(sheet.disqualified);
       byParticipant.set(sheet.eq, existing);
+    }
+
+    // A stage a crew has no sheet for costs the maximum of that stage. The
+    // maximums are read off the keys once — they are the same for every crew —
+    // and then added to each crew that is short of that stage's card. The time
+    // maximum needs to know whether the stage is the last one of the rally,
+    // because the break after a stage is lost with its finish.
+    const maxByStage = new Map(
+      stages.map((stage, index) => [
+        String(stage._id),
+        stageMaxPenalties(stage, index === stages.length - 1),
+      ])
+    );
+
+    for (const entry of byParticipant.values()) {
+      for (const [stageId, max] of maxByStage) {
+        if (entry.stagePenalties[stageId]) continue;
+
+        entry.stagePenalties[stageId] = {
+          totalPenalty: max.totalPenalty,
+          orcPenalty: max.orcPenalty,
+          timePenalty: max.timePenalty,
+          merkPenalty: max.merkPenalty,
+          // Not finishing a stage is a maximum, not a disqualification: only the
+          // finish of the last stage takes a crew out of the rally, and that is
+          // decided on a card (app/lib/timeScoring.ts).
+          disqualified: false,
+          missingSheet: true,
+        };
+        entry.totalPenalty += max.totalPenalty;
+        entry.orcPenalty += max.orcPenalty;
+        entry.timePenalty += max.timePenalty;
+        entry.merkPenalty += max.merkPenalty;
+        entry.missingSheets += 1;
+      }
     }
 
     // A disqualified participant is ranked behind everyone still in the rally,

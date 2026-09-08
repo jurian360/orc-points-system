@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, MerkKeyRow, ScoreKeyRow } from '../lib/scoring';
+import { stageMaxPenalties } from '../lib/stageMaximums';
+import type { StageTimeConfig, TimeKeyRow } from '../lib/timeScoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
 import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
 import ClassificationBadge from './ClassificationBadge';
@@ -21,6 +23,10 @@ interface Stage {
   name: string;
   createdAt: string;
   scoreKey: ScoreKeyRow[];
+  // The time key and settings are only read for the maximum a stage can cost —
+  // the time penalties of a sheet are scored server-side and stored on its rows.
+  timeScoreKey?: TimeKeyRow[];
+  timeConfig?: Partial<StageTimeConfig>;
   merkScoreKey?: MerkKeyRow[];
 }
 
@@ -63,8 +69,10 @@ const formatDate = (dateString: string) =>
 // stage, stage by stage, scored against each stage's answer key. Each stage is
 // laid out as the four columns of the SARK controlekaart — ORC's 1-15, ORC's
 // 16-30, the officials' time column and Merk + totals — so it reads like the
-// paper card the answers were copied from. Stages the participant has no sheet
-// for are listed as missing so the gaps are visible.
+// paper card the answers were copied from. A stage the participant has no sheet
+// for is listed as missing and charged the maximum that stage can cost
+// (app/lib/stageMaximums.ts), exactly as the standings charge it — the total on
+// this page is the one the standings rank on.
 const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId, eq }) => {
   const { can } = useAuth();
   const router = useRouter();
@@ -190,22 +198,37 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   // Penalties are recomputed from the stage answer keys rather than read from
   // the stored totals, so every number on the page — row, stage and grand total
   // — comes from the same source even if a key was edited after submission.
+  //
+  // A stage with no sheet is not a stage ridden for free: it costs the maximum
+  // of that stage, the same numbers the standings add for it, so this page and
+  // the standings show one total.
   const sheetsByStage = new Map(sheets.map((sheet) => [sheet.stageId, sheet]));
-  const entries = stages.map((stage) => {
+  const entries = stages.map((stage, index) => {
     const sheet = sheetsByStage.get(stage._id);
     const timeRows = sheet?.timePenalties || [];
     const merkRows = sheet?.merkScores || [];
+
+    if (!sheet) {
+      const max = stageMaxPenalties(stage, index === stages.length - 1);
+      return {
+        stage,
+        sheet,
+        timeRows,
+        merkRows,
+        orcPenalty: max.orcPenalty,
+        tijdTotal: max.timePenalty,
+        diversenTotal: max.merkPenalty,
+      };
+    }
 
     return {
       stage,
       sheet,
       timeRows,
       merkRows,
-      orcPenalty: sheet ? calculateTotalPenalty(stage.scoreKey, sheet.answers) : 0,
+      orcPenalty: calculateTotalPenalty(stage.scoreKey, sheet.answers),
       tijdTotal: sumStrafp(timeRows),
-      diversenTotal: sheet
-        ? calculateMerkPenalty(stage.merkScoreKey, merkRows).totalPenalty
-        : 0,
+      diversenTotal: calculateMerkPenalty(stage.merkScoreKey, merkRows).totalPenalty,
     };
   });
 
@@ -312,6 +335,13 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                 {sheets.length}
                 {stages.length > 0 ? ` / ${stages.length}` : ''}
               </p>
+              {stages.length > sheets.length && (
+                <p className="text-sm font-semibold text-amber-700 mt-1">
+                  {stages.length - sheets.length} stage
+                  {stages.length - sheets.length === 1 ? '' : 's'} without a sheet — charged at
+                  the stage maximum
+                </p>
+              )}
             </div>
             <div className="p-6">
               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
@@ -353,12 +383,24 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
               return (
                 <div
                   key={stage._id}
-                  className="bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-300 p-6 mb-6"
+                  className="bg-white rounded-xl shadow-lg border-2 border-dashed border-amber-400 p-6 mb-6"
                 >
-                  <h2 className="text-lg font-bold text-gray-800">{stage.name}</h2>
-                  <p className="text-base text-gray-700 mt-1">
-                    No answer sheet submitted for this stage.
-                  </p>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-800">{stage.name}</h2>
+                      <p className="text-base text-gray-700 mt-1">
+                        No answer sheet submitted for this stage — charged the maximum this
+                        stage can cost.
+                      </p>
+                    </div>
+                    <span className="text-lg font-bold text-red-600 whitespace-nowrap">
+                      {orcPenalty + stageTijdTotal + stageDiversenTotal} penalty points
+                      <span className="ml-2 text-sm font-semibold text-gray-600">
+                        (ORC&apos;s {orcPenalty} + Tijd {stageTijdTotal} + Diversen{' '}
+                        {stageDiversenTotal})
+                      </span>
+                    </span>
+                  </div>
                   <Link
                     href={`/rallies/${rallyId}/answer-sheets`}
                     className="text-blue-600 hover:underline font-medium text-base mt-2 inline-block"

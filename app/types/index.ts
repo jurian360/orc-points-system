@@ -137,14 +137,18 @@ export interface StandingsStage {
 }
 
 // What one participant scored on one stage — the same three parts as their
-// rally total, taken from that one sheet. A stage a crew has no sheet for has
-// no entry at all, so a printed sheet can tell "nothing yet" from "zero".
+// rally total, taken from that one sheet. A stage a crew has **no** sheet for
+// carries the maximum that stage can cost (app/lib/stageMaximums.ts) with
+// `missingSheet` set: not being scored on a stage is not riding it for free.
 export interface StandingsStageScore {
   totalPenalty: number;
   orcPenalty: number;
   timePenalty: number;
   merkPenalty: number;
   disqualified: boolean;
+  // True when these are the stage's maximums rather than a card the crew
+  // handed in.
+  missingSheet: boolean;
 }
 
 // Standings entry for a rally (one row per participant)
@@ -166,6 +170,9 @@ export interface StandingsEntry {
   // rally totals above are these added up; they are not recomputed from this.
   stagePenalties: Record<string, StandingsStageScore>;
   sheetsSubmitted: number;
+  // The stages of the rally this crew has no sheet for. Each of them is charged
+  // at the stage's maximum, and is part of the totals above.
+  missingSheets: number;
   disqualified: boolean;
   rank: number;
 }

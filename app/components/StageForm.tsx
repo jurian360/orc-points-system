@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { maxMerkPenalty, PENALTY_PER_ERROR } from '../lib/scoring';
+import { maxMerkPenalty, maxOrcPenalty, PENALTY_PER_ERROR } from '../lib/scoring';
 import {
   DEFAULT_TIME_CONFIG,
   maxStageTimePenalty,
@@ -276,7 +276,9 @@ const StageForm: React.FC<StageFormProps> = ({
   };
 
   // Max penalty totals for the overview box
-  const orcTotal = scoreKey.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
+  // The row caps where they are set, and what the worst possible card costs on
+  // a row where they are not: a row without a cap is uncapped, not free.
+  const orcTotal = maxOrcPenalty(scoreKey);
   const tijdTotal = maxStageTimePenalty(timeScoreKey, timeConfig, isFinalStage);
   // Not the sum of the rows: the merk column is one error per distinct letter of
   // the key and one per letter it rules out, bounded by the cap those row

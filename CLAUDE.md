@@ -190,7 +190,8 @@ the key `BAC` both `CA` and `AB` cost 60 — 30 for the missing letter and 30 fo
 the order, because two letters do show an order.
 
 Sheet total = ORC's rows + the stage's time penalty + the stage's merk penalty.
-Rally total = sum of a participant's sheet totals; standings sort ascending, ties
+Rally total = sum of a participant's sheet totals **plus the maximum of every
+stage they have no sheet for** (see below); standings sort ascending, ties
 broken by EQ, with disqualified participants last. A standings entry carries the
 three parts as well (`orcPenalty` / `timePenalty` / `merkPenalty`, the ORC's part
 being the stored total minus the stored time and merk parts), so the table shows
@@ -199,6 +200,40 @@ an ORC's, a Tijd, a Diversen and a Total column.
 This module is shared by the API and the React views on purpose: the scoring
 detail must agree with the stored total. **If you change a rule, change it
 here only** — never re-implement scoring in a component or a route.
+
+## A stage with no sheet (`app/lib/stageMaximums.ts`)
+
+A crew who handed in one card of three was not scored on the other two, so
+leaving those stages out would put them ahead of the whole field on a third of
+the points — and would make handing in a card worse than handing in nothing.
+**A stage a participant has no sheet for costs the maximum of that stage**: the
+maximum of the ORC's (`maxOrcPenalty`), of the time column
+(`maxStageTimePenalty`) and of the merk column (`maxMerkPenalty`), summed by
+`stageMaxPenalties`.
+
+- **The ORC's maximum of a row** is the row's `maxPenalty` when the officials set
+  one — that is what a cap is for, and it is the number the stage form and the
+  key card show — and otherwise what the worst possible card costs on it: every
+  letter of the (cheapest) accepted answer missing plus every letter the key
+  rules out. A row without a cap is uncapped, not free. So a stage maximum is
+  always at least what a blank card costs, and handing in any card is never
+  worse than handing in none.
+- **Nothing is stored**: a sheet that does not exist has no row to write points
+  on. The maximums are added where the rally is added up — the standings route
+  (`stagePenalties[stageId]` with `missingSheet: true`, counted in `totalPenalty`
+  and in the three parts) — and `ParticipantAnswersView` charges the same
+  numbers on the stage it lists as missing, so the card page and the standings
+  show one total. A stage with no sheet is not re-scored and does not re-score:
+  `rescore.ts` writes sheets, and there is none.
+- **It is a penalty, not a disqualification.** Only the finish of the last stage
+  takes a crew out of the rally, and that is decided on a card
+  (`app/lib/timeScoring.ts`). A missing sheet never sets `disqualified`.
+- **The time chain skips the stage**: the delta carries from the last stage the
+  crew has a sheet for into the next one they have, and the missing stage costs
+  its flat maximum on top.
+- A crew with **no sheets at all** is still not in the standings: nothing about
+  them has been typed, so there is nothing to rank. The maximums are for the
+  gaps in a card a crew *is* being scored on.
 
 ## Time scoring rules (`app/lib/timeScoring.ts`)
 
@@ -447,8 +482,9 @@ filters) lays the same numbers out on A4, in one of three shapes.
   come from the standings route, which now returns the rally's `stages` in
   running order and a `stagePenalties` record per entry (keyed by stage id, the
   same three parts as the totals, taken from that one sheet) — so the sheet
-  still scores nothing and a stage a crew has no sheet for reads as a dash,
-  which is not a zero. More stages make the per-stage columns narrower and
+  still scores nothing. A stage a crew has no sheet for carries that stage's
+  maximum (`missingSheet`), which the standings charge them, so it is printed
+  like any other stage with a `*` and a footnote under the table. More stages make the per-stage columns narrower and
   smaller (`stageSizing`) rather than pushing a stage off the sheet.
 - **A disqualified crew is printed as `DNF`, not as a place.** They are ranked
   behind the field because the standings have to put them somewhere, not because
@@ -625,6 +661,8 @@ app/
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env,
                   layout (PAGE_CONTAINER, the one page width of the app),
+                  stageMaximums (the most a stage can cost — what a crew with no
+                  sheet for it is charged, shared client + server),
                   api-guard, roles (the two roles and their permissions, shared
                   client + server), passwords (scrypt), users (accounts + the
                   recovery admin), participants (class letters and the

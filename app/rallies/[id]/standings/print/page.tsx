@@ -40,7 +40,9 @@ import {
 // many. One stage means the per-stage numbers *are* the rally total, so the
 // sheet keeps the plain four columns rather than printing everything twice. The
 // numbers per stage come from the standings route with the totals; a stage a
-// crew has no sheet for reads as a dash, which is not the same as a zero.
+// crew handed no card in for carries that stage's maximum — the standings
+// charge it, so the sheet prints it — marked with a * and explained in a
+// footnote under the table.
 //
 // Nothing here is scored: it is `GET /api/rallies/[id]/standings` read onto
 // paper, so a printed sheet and the screen cannot disagree.
@@ -72,13 +74,15 @@ interface StandingsStage {
 }
 
 // What a crew scored on one stage — the three parts of that one sheet and its
-// own total.
+// own total, or the stage's maximum when they have no sheet for it
+// (`missingSheet`).
 interface StageScore {
   totalPenalty: number;
   orcPenalty: number;
   timePenalty: number;
   merkPenalty: number;
   disqualified: boolean;
+  missingSheet?: boolean;
 }
 
 interface StandingsEntry {
@@ -94,6 +98,7 @@ interface StandingsEntry {
   // sheet for is simply absent.
   stagePenalties?: Record<string, StageScore>;
   sheetsSubmitted: number;
+  missingSheets?: number;
   disqualified: boolean;
   rank: number;
 }
@@ -634,9 +639,11 @@ export default function StandingsPrintPage({
                       </td>
                       {showStages &&
                         stages.map((stage) => {
-                          // No sheet for this stage is not a zero: the crew has
-                          // not been scored on it at all, so it reads as a dash
-                          // rather than as a clean card.
+                          // No sheet for this stage is not a zero and not a
+                          // blank either: the standings charge the crew what the
+                          // stage can cost, so the numbers are printed like any
+                          // other and the sub-total carries a * saying where
+                          // they came from.
                           const score = entry.stagePenalties?.[stage._id];
                           const cell = `py-0.5 px-0.5 text-right tabular-nums ${sizing.body}`;
 
@@ -649,7 +656,10 @@ export default function StandingsPrintPage({
                               <td className={cell}>{score ? score.merkPenalty : ''}</td>
                               <td className={`${cell} font-semibold`}>
                                 {score ? (
-                                  score.totalPenalty
+                                  <>
+                                    {score.totalPenalty}
+                                    {score.missingSheet ? '*' : ''}
+                                  </>
                                 ) : (
                                   <span className="text-gray-500">—</span>
                                 )}
@@ -677,6 +687,17 @@ export default function StandingsPrintPage({
                   ))}
                 </tbody>
               </table>
+
+              {/* Only when a crew on *this* sheet is short of a card: the * has
+                  to be explained where it is printed, and nowhere else. */}
+              {showStages &&
+                sheet.entries.some((entry) =>
+                  stages.some((stage) => entry.stagePenalties?.[stage._id]?.missingSheet)
+                ) && (
+                  <p className="mt-1 text-[0.6rem] text-gray-700">
+                    * Geen ingeleverde kaart voor die proef — maximale strafpunten.
+                  </p>
+                )}
             </section>
           );
         })}
