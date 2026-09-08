@@ -94,7 +94,8 @@ Rally ──< Stage ──< AnswerSheet
 - `Participant` — `{ rallyId, eq, classification, driverName, navigatorName }`, the
   crew behind an EQ number of one rally. Optional and inert: nothing in the
   scoring reads it, an EQ with sheets but no record is still scored, and a record
-  without sheets does not appear in the standings (it has nothing to rank).
+  without sheets is listed in the standings as a **DNS** — a crew who was entered
+  and never started (see *Finished, DNF and DNS* below).
   **Unique index `{ rallyId, eq }`**; the `11000` duplicate-key error is mapped
   to a 409, same as the sheets. `PUT /api/rallies/[id]/participants/[eq]` upserts
   because a participant usually exists as sheets before anybody types their name;
@@ -190,8 +191,10 @@ the key `BAC` both `CA` and `AB` cost 60 — 30 for the missing letter and 30 fo
 the order, because two letters do show an order.
 
 Sheet total = ORC's rows + the stage's time penalty + the stage's merk penalty.
-Rally total = sum of a participant's sheet totals; standings sort ascending, ties
-broken by EQ, with disqualified participants last. A standings entry carries the
+Rally total = sum of a participant's sheet totals **plus a blank card for every
+stage they have no sheet for** (see below); standings sort ascending, ties
+broken by EQ, with the crews who did not finish and the ones who did not start
+behind them (see *Finished, DNF and DNS*). A standings entry carries the
 three parts as well (`orcPenalty` / `timePenalty` / `merkPenalty`, the ORC's part
 being the stored total minus the stored time and merk parts), so the table shows
 an ORC's, a Tijd, a Diversen and a Total column.
@@ -199,6 +202,75 @@ an ORC's, a Tijd, a Diversen and a Total column.
 This module is shared by the API and the React views on purpose: the scoring
 detail must agree with the stored total. **If you change a rule, change it
 here only** — never re-implement scoring in a component or a route.
+
+## A stage with no sheet (`app/lib/missingSheets.ts`)
+
+A crew who handed in one card of three was not scored on the other two, so
+leaving those stages out would put them ahead of the whole field on a third of
+the points. **A stage a participant has no sheet for is scored as a blank card**
+— the numbers they would have got by handing that card in with nothing written
+on it. `blankSheetPenalties` is the whole rule, and it re-implements nothing: it
+calls the three functions a real sheet is scored by, with nothing to score.
+
+- **The ORC's**: `calculateTotalPenalty(scoreKey, [])`. The key decides which
+  rows are scored, so every letter of the key counts as missing and the rows the
+  stage does not use stay free.
+- **The time column**: `scoreStageTimes` with no entries. Every control the
+  stage uses is one the participant missed — a GTC costs its flat maximum, the
+  finish `missingFinishPenalty` plus the break after the stage — and the start
+  costs nothing, because it has no window. A missed control never moves the
+  delta, so a stage nobody typed does not disturb the chain of the stages
+  around it. Neither the crew's EQ nor the delta they carry in changes any of
+  this, so a stage's blank card is scored once and costs every crew the same.
+- **The merk column**: `calculateMerkPenalty(merkScoreKey, [])`, an untyped
+  column — every letter of the key missing.
+- So it is exactly the total a stage's sheet would hold if an official opened it
+  in the form and saved it untouched, and exactly what the empty sheet a time
+  import creates already scores. The letters the key *rules out* are not
+  charged: a blank card never wrote them.
+- **Nothing is stored**: a sheet that does not exist has no row to write points
+  on. The numbers are added where the rally is added up — the standings route
+  (`stagePenalties[stageId]` with `missingSheet: true`, counted in
+  `totalPenalty` and in the three parts) — and `ParticipantAnswersView` shows
+  the same ones on the stage it lists as missing, so the card page and the
+  standings show one total. A stage with no sheet is not re-scored and does not
+  re-score: `rescore.ts` writes sheets, and there is none.
+- **The sheet's `disqualified` flag stays a card's business.** A missing sheet
+  never sets it — only the finish of the last stage does, on a card
+  (`app/lib/timeScoring.ts`). Missing the *last* stage's card is still not
+  finishing the rally, and that is `status: 'dnf'` on the standings entry, not a
+  flag on a sheet that does not exist (see below).
+- A crew with **no sheets at all** is a DNS (below) and is scored on every stage
+  of the rally as a blank card, which is the same rule with nothing left over.
+
+## Finished, DNF and DNS (`app/lib/standings.ts`)
+
+A result sheet has three groups, and `status` on a standings entry says which
+one a crew is in. The type, the order they are ranked in and the labels are one
+pure module, shared client + server, so the screen and the paper cannot
+disagree:
+
+| `status` | Who | Where |
+| --- | --- | --- |
+| `finished` | Rode the rally and came in | Ranked 1, 2, 3 on points |
+| `dnf` | Started but did not finish | Behind the field; prints **DNF** instead of a place |
+| `dns` | Did not start | Behind the DNF's; prints **DNS** |
+
+- **DNF is two things at once**: the last stage's card puts the crew outside its
+  finish window or holds no finish time at all (`disqualified` on the sheet, see
+  the time rules), **or** the crew has no card for the last stage at all. Either
+  way they did not finish the rally. Their points stand and are printed as they
+  stand — the place column says what happened, the numbers say what they scored.
+- **DNS is a crew on the entry list with no card in the whole rally.** They used
+  to be left out of the standings; they are listed now, because a crew who was
+  entered and did not come to the start belongs on the result sheet as a DNS
+  rather than nowhere. Every stage of theirs is missing, so the rule above
+  scores them a blank card for the whole rally.
+- A crew who missed a **middle** stage but has the last stage's card finished the
+  rally: they are ranked, with that stage scored as a blank card.
+- Only a `finished` crew has a place. The dashboard's rank column and the
+  printed sheet's place column show `STATUS_LABEL` instead for the other two,
+  and the rally header counts the crews that have a card, not the DNS's.
 
 ## Time scoring rules (`app/lib/timeScoring.ts`)
 
@@ -415,8 +487,9 @@ filters) lays the same numbers out on A4, in one of three shapes.
   reader cannot tell a crew's class from the heading when the classes are mixed.
 - **Per class** — one A4 per classification, each with its own 1, 2, 3, because
   a class rides against its own class. The page filters the ranked standings and
-  re-numbers what is left; the order itself is still the API's (disqualified
-  last, then on total, then on EQ), so no sheet can disagree with the screen.
+  re-numbers what is left; the order itself is still the API's (the crews who
+  finished first, then the DNF's, then the DNS's, each on total and then on EQ),
+  so no sheet can disagree with the screen.
   A single class can be printed on its own.
 - **Wedstrijdklasse** — the classes that ride one competition, `A` and `H`, on
   one sheet with its own 1, 2, 3. It is not a class a crew is entered in:
@@ -447,13 +520,15 @@ filters) lays the same numbers out on A4, in one of three shapes.
   come from the standings route, which now returns the rally's `stages` in
   running order and a `stagePenalties` record per entry (keyed by stage id, the
   same three parts as the totals, taken from that one sheet) — so the sheet
-  still scores nothing and a stage a crew has no sheet for reads as a dash,
-  which is not a zero. More stages make the per-stage columns narrower and
+  still scores nothing. A stage a crew has no sheet for carries that stage's
+  blank card (`missingSheet`), which the standings charge them, so it is printed
+  like any other stage with a `*` and a footnote under the table. More stages make the per-stage columns narrower and
   smaller (`stageSizing`) rather than pushing a stage off the sheet.
-- **A disqualified crew is printed as `DNF`, not as a place.** They are ranked
-  behind the field because the standings have to put them somewhere, not because
-  they finished last, so the place column says what happened instead of giving
-  them a number. Their points are printed as they stand.
+- **A crew who did not finish is printed as `DNF` and one who never started as
+  `DNS`, not as a place.** They are ranked behind the field because the standings
+  have to put them somewhere, not because they finished last, so the place column
+  says what happened instead of giving them a number. Their points are printed as
+  they stand.
 - **A crew without a class still gets printed**: on the combined sheet like
   everybody else, and on a *Zonder klasse* sheet at the back of the per-class
   print. A missing class is a gap in the entry list, not a reason to leave a
@@ -625,6 +700,10 @@ app/
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env,
                   layout (PAGE_CONTAINER, the one page width of the app),
+                  missingSheets (a stage a crew handed no card in for, scored as
+                  the blank card it stands for, shared client + server),
+                  standings (finished / DNF / DNS: the three groups a result
+                  sheet ranks, shared client + server),
                   api-guard, roles (the two roles and their permissions, shared
                   client + server), passwords (scrypt), users (accounts + the
                   recovery admin), participants (class letters and the

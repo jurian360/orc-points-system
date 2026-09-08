@@ -9,6 +9,12 @@ import RallyTimesPanel from '../../components/RallyTimesPanel';
 import { useAuth } from '../../components/AuthContext';
 import { crewLabel, CLASSIFICATIONS, type ClassificationValue } from '../../lib/participants';
 import { copyRallyName } from '../../lib/rallyCodes';
+import {
+  isRanked,
+  STATUS_LABEL,
+  STATUS_TITLE,
+  type StandingsStatus,
+} from '../../lib/standings';
 import { PAGE_CONTAINER } from '../../lib/layout';
 
 interface Rally {
@@ -39,7 +45,13 @@ interface StandingsEntry {
   timePenalty: number;
   merkPenalty: number;
   sheetsSubmitted: number;
+  // The stages this crew has no sheet for. Each one is charged the maximum that
+  // stage can cost, and those points are already in the totals above.
+  missingSheets: number;
   disqualified: boolean;
+  // Finished, did not finish, did not start (app/lib/standings.ts). Only a
+  // finished crew has a place; the other two are ranked behind the field.
+  status: StandingsStatus;
   rank: number;
 }
 
@@ -244,6 +256,13 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
     });
   }, [standings, search, classFilter]);
 
+  // The crews with a card in this rally. The standings also list the ones who
+  // did not start, and a DNS has nothing scored to count.
+  const crewsScored = useMemo(
+    () => standings.filter((entry) => entry.sheetsSubmitted > 0).length,
+    [standings]
+  );
+
   const sheetsSubmitted = useMemo(
     () => standings.reduce((total, entry) => total + entry.sheetsSubmitted, 0),
     [standings]
@@ -333,8 +352,8 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
               </div>
               <p className="text-gray-500 text-sm">
                 Created {formatDate(rally.createdAt)} · {stages.length} stage
-                {stages.length === 1 ? '' : 's'} · {standings.length} crew
-                {standings.length === 1 ? '' : 's'} scored · {sheetsSubmitted} sheet
+                {stages.length === 1 ? '' : 's'} · {crewsScored} crew
+                {crewsScored === 1 ? '' : 's'} scored · {sheetsSubmitted} sheet
                 {sheetsSubmitted === 1 ? '' : 's'}
               </p>
             </div>
@@ -582,9 +601,10 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 <h2 className="text-xl font-semibold text-gray-800">Standings</h2>
                 <p className="text-gray-600 text-sm mt-1">
                   Total penalty points (ORC&apos;s + Tijd + Diversen) over every sheet — lowest
-                  wins. A
-                  disqualified participant is ranked behind everyone still in the rally. Editing a
-                  stage key or a sheet re-scores what it touches; Recalculate Scores redoes the
+                  wins. A stage a crew has no sheet for is scored as a blank card. A
+                  crew with no card for the last stage, or outside its finish window, is a DNF;
+                  a crew with no card at all is a DNS. Both are ranked behind the field. Editing
+                  a stage key or a sheet re-scores what it touches; Recalculate Scores redoes the
                   whole rally.
                 </p>
               </div>
@@ -680,28 +700,39 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                       <tr
                         key={entry.eq}
                         className={
-                          entry.disqualified
-                            ? 'bg-red-50'
-                            : entry.rank === 1
-                              ? 'bg-yellow-50'
-                              : 'hover:bg-gray-50'
+                          entry.status === 'dns'
+                            ? 'bg-gray-100'
+                            : entry.status === 'dnf'
+                              ? 'bg-red-50'
+                              : entry.rank === 1
+                                ? 'bg-yellow-50'
+                                : 'hover:bg-gray-50'
                         }
                       >
+                        {/* A crew who did not finish, and one who never started,
+                            have no place: they are behind the field because the
+                            table has to put them somewhere, not because they
+                            came 32nd. The status is shown instead of a number. */}
                         <td className="px-4 py-2 whitespace-nowrap">
-                          <span className="text-base font-bold text-gray-900">
-                            {entry.rank}
-                            {entry.rank === 1 && !entry.disqualified && (
-                              <span className="ml-2" title="Winner">🏆</span>
-                            )}
-                            {entry.disqualified && (
-                              <span
-                                className="ml-2 px-2 py-0.5 rounded bg-red-100 text-red-800 text-sm font-bold"
-                                title="Outside the finish window of the last stage"
-                              >
-                                DQ
-                              </span>
-                            )}
-                          </span>
+                          {isRanked(entry.status) ? (
+                            <span className="text-base font-bold text-gray-900">
+                              {entry.rank}
+                              {entry.rank === 1 && (
+                                <span className="ml-2" title="Winner">🏆</span>
+                              )}
+                            </span>
+                          ) : (
+                            <span
+                              className={`px-2 py-0.5 rounded text-sm font-bold ${
+                                entry.status === 'dns'
+                                  ? 'bg-gray-200 text-gray-700'
+                                  : 'bg-red-100 text-red-800'
+                              }`}
+                              title={STATUS_TITLE[entry.status]}
+                            >
+                              {STATUS_LABEL[entry.status]}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-2 whitespace-nowrap">
                           <Link
@@ -719,8 +750,25 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                             {crewLabel(entry) || <span className="text-gray-400">—</span>}
                           </span>
                         </td>
+                        {/* A crew short of a card is marked here: the stages
+                            they have no sheet for are in their total as blank
+                            cards, which is why their points can be high without
+                            a typed card behind them. */}
                         <td className="px-4 py-2 whitespace-nowrap">
-                          <span className="text-base text-gray-600">
+                          <span
+                            className={`text-base ${
+                              entry.missingSheets > 0
+                                ? 'font-semibold text-amber-700'
+                                : 'text-gray-600'
+                            }`}
+                            title={
+                              entry.missingSheets > 0
+                                ? `${entry.missingSheets} stage${
+                                    entry.missingSheets === 1 ? '' : 's'
+                                  } without a sheet — scored as a blank card`
+                                : undefined
+                            }
+                          >
                             {entry.sheetsSubmitted}
                             {totalStages > 0 ? ` / ${totalStages}` : ''}
                           </span>

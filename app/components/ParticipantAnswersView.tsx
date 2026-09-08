@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, MerkKeyRow, ScoreKeyRow } from '../lib/scoring';
+import { blankSheetPenalties } from '../lib/missingSheets';
+import { resolveStatus } from '../lib/standings';
+import type { StageTimeConfig, TimeKeyRow } from '../lib/timeScoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
 import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
 import ClassificationBadge from './ClassificationBadge';
@@ -21,6 +24,10 @@ interface Stage {
   name: string;
   createdAt: string;
   scoreKey: ScoreKeyRow[];
+  // The time key and settings are only read for the maximum a stage can cost —
+  // the time penalties of a sheet are scored server-side and stored on its rows.
+  timeScoreKey?: TimeKeyRow[];
+  timeConfig?: Partial<StageTimeConfig>;
   merkScoreKey?: MerkKeyRow[];
 }
 
@@ -63,8 +70,10 @@ const formatDate = (dateString: string) =>
 // stage, stage by stage, scored against each stage's answer key. Each stage is
 // laid out as the four columns of the SARK controlekaart — ORC's 1-15, ORC's
 // 16-30, the officials' time column and Merk + totals — so it reads like the
-// paper card the answers were copied from. Stages the participant has no sheet
-// for are listed as missing so the gaps are visible.
+// paper card the answers were copied from. A stage the participant has no sheet
+// for is listed as missing and scored as a blank card
+// (app/lib/missingSheets.ts), exactly as the standings score it — the total on
+// this page is the one the standings rank on.
 const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId, eq }) => {
   const { can } = useAuth();
   const router = useRouter();
@@ -190,22 +199,37 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   // Penalties are recomputed from the stage answer keys rather than read from
   // the stored totals, so every number on the page — row, stage and grand total
   // — comes from the same source even if a key was edited after submission.
+  //
+  // A stage with no sheet is not a stage ridden for free: it is scored as the
+  // blank card it stands for, the same numbers the standings add for it, so this
+  // page and the standings show one total.
   const sheetsByStage = new Map(sheets.map((sheet) => [sheet.stageId, sheet]));
-  const entries = stages.map((stage) => {
+  const entries = stages.map((stage, index) => {
     const sheet = sheetsByStage.get(stage._id);
     const timeRows = sheet?.timePenalties || [];
     const merkRows = sheet?.merkScores || [];
+
+    if (!sheet) {
+      const blank = blankSheetPenalties(stage, index === stages.length - 1);
+      return {
+        stage,
+        sheet,
+        timeRows,
+        merkRows,
+        orcPenalty: blank.orcPenalty,
+        tijdTotal: blank.timePenalty,
+        diversenTotal: blank.merkPenalty,
+      };
+    }
 
     return {
       stage,
       sheet,
       timeRows,
       merkRows,
-      orcPenalty: sheet ? calculateTotalPenalty(stage.scoreKey, sheet.answers) : 0,
+      orcPenalty: calculateTotalPenalty(stage.scoreKey, sheet.answers),
       tijdTotal: sumStrafp(timeRows),
-      diversenTotal: sheet
-        ? calculateMerkPenalty(stage.merkScoreKey, merkRows).totalPenalty
-        : 0,
+      diversenTotal: calculateMerkPenalty(stage.merkScoreKey, merkRows).totalPenalty,
     };
   });
 
@@ -213,6 +237,21 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   const tijdTotal = entries.reduce((total, entry) => total + entry.tijdTotal, 0);
   const diversenTotal = entries.reduce((total, entry) => total + entry.diversenTotal, 0);
   const disqualified = sheets.some((sheet) => sheet.disqualified);
+  // The same three groups the standings rank in (app/lib/standings.ts): a crew
+  // with no card at all did not start, and a crew whose last stage has no card —
+  // or whose last card is outside the finish window — started but did not
+  // finish. Both are ranked behind the field.
+  // A rally with no stages has nothing to start, so nobody has failed to start
+  // it — the same exception the standings route makes.
+  const lastStage = stages.length > 0 ? stages[stages.length - 1] : undefined;
+  const status =
+    stages.length === 0
+      ? 'finished'
+      : resolveStatus({
+          sheetsSubmitted: sheets.length,
+          disqualified,
+          missingLastStageSheet: Boolean(lastStage && !sheetsByStage.has(lastStage._id)),
+        });
   const crew = crewLabel(details);
 
   return (
@@ -312,6 +351,13 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                 {sheets.length}
                 {stages.length > 0 ? ` / ${stages.length}` : ''}
               </p>
+              {stages.length > sheets.length && (
+                <p className="text-sm font-semibold text-amber-700 mt-1">
+                  {stages.length - sheets.length} stage
+                  {stages.length - sheets.length === 1 ? '' : 's'} without a sheet — scored as a
+                  blank card
+                </p>
+              )}
             </div>
             <div className="p-6">
               <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
@@ -335,9 +381,20 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
           </div>
         </div>
 
-        {disqualified && (
+        {status === 'dns' && (
+          <div className="bg-gray-200 border-l-4 border-gray-500 text-gray-800 px-6 py-3 rounded-lg mb-6 text-base font-bold shadow-md">
+            DNS — did not start: no answer sheet has been typed for this participant in this
+            rally. They are listed behind the whole field in the standings.
+          </div>
+        )}
+
+        {status === 'dnf' && (
           <div className="bg-red-100 border-l-4 border-red-500 text-red-800 px-6 py-3 rounded-lg mb-6 text-base font-bold shadow-md">
-            Disqualified — this participant passed the finish of the last stage outside its window.
+            DNF — did not finish:{' '}
+            {disqualified
+              ? 'this participant passed the finish of the last stage outside its window, or has no finish time on it.'
+              : `no answer sheet was handed in for the last stage (${lastStage?.name}).`}{' '}
+            They are ranked behind everyone who finished; their points stand.
           </div>
         )}
 
@@ -353,12 +410,23 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
               return (
                 <div
                   key={stage._id}
-                  className="bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-300 p-6 mb-6"
+                  className="bg-white rounded-xl shadow-lg border-2 border-dashed border-amber-400 p-6 mb-6"
                 >
-                  <h2 className="text-lg font-bold text-gray-800">{stage.name}</h2>
-                  <p className="text-base text-gray-700 mt-1">
-                    No answer sheet submitted for this stage.
-                  </p>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-800">{stage.name}</h2>
+                      <p className="text-base text-gray-700 mt-1">
+                        No answer sheet submitted for this stage — scored as a blank card.
+                      </p>
+                    </div>
+                    <span className="text-lg font-bold text-red-600 whitespace-nowrap">
+                      {orcPenalty + stageTijdTotal + stageDiversenTotal} penalty points
+                      <span className="ml-2 text-sm font-semibold text-gray-600">
+                        (ORC&apos;s {orcPenalty} + Tijd {stageTijdTotal} + Diversen{' '}
+                        {stageDiversenTotal})
+                      </span>
+                    </span>
+                  </div>
                   <Link
                     href={`/rallies/${rallyId}/answer-sheets`}
                     className="text-blue-600 hover:underline font-medium text-base mt-2 inline-block"

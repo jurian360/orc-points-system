@@ -4,6 +4,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/mongodb';
 import { Rally, Stage, AnswerSheet, Participant } from '../../../../models';
 import { requireSession } from '../../../../lib/api-guard';
+import { blankSheetPenalties } from '../../../../lib/missingSheets';
+import {
+  resolveStatus,
+  STATUS_ORDER,
+  type StandingsStatus,
+} from '../../../../lib/standings';
 import mongoose from 'mongoose';
 
 // Returns the rally standings: one entry per participant (eq), with the total
@@ -16,10 +22,33 @@ import mongoose from 'mongoose';
 // `stages` running order this route also returns, so a result sheet can show
 // what each leg of the rally cost a crew.
 //
+// A stage a crew has **no sheet for** is scored as a blank card
+// (app/lib/missingSheets.ts): the letters of the key all missing, every control
+// of the stage missed, the merk column untyped. A crew is not scored on a stage
+// they handed no card in for, so leaving it out would put them ahead of the
+// whole field on a fraction of the points. Those stages are marked
+// `missingSheet` so the screen and the paper can say where the points came
+// from.
+//
+// Every entry carries a `status`, which is what a result sheet prints instead of
+// a place when a crew has no place:
+//
+//   * `finished` — the crew rode the rally and came in: they are ranked 1, 2, 3.
+//   * `dnf` — they started but did not finish, either because the last stage's
+//     card puts them outside the finish window (or has no finish time at all,
+//     see app/lib/timeScoring.ts) or because they have **no card for the last
+//     stage** at all. Their points are kept and printed as they stand; they are
+//     ranked behind everyone who finished.
+//   * `dns` — they did not start: a crew on the entry list with no sheet in the
+//     whole rally, so every stage of theirs is a blank card. They are listed
+//     behind the DNF's, because a crew who rode and retired is ahead of one who
+//     never came to the start.
+//
+// A crew is on this list when the entry list holds them or when a sheet names
+// them, so a DNS is in the results as a DNS rather than missing from them.
+//
 // Each entry also carries the participant's class and crew names when they have
-// been recorded, so the table can show who an EQ is. Only participants with
-// sheets are ranked: a registered crew that has not handed in a card yet has no
-// score to rank, and would otherwise lead the standings on zero points.
+// been recorded, so the table can show who an EQ is.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -44,8 +73,10 @@ export async function GET(
     // The stages in running order — their creation order, the same sort the
     // re-scoring uses — so the per-stage parts below come back in the order the
     // rally is ridden and a result sheet can head a column with its stage.
+    // The keys come with them: a crew with no sheet for a stage is scored on
+    // that stage as a blank card, which is scored against its keys.
     const stages = await Stage.find({ rallyId: id })
-      .select('name')
+      .select('name scoreKey timeScoreKey merkScoreKey timeConfig')
       .sort({ createdAt: 1, _id: 1 });
     const totalStages = stages.length;
     const sheets = await AnswerSheet.find({ rallyId: id });
@@ -66,14 +97,17 @@ export async function GET(
     // The same three parts are kept per stage as well (`stagePenalties`, keyed
     // by stage id): one sheet is one stage, so a crew's rally total is these
     // added up. It lets a result sheet show what a stage cost a crew instead of
-    // only what the rally did. A stage a crew has no sheet for gets no entry,
-    // which is not the same as a stage that cost them nothing.
+    // only what the rally did. A stage a crew has no sheet for is filled in
+    // below with what a blank card costs on it, marked `missingSheet`.
     type StageScore = {
       totalPenalty: number;
       orcPenalty: number;
       timePenalty: number;
       merkPenalty: number;
       disqualified: boolean;
+      // True when there is no card behind these numbers: the crew has no sheet
+      // for the stage, so it is scored as a blank one.
+      missingSheet: boolean;
     };
 
     const byParticipant = new Map<
@@ -86,21 +120,40 @@ export async function GET(
         merkPenalty: number;
         stagePenalties: Record<string, StageScore>;
         sheetsSubmitted: number;
+        // The stages this crew handed no card in for — the ones scored as a
+        // blank card below.
+        missingSheets: number;
+        // Set from the cards: the crew was outside the finish window of the last
+        // stage, or had no finish time on it. One of the two ways to be a DNF.
         disqualified: boolean;
+        status: StandingsStatus;
       }
     >();
 
-    for (const sheet of sheets) {
-      const existing = byParticipant.get(sheet.eq) || {
-        eq: sheet.eq,
+    // A crew of this rally, created the first time a sheet or the entry list
+    // names them. `status` is decided once every sheet has been counted.
+    const entryFor = (eq: number) => {
+      const existing = byParticipant.get(eq);
+      if (existing) return existing;
+
+      const created = {
+        eq,
         totalPenalty: 0,
         orcPenalty: 0,
         timePenalty: 0,
         merkPenalty: 0,
         stagePenalties: {} as Record<string, StageScore>,
         sheetsSubmitted: 0,
+        missingSheets: 0,
         disqualified: false,
+        status: 'finished' as StandingsStatus,
       };
+      byParticipant.set(eq, created);
+      return created;
+    };
+
+    for (const sheet of sheets) {
+      const existing = entryFor(sheet.eq);
       const totalPenalty = sheet.totalPenalty || 0;
       const timePenalty = sheet.timePenalty || 0;
       const merkPenalty = sheet.merkPenalty || 0;
@@ -117,18 +170,83 @@ export async function GET(
         timePenalty,
         merkPenalty,
         disqualified: Boolean(sheet.disqualified),
+        missingSheet: false,
       };
       existing.sheetsSubmitted += 1;
       existing.disqualified = existing.disqualified || Boolean(sheet.disqualified);
-      byParticipant.set(sheet.eq, existing);
     }
 
-    // A disqualified participant is ranked behind everyone still in the rally,
-    // whatever their points.
+    // The entry list is the other half of the field: a crew nobody has typed a
+    // card for is a DNS, and a DNS belongs on the result sheet as a DNS rather
+    // than nowhere. A crew with sheets but no entry-list record — an EQ that
+    // predates the list — is already here from the loop above.
+    //
+    // A rally with no stages yet is the exception: there is nothing to ride, so
+    // nobody has failed to start it. Its standings stay empty while it is being
+    // set up instead of filling with the whole entry list as DNS.
+    if (stages.length > 0) {
+      for (const participant of participants) {
+        entryFor(participant.eq);
+      }
+    }
+
+    // A stage a crew has no sheet for is scored as a blank card. A blank card
+    // costs every crew the same, so it is scored once per stage and then added
+    // to each crew that is short of that stage's card. Whether the stage is the
+    // last one of the rally is what the finish row reads: the break after a
+    // stage is lost with its finish.
+    const blankByStage = new Map(
+      stages.map((stage, index) => [
+        String(stage._id),
+        blankSheetPenalties(stage, index === stages.length - 1),
+      ])
+    );
+
+    for (const entry of byParticipant.values()) {
+      for (const [stageId, blank] of blankByStage) {
+        if (entry.stagePenalties[stageId]) continue;
+
+        entry.stagePenalties[stageId] = {
+          totalPenalty: blank.totalPenalty,
+          orcPenalty: blank.orcPenalty,
+          timePenalty: blank.timePenalty,
+          merkPenalty: blank.merkPenalty,
+          // Whether the crew is out of the rally is decided below, on whether
+          // they have a card for the *last* stage.
+          disqualified: false,
+          missingSheet: true,
+        };
+        entry.totalPenalty += blank.totalPenalty;
+        entry.orcPenalty += blank.orcPenalty;
+        entry.timePenalty += blank.timePenalty;
+        entry.merkPenalty += blank.merkPenalty;
+        entry.missingSheets += 1;
+      }
+    }
+
+    // Did they start, and did they finish? A crew with no card at all never
+    // started; a crew whose last stage has no card, or whose last card puts them
+    // outside the finish window, started but did not finish.
+    const lastStageId = stages.length > 0 ? String(stages[stages.length - 1]._id) : '';
+
+    for (const entry of byParticipant.values()) {
+      entry.status = resolveStatus({
+        sheetsSubmitted: entry.sheetsSubmitted,
+        disqualified: entry.disqualified,
+        missingLastStageSheet: Boolean(
+          lastStageId && entry.stagePenalties[lastStageId]?.missingSheet
+        ),
+      });
+    }
+
+    // The crews who finished are ranked on their points; the DNF's follow them
+    // and the DNS's follow those, because a crew who rode and retired is ahead
+    // of one who never came to the start. Within a group it is the points, then
+    // the EQ.
     const standings = Array.from(byParticipant.values())
       .sort(
         (a, b) =>
-          Number(a.disqualified) - Number(b.disqualified) ||
+          STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
           a.totalPenalty - b.totalPenalty ||
           a.eq - b.eq
       )
