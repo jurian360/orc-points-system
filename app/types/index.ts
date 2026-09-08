@@ -1,5 +1,6 @@
 import type { StageTimeConfig, TimeRowKind } from '../lib/timeScoring';
 import type { ClassificationValue } from '../lib/participants';
+import type { StandingsStatus } from '../lib/standings';
 
 // Rally types
 export interface Rally {
@@ -173,7 +174,15 @@ export interface StandingsEntry {
   // The stages of the rally this crew has no sheet for. Each of them is charged
   // at the stage's maximum, and is part of the totals above.
   missingSheets: number;
+  // Set from the cards: the crew passed the finish of the last stage outside its
+  // window, or had no finish time on it. It is one of the two ways to be a DNF —
+  // read `status`, which also covers the crew who handed no last-stage card in
+  // at all.
   disqualified: boolean;
+  // Whether the crew finished, did not finish or did not start
+  // (app/lib/standings.ts). Only a `finished` crew has a place; the other two
+  // are ranked behind the field and print their status instead of a number.
+  status: StandingsStatus;
   rank: number;
 }
 

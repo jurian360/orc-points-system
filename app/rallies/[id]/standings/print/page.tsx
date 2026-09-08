@@ -4,6 +4,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
 import {
+  isRanked,
+  STATUS_LABEL,
+  type StandingsStatus,
+} from '../../../../lib/standings';
+import {
   CLASSIFICATIONS,
   WEDSTRIJDKLASSE_CLASSES,
   WEDSTRIJDKLASSE_LABEL,
@@ -47,6 +52,10 @@ import {
 // Nothing here is scored: it is `GET /api/rallies/[id]/standings` read onto
 // paper, so a printed sheet and the screen cannot disagree.
 //
+// A crew who did not finish is printed as DNF and one who never started as DNS,
+// both behind the crews who finished and with their points as they stand: a
+// place is for the crews that came in.
+//
 // A crew whose class was never recorded is not dropped — they are on the
 // combined sheet like everybody else, and get a sheet of their own at the back
 // of the per-class print, because a missing class is a gap in the entry list,
@@ -87,6 +96,9 @@ interface StageScore {
 
 interface StandingsEntry {
   eq: number;
+  // Finished, did not finish, did not start (app/lib/standings.ts). The two
+  // that are not `finished` print their status where a place would be.
+  status: StandingsStatus;
   classification: ClassificationValue;
   driverName: string;
   navigatorName: string;
@@ -254,9 +266,10 @@ export default function StandingsPrintPage({
     load();
   }, [load]);
 
-  // The whole field on one sheet, in the order the API ranked it: disqualified
-  // last, then on total, then on EQ. The place is that rank — this sheet is the
-  // rally's own result, so it does not re-number anything.
+  // The whole field on one sheet, in the order the API ranked it: the crews who
+  // finished first, then the DNF's, then the DNS's, each group on total and then
+  // on EQ. The place is that rank — this sheet is the rally's own result, so it
+  // does not re-number anything.
   const combinedSheet = useMemo<Sheet | null>(
     () =>
       standings.length === 0
@@ -615,13 +628,13 @@ export default function StandingsPrintPage({
                 <tbody>
                   {sheet.entries.map((entry) => (
                     <tr key={entry.eq} className="border-b border-gray-300">
-                      {/* A disqualified crew has no place in the result: they
-                          are ranked behind the field because the standings have
-                          to put them somewhere, not because they came 32nd. The
-                          sheet says what happened instead — they did not finish
-                          the rally. */}
+                      {/* A crew who did not finish, and one who never started,
+                          have no place in the result: they are behind the field
+                          because the standings have to put them somewhere, not
+                          because they came 32nd. The sheet says what happened
+                          instead — DNF or DNS. */}
                       <td className="py-0.5 pr-1 text-xs font-bold">
-                        {entry.disqualified ? 'DNF' : entry.placing}
+                        {isRanked(entry.status) ? entry.placing : STATUS_LABEL[entry.status]}
                       </td>
                       <td className="py-0.5 px-1 text-xs font-bold">{entry.eq}</td>
                       {sheet.showClass && (

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, MerkKeyRow, ScoreKeyRow } from '../lib/scoring';
 import { stageMaxPenalties } from '../lib/stageMaximums';
+import { resolveStatus } from '../lib/standings';
 import type { StageTimeConfig, TimeKeyRow } from '../lib/timeScoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
 import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
@@ -236,6 +237,21 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   const tijdTotal = entries.reduce((total, entry) => total + entry.tijdTotal, 0);
   const diversenTotal = entries.reduce((total, entry) => total + entry.diversenTotal, 0);
   const disqualified = sheets.some((sheet) => sheet.disqualified);
+  // The same three groups the standings rank in (app/lib/standings.ts): a crew
+  // with no card at all did not start, and a crew whose last stage has no card —
+  // or whose last card is outside the finish window — started but did not
+  // finish. Both are ranked behind the field.
+  // A rally with no stages has nothing to start, so nobody has failed to start
+  // it — the same exception the standings route makes.
+  const lastStage = stages.length > 0 ? stages[stages.length - 1] : undefined;
+  const status =
+    stages.length === 0
+      ? 'finished'
+      : resolveStatus({
+          sheetsSubmitted: sheets.length,
+          disqualified,
+          missingLastStageSheet: Boolean(lastStage && !sheetsByStage.has(lastStage._id)),
+        });
   const crew = crewLabel(details);
 
   return (
@@ -365,9 +381,20 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
           </div>
         </div>
 
-        {disqualified && (
+        {status === 'dns' && (
+          <div className="bg-gray-200 border-l-4 border-gray-500 text-gray-800 px-6 py-3 rounded-lg mb-6 text-base font-bold shadow-md">
+            DNS — did not start: no answer sheet has been typed for this participant in this
+            rally. They are listed behind the whole field in the standings.
+          </div>
+        )}
+
+        {status === 'dnf' && (
           <div className="bg-red-100 border-l-4 border-red-500 text-red-800 px-6 py-3 rounded-lg mb-6 text-base font-bold shadow-md">
-            Disqualified — this participant passed the finish of the last stage outside its window.
+            DNF — did not finish:{' '}
+            {disqualified
+              ? 'this participant passed the finish of the last stage outside its window, or has no finish time on it.'
+              : `no answer sheet was handed in for the last stage (${lastStage?.name}).`}{' '}
+            They are ranked behind everyone who finished; their points stand.
           </div>
         )}
 
