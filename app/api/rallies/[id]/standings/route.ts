@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/mongodb';
 import { Rally, Stage, AnswerSheet, Participant } from '../../../../models';
 import { requireSession } from '../../../../lib/api-guard';
-import { stageMaxPenalties } from '../../../../lib/stageMaximums';
+import { blankSheetPenalties } from '../../../../lib/missingSheets';
 import {
   resolveStatus,
   STATUS_ORDER,
@@ -22,13 +22,13 @@ import mongoose from 'mongoose';
 // `stages` running order this route also returns, so a result sheet can show
 // what each leg of the rally cost a crew.
 //
-// A stage a crew has **no sheet for** is charged the maximum that stage can
-// cost (app/lib/stageMaximums.ts): the maximum of the ORC's, of the time column
-// and of the merk column. A crew is not scored on a stage they handed no card in
-// for, so leaving it out would put them ahead of the whole field on a fraction
-// of the points — and would make handing in a card worse than handing in
-// nothing. Those stages are marked `missingSheet` so the screen and the paper
-// can say where the points came from.
+// A stage a crew has **no sheet for** is scored as a blank card
+// (app/lib/missingSheets.ts): the letters of the key all missing, every control
+// of the stage missed, the merk column untyped. A crew is not scored on a stage
+// they handed no card in for, so leaving it out would put them ahead of the
+// whole field on a fraction of the points. Those stages are marked
+// `missingSheet` so the screen and the paper can say where the points came
+// from.
 //
 // Every entry carries a `status`, which is what a result sheet prints instead of
 // a place when a crew has no place:
@@ -40,8 +40,9 @@ import mongoose from 'mongoose';
 //     stage** at all. Their points are kept and printed as they stand; they are
 //     ranked behind everyone who finished.
 //   * `dns` — they did not start: a crew on the entry list with no sheet in the
-//     whole rally. They are listed behind the DNF's, because a crew who rode and
-//     retired is ahead of one who never came to the start.
+//     whole rally, so every stage of theirs is a blank card. They are listed
+//     behind the DNF's, because a crew who rode and retired is ahead of one who
+//     never came to the start.
 //
 // A crew is on this list when the entry list holds them or when a sheet names
 // them, so a DNS is in the results as a DNS rather than missing from them.
@@ -72,8 +73,8 @@ export async function GET(
     // The stages in running order — their creation order, the same sort the
     // re-scoring uses — so the per-stage parts below come back in the order the
     // rally is ridden and a result sheet can head a column with its stage.
-    // The keys come with them: the maximum a stage can cost is read off its
-    // keys, and that is what a crew with no sheet for the stage is charged.
+    // The keys come with them: a crew with no sheet for a stage is scored on
+    // that stage as a blank card, which is scored against its keys.
     const stages = await Stage.find({ rallyId: id })
       .select('name scoreKey timeScoreKey merkScoreKey timeConfig')
       .sort({ createdAt: 1, _id: 1 });
@@ -97,15 +98,15 @@ export async function GET(
     // by stage id): one sheet is one stage, so a crew's rally total is these
     // added up. It lets a result sheet show what a stage cost a crew instead of
     // only what the rally did. A stage a crew has no sheet for is filled in
-    // below with what that stage can cost at worst, marked `missingSheet`.
+    // below with what a blank card costs on it, marked `missingSheet`.
     type StageScore = {
       totalPenalty: number;
       orcPenalty: number;
       timePenalty: number;
       merkPenalty: number;
       disqualified: boolean;
-      // True when this is not a scored card but the stage's maximum, charged
-      // because the crew has no sheet for the stage at all.
+      // True when there is no card behind these numbers: the crew has no sheet
+      // for the stage, so it is scored as a blank one.
       missingSheet: boolean;
     };
 
@@ -119,8 +120,8 @@ export async function GET(
         merkPenalty: number;
         stagePenalties: Record<string, StageScore>;
         sheetsSubmitted: number;
-        // The stages this crew handed no card in for — the ones charged at the
-        // stage maximum below.
+        // The stages this crew handed no card in for — the ones scored as a
+        // blank card below.
         missingSheets: number;
         // Set from the cards: the crew was outside the finish window of the last
         // stage, or had no finish time on it. One of the two ways to be a DNF.
@@ -189,36 +190,36 @@ export async function GET(
       }
     }
 
-    // A stage a crew has no sheet for costs the maximum of that stage. The
-    // maximums are read off the keys once — they are the same for every crew —
-    // and then added to each crew that is short of that stage's card. The time
-    // maximum needs to know whether the stage is the last one of the rally,
-    // because the break after a stage is lost with its finish.
-    const maxByStage = new Map(
+    // A stage a crew has no sheet for is scored as a blank card. A blank card
+    // costs every crew the same, so it is scored once per stage and then added
+    // to each crew that is short of that stage's card. Whether the stage is the
+    // last one of the rally is what the finish row reads: the break after a
+    // stage is lost with its finish.
+    const blankByStage = new Map(
       stages.map((stage, index) => [
         String(stage._id),
-        stageMaxPenalties(stage, index === stages.length - 1),
+        blankSheetPenalties(stage, index === stages.length - 1),
       ])
     );
 
     for (const entry of byParticipant.values()) {
-      for (const [stageId, max] of maxByStage) {
+      for (const [stageId, blank] of blankByStage) {
         if (entry.stagePenalties[stageId]) continue;
 
         entry.stagePenalties[stageId] = {
-          totalPenalty: max.totalPenalty,
-          orcPenalty: max.orcPenalty,
-          timePenalty: max.timePenalty,
-          merkPenalty: max.merkPenalty,
-          // The stage costs its maximum; whether the crew is out of the rally is
-          // decided below, on whether they have a card for the *last* stage.
+          totalPenalty: blank.totalPenalty,
+          orcPenalty: blank.orcPenalty,
+          timePenalty: blank.timePenalty,
+          merkPenalty: blank.merkPenalty,
+          // Whether the crew is out of the rally is decided below, on whether
+          // they have a card for the *last* stage.
           disqualified: false,
           missingSheet: true,
         };
-        entry.totalPenalty += max.totalPenalty;
-        entry.orcPenalty += max.orcPenalty;
-        entry.timePenalty += max.timePenalty;
-        entry.merkPenalty += max.merkPenalty;
+        entry.totalPenalty += blank.totalPenalty;
+        entry.orcPenalty += blank.orcPenalty;
+        entry.timePenalty += blank.timePenalty;
+        entry.merkPenalty += blank.merkPenalty;
         entry.missingSheets += 1;
       }
     }

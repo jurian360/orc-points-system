@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, MerkKeyRow, ScoreKeyRow } from '../lib/scoring';
-import { stageMaxPenalties } from '../lib/stageMaximums';
+import { blankSheetPenalties } from '../lib/missingSheets';
 import { resolveStatus } from '../lib/standings';
 import type { StageTimeConfig, TimeKeyRow } from '../lib/timeScoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
@@ -71,8 +71,8 @@ const formatDate = (dateString: string) =>
 // laid out as the four columns of the SARK controlekaart — ORC's 1-15, ORC's
 // 16-30, the officials' time column and Merk + totals — so it reads like the
 // paper card the answers were copied from. A stage the participant has no sheet
-// for is listed as missing and charged the maximum that stage can cost
-// (app/lib/stageMaximums.ts), exactly as the standings charge it — the total on
+// for is listed as missing and scored as a blank card
+// (app/lib/missingSheets.ts), exactly as the standings score it — the total on
 // this page is the one the standings rank on.
 const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId, eq }) => {
   const { can } = useAuth();
@@ -200,9 +200,9 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   // the stored totals, so every number on the page — row, stage and grand total
   // — comes from the same source even if a key was edited after submission.
   //
-  // A stage with no sheet is not a stage ridden for free: it costs the maximum
-  // of that stage, the same numbers the standings add for it, so this page and
-  // the standings show one total.
+  // A stage with no sheet is not a stage ridden for free: it is scored as the
+  // blank card it stands for, the same numbers the standings add for it, so this
+  // page and the standings show one total.
   const sheetsByStage = new Map(sheets.map((sheet) => [sheet.stageId, sheet]));
   const entries = stages.map((stage, index) => {
     const sheet = sheetsByStage.get(stage._id);
@@ -210,15 +210,15 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
     const merkRows = sheet?.merkScores || [];
 
     if (!sheet) {
-      const max = stageMaxPenalties(stage, index === stages.length - 1);
+      const blank = blankSheetPenalties(stage, index === stages.length - 1);
       return {
         stage,
         sheet,
         timeRows,
         merkRows,
-        orcPenalty: max.orcPenalty,
-        tijdTotal: max.timePenalty,
-        diversenTotal: max.merkPenalty,
+        orcPenalty: blank.orcPenalty,
+        tijdTotal: blank.timePenalty,
+        diversenTotal: blank.merkPenalty,
       };
     }
 
@@ -354,8 +354,8 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
               {stages.length > sheets.length && (
                 <p className="text-sm font-semibold text-amber-700 mt-1">
                   {stages.length - sheets.length} stage
-                  {stages.length - sheets.length === 1 ? '' : 's'} without a sheet — charged at
-                  the stage maximum
+                  {stages.length - sheets.length === 1 ? '' : 's'} without a sheet — scored as a
+                  blank card
                 </p>
               )}
             </div>
@@ -416,8 +416,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                     <div>
                       <h2 className="text-lg font-bold text-gray-800">{stage.name}</h2>
                       <p className="text-base text-gray-700 mt-1">
-                        No answer sheet submitted for this stage — charged the maximum this
-                        stage can cost.
+                        No answer sheet submitted for this stage — scored as a blank card.
                       </p>
                     </div>
                     <span className="text-lg font-bold text-red-600 whitespace-nowrap">

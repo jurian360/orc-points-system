@@ -601,7 +601,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 <h2 className="text-xl font-semibold text-gray-800">Standings</h2>
                 <p className="text-gray-600 text-sm mt-1">
                   Total penalty points (ORC&apos;s + Tijd + Diversen) over every sheet — lowest
-                  wins. A stage a crew has no sheet for is charged that stage&apos;s maximum. A
+                  wins. A stage a crew has no sheet for is scored as a blank card. A
                   crew with no card for the last stage, or outside its finish window, is a DNF;
                   a crew with no card at all is a DNS. Both are ranked behind the field. Editing
                   a stage key or a sheet re-scores what it touches; Recalculate Scores redoes the
@@ -751,9 +751,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                           </span>
                         </td>
                         {/* A crew short of a card is marked here: the stages
-                            they have no sheet for are in their total at the
-                            stage's maximum, which is why their points can be
-                            high without a bad card behind them. */}
+                            they have no sheet for are in their total as blank
+                            cards, which is why their points can be high without
+                            a typed card behind them. */}
                         <td className="px-4 py-2 whitespace-nowrap">
                           <span
                             className={`text-base ${
@@ -765,7 +765,7 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                               entry.missingSheets > 0
                                 ? `${entry.missingSheets} stage${
                                     entry.missingSheets === 1 ? '' : 's'
-                                  } without a sheet — charged at the stage maximum`
+                                  } without a sheet — scored as a blank card`
                                 : undefined
                             }
                           >

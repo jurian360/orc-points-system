@@ -45,9 +45,9 @@ import {
 // many. One stage means the per-stage numbers *are* the rally total, so the
 // sheet keeps the plain four columns rather than printing everything twice. The
 // numbers per stage come from the standings route with the totals; a stage a
-// crew handed no card in for carries that stage's maximum — the standings
-// charge it, so the sheet prints it — marked with a * and explained in a
-// footnote under the table.
+// crew handed no card in for is scored as a blank card — the standings charge
+// it, so the sheet prints it — marked with a * and explained in a footnote
+// under the table.
 //
 // Nothing here is scored: it is `GET /api/rallies/[id]/standings` read onto
 // paper, so a printed sheet and the screen cannot disagree.
@@ -83,7 +83,7 @@ interface StandingsStage {
 }
 
 // What a crew scored on one stage — the three parts of that one sheet and its
-// own total, or the stage's maximum when they have no sheet for it
+// own total, or what a blank card costs when they have no sheet for it
 // (`missingSheet`).
 interface StageScore {
   totalPenalty: number;
@@ -652,11 +652,10 @@ export default function StandingsPrintPage({
                       </td>
                       {showStages &&
                         stages.map((stage) => {
-                          // No sheet for this stage is not a zero and not a
-                          // blank either: the standings charge the crew what the
-                          // stage can cost, so the numbers are printed like any
-                          // other and the sub-total carries a * saying where
-                          // they came from.
+                          // No sheet for this stage is not a zero: the
+                          // standings score the crew on it as a blank card, so
+                          // the numbers are printed like any other and the
+                          // sub-total carries a * saying where they came from.
                           const score = entry.stagePenalties?.[stage._id];
                           const cell = `py-0.5 px-0.5 text-right tabular-nums ${sizing.body}`;
 
@@ -708,7 +707,7 @@ export default function StandingsPrintPage({
                   stages.some((stage) => entry.stagePenalties?.[stage._id]?.missingSheet)
                 ) && (
                   <p className="mt-1 text-[0.6rem] text-gray-700">
-                    * Geen ingeleverde kaart voor die proef — maximale strafpunten.
+                    * Geen ingeleverde kaart voor die proef — geteld als blanco kaart.
                   </p>
                 )}
             </section>

@@ -139,7 +139,7 @@ export interface StandingsStage {
 
 // What one participant scored on one stage — the same three parts as their
 // rally total, taken from that one sheet. A stage a crew has **no** sheet for
-// carries the maximum that stage can cost (app/lib/stageMaximums.ts) with
+// carries what a blank card costs on it (app/lib/missingSheets.ts) with
 // `missingSheet` set: not being scored on a stage is not riding it for free.
 export interface StandingsStageScore {
   totalPenalty: number;
@@ -147,8 +147,8 @@ export interface StandingsStageScore {
   timePenalty: number;
   merkPenalty: number;
   disqualified: boolean;
-  // True when these are the stage's maximums rather than a card the crew
-  // handed in.
+  // True when there is no card behind these numbers: the stage was scored as a
+  // blank one.
   missingSheet: boolean;
 }
 
@@ -171,8 +171,8 @@ export interface StandingsEntry {
   // rally totals above are these added up; they are not recomputed from this.
   stagePenalties: Record<string, StandingsStageScore>;
   sheetsSubmitted: number;
-  // The stages of the rally this crew has no sheet for. Each of them is charged
-  // at the stage's maximum, and is part of the totals above.
+  // The stages of the rally this crew has no sheet for. Each of them is scored
+  // as a blank card, and is part of the totals above.
   missingSheets: number;
   // Set from the cards: the crew passed the finish of the last stage outside its
   // window, or had no finish time on it. It is one of the two ways to be a DNF —
