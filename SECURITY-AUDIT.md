@@ -1,4 +1,4 @@
-# Security Audit — ORC Points System
+# Security Audit — SARK Points System
 
 **Scope:** Next.js 15.3.1 (App Router), React 19, Mongoose 8 / MongoDB
 **Reviewed:** `middleware.ts`, `next.config.ts`, `app/api/**`, `app/lib/**`, `app/models/**`, all client components and pages, `Dockerfile`, `.env.local`, `COOLIFY.md`

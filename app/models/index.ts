@@ -1,4 +1,4 @@
-// Data models for the ORC rally points system.
+// Data models for the SARK rally points system.
 //
 // Structure:
 //   Rally  -> the top-level event an admin creates first

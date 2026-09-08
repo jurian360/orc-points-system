@@ -56,7 +56,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
             className="mx-auto h-20 w-20"
           />
           <h2 className="mt-4 text-center text-3xl font-extrabold text-gray-900">
-            ORC Points System
+            SARK Points System
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Sign in with your username and password
