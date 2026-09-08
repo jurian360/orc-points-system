@@ -1,4 +1,4 @@
-# ORC Points System
+# SARK Points System
 
 A Next.js 15 (App Router) app for scoring rally events, storing its data in
 MongoDB via Mongoose.

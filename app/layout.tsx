@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ORC Points System",
+  title: "SARK Points System",
   description: "Manage rallies, stages, and answer sheet scoring",
 };
 

@@ -4,9 +4,10 @@ Guidance for Claude Code (and other coding agents) working in this repository.
 
 ## What this project is
 
-**ORC Points System** — a web app for scoring **rally events** (SARK-style road
-rallies) on **penalty points** ("strafpunten"). It is a time-speed-distance
-rally: participants start a minute apart and have to hold their time schedule.
+**SARK Points System** — a web app for scoring **rally events** (SARK-style road
+rallies, run by the Surinaamse Auto Rally Klub) on **penalty points**
+("strafpunten"). It is a time-speed-distance rally: participants start a minute
+apart and have to hold their time schedule.
 Officials create a rally, add its stages with the correct answer key and the
 stage timetable, then type in each participant's paper control card. The app
 grades every sheet — letters and times — and keeps a live rally standing.

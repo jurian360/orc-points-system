@@ -6,7 +6,7 @@ export default function Home() {
       <div className="flex-grow flex items-center justify-center py-12">
         <div className="max-w-5xl w-full mx-auto px-6">
           <div className="text-center mb-12">
-            <h1 className="text-4xl font-bold text-gray-900 mb-4">ORC Points System</h1>
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">SARK Points System</h1>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
               Manage rallies, their stages and answer keys, and score participant answer sheets to
               rank the standings by total penalty points.
@@ -42,7 +42,7 @@ export default function Home() {
 
       <footer className="bg-gray-800 text-white py-6">
         <div className="max-w-5xl mx-auto px-6 text-center">
-          <p className="text-lg">ORC Points System &copy; {new Date().getFullYear()}</p>
+          <p className="text-lg">SARK Points System &copy; {new Date().getFullYear()}</p>
         </div>
       </footer>
     </div>
