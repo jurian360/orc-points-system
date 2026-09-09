@@ -362,14 +362,6 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
                 </td>
               </tr>
               <tr>
-                <td className="py-1 px-3 border-b border-r border-gray-300 text-sm font-semibold text-gray-800">
-                  Max strafpunten gemiste finish
-                </td>
-                <td className="py-1 px-3 border-b border-gray-300 text-right text-base font-bold text-gray-900">
-                  {config.missingFinishPenalty}
-                </td>
-              </tr>
-              <tr>
                 <td className="py-1 px-3 border-r border-gray-300 text-sm font-semibold text-gray-800">
                   Pauze na deze etappe
                 </td>
@@ -396,11 +388,7 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
               : config.finishOutOfWindowFlat
                 ? `Another stage of this route follows this one, but a blown VTC is charged a flat ${config.finishOutOfWindowPenalty} here, which is the whole cost — the break is not added on top.`
                 : `Another stage of this route follows this one, so a blown VTC costs its maximum plus the break (${config.finishOutOfWindowPenalty} + ${config.breakMinutes} = ${finishOutOfWindowCost(config, endsRoute)}).`}{' '}
-          {`A control with an IPT but no WPT was missed and costs its maximum as well: ${config.outOfWindowPenalty} for a GTC, ${
-            endsRoute
-              ? config.missingFinishPenalty
-              : `${config.missingFinishPenalty} + ${config.breakMinutes} = ${config.missingFinishPenalty + config.breakMinutes}`
-          } for the finish.`}
+          {`A control with an IPT but no WPT was missed, and missing a control is blowing it: it costs exactly the same — ${config.outOfWindowPenalty} for a GTC, ${finishOutOfWindowCost(config, endsRoute)} for the finish.`}
         </p>
       </div>
 

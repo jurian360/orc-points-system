@@ -298,7 +298,7 @@ calls the three functions a real sheet is scored by, with nothing to score.
   stage does not use stay free.
 - **The time column**: `scoreStageTimes` with no entries. Every control the
   stage uses is one the participant missed — a GTC costs its flat maximum, the
-  finish `missingFinishPenalty` plus the break after the stage — and the start
+  finish the VTC's maximum plus the break after the stage — and the start
   costs nothing, because it has no window. A missed control never moves the
   delta, so a stage nobody typed does not disturb the chain of the stages
   around it. Neither the crew's EQ nor the delta they carry in changes any of
@@ -412,25 +412,33 @@ minutes. Officials type the WPT; the delta is `WPT - IPT` in minutes.
    sheet; standings rank them behind everyone else). So is a participant with no
    finish time at all on that stage — a DNF, see the next rule.
 7. A row with no IPT 0 is not a checkpoint of that stage. A checkpoint that *is*
-   used but has no WPT is one the participant **missed**, and it costs its
-   maximum: a GTC the same flat maximum as a blown window (default 60), the
-   finish its own, higher one (`missingFinishPenalty`, default 90) plus the
-   break after the stage while another stage follows. Like a blown window it
-   **never moves the delta**, and the row is marked `missing` on the sheet so
-   the card shows it in red. A missed finish on the **last** stage is a **DNF**:
-   the participant never finished the rally, so they are disqualified as well as
-   charged the 90 points.
+   used but has no WPT is one the participant **missed**, and **missing a
+   control is blowing it**: it costs exactly what passing it outside its window
+   costs — the GTC's maximum for a GTC, the VTC's for the finish, the break and
+   the flat rule included. A crew who never came through a control did not keep
+   their time there any more than one who came through an hour late, and the
+   sport does not price the two differently; the finish had a separate
+   `missingFinishPenalty` until officials pointed that out. Like a blown window
+   it **never moves the delta**, and the row is still *marked* `missing` on the
+   sheet so the card and the WPT overview show `gemist` in red — the same
+   points, but an official can see that no time was recorded rather than one
+   that was too late. A missed finish on the **last** stage is a **DNF**: the
+   participant never finished the rally, so they are disqualified as well as
+   charged.
 8. The **start row has no window, so it has no maximum either**: an untimed start
    costs nothing and leaves the delta where it was. The start of the first stage
    is free in any case.
 
-Windows, the three maximums and the break live in `Stage.timeConfig` so an event
+Windows, the two maximums and the break live in `Stage.timeConfig` so an event
 can be run with different limits; `DEFAULT_TIME_CONFIG` holds the standard ones.
-**The maximums are split by control, not by what went wrong**: `outOfWindowPenalty`
-is the GTC's, `finishOutOfWindowPenalty` the VTC's, and `missingFinishPenalty`
-the finish nobody has a time for. `finishOutOfWindowCost` is the one place that
-reads a blown VTC's cost — the scoring and the stage form's maximum overview both
-call it, so they cannot read the flat flag differently.
+**The maximums are split by control and by nothing else**: `outOfWindowPenalty`
+is the GTC's and `finishOutOfWindowPenalty` is the VTC's, each covering both ways
+of losing that control — blown and missed. Splitting them by *what went wrong*
+instead is what produced a `missingFinishPenalty` that priced a missed finish
+differently from a blown one, which is not a distinction the sport makes.
+`finishOutOfWindowCost` is the one place that reads a VTC's cost — the scoring,
+the missed-control branch and the stage form's maximum overview all call it, so
+they cannot read the flat flag differently.
 
 ## Merk scoring rules (`app/lib/scoring.ts`)
 

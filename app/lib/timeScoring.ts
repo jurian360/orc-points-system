@@ -51,19 +51,24 @@
 //     disqualifies: blowing the finish of an intermediate route costs the
 //     maximum and no more, because the crew went on to ride the next leg;
 //   * a control the stage *does* use (it has an IPT 0) but that has no WPT is a
-//     control the participant missed, and it is charged like one: a GTC costs
-//     the same flat maximum (default 60), the finish costs its own, higher
-//     maximum (`missingFinishPenalty`, default 90) plus the break after the
-//     stage when another stage of the same route follows. Like a blown window it
-//     never moves the delta. A missed finish of the last stage *of the last
-//     route* is a DNF: the participant never finished the rally, so they are
-//     disqualified as well as charged. The start row has no window and so has no
-//     maximum either: an untimed start costs nothing and leaves the delta where
-//     it was.
+//     control the participant missed, and **missing a control is blowing it**:
+//     it costs exactly what passing it outside its window costs — the GTC's
+//     maximum for a GTC, the VTC's for the finish, break and flat rule
+//     included. A crew who never came through a control did not keep their
+//     time there any more than one who came through it an hour late, and the
+//     sport does not price the two differently. The row is still *marked*
+//     `missing`, so an official reading a card or the WPT overview sees that no
+//     time was recorded rather than a time that was too late. Like a blown
+//     window it never moves the delta. A missed finish of the last stage *of
+//     the last route* is a DNF: the participant never finished the rally, so
+//     they are disqualified as well as charged. The start row has no window and
+//     so has no maximum either: an untimed start costs nothing and leaves the
+//     delta where it was.
 //
-// The windows and the two maximums are stage settings, so the stage that closes
-// a route can be given its own closing window and its own missing-finish
-// penalty without either becoming a route-level setting.
+// The windows and the two maximums — the GTC's and the VTC's — are stage
+// settings, so the stage that closes a route can be given its own closing
+// window and its own VTC maximum without either becoming a route-level
+// setting.
 //
 // The windows, the maximum and the break are stage settings (`timeConfig`) so
 // an event can be run with different limits without touching this file.
@@ -107,10 +112,6 @@ export interface StageTimeConfig {
   // added on top of it. It changes nothing on a stage that ends its route,
   // which has no break behind it to charge.
   finishOutOfWindowFlat: boolean;
-  // Penalty for a finish with no WPT — a finish the participant missed. Higher
-  // than `outOfWindowPenalty`, and charged plus the break after the stage while
-  // this is not the last stage.
-  missingFinishPenalty: number;
 }
 
 export const DEFAULT_TIME_CONFIG: StageTimeConfig = {
@@ -127,7 +128,6 @@ export const DEFAULT_TIME_CONFIG: StageTimeConfig = {
   // fallback that actually matters on a stage keyed with other limits.
   finishOutOfWindowPenalty: 60,
   finishOutOfWindowFlat: false,
-  missingFinishPenalty: 90,
 };
 
 // A stage's time key row: the ideal passage time of participant 0.
@@ -353,11 +353,9 @@ export function scoreStageTimes({
       if (!free && kind === 'gtc') {
         missingStrafp = config.outOfWindowPenalty;
       } else if (!free && kind === 'finish') {
-        // The break after the stage is lost with the finish, exactly as it is
-        // when the finish is passed outside its window — unless nothing follows
-        // this stage in its own leg, because then there is no break to lose.
-        missingStrafp =
-          config.missingFinishPenalty + (endsLeg ? 0 : config.breakMinutes);
+        // Missing the VTC is blowing it: the same maximum, and the same break
+        // behind it, as a finish passed outside its window.
+        missingStrafp = finishOutOfWindowCost(config, endsLeg);
         if (endsRally) {
           // Never finished the rally: a DNF, ranked with the participants who
           // came in outside the finish window. The maximum is still charged so
@@ -547,17 +545,8 @@ export function maxStageTimePenalty(
     const kind = timeRowKind(row.rowNumber);
     if (kind === 'start') return total;
     if (kind === 'finish') {
-      // A finish can cost the blown-VTC maximum or, when it was missed
-      // altogether, the (usually higher) missing-finish maximum. Only the
-      // missing one always loses the break on top: a blown VTC charged as a
-      // flat amount already has it in the number.
-      return (
-        total +
-        Math.max(
-          finishOutOfWindowCost(config, endsRoute),
-          config.missingFinishPenalty + (endsRoute ? 0 : config.breakMinutes)
-        )
-      );
+      // Blown or missed, a VTC costs the same: one maximum to add here.
+      return total + finishOutOfWindowCost(config, endsRoute);
     }
     // A GTC costs the same maximum whether it was blown or missed.
     return total + config.outOfWindowPenalty;

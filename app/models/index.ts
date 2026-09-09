@@ -188,9 +188,6 @@ const StageSchema = new mongoose.Schema({
     // True when `finishOutOfWindowPenalty` is the whole cost of a blown VTC (a
     // flat 150 or 180), so the break after the stage is not added on top.
     finishOutOfWindowFlat: { type: Boolean, default: false },
-    // A finish with no WPT at all — the participant missed it — costs more than
-    // a blown window, plus the break when another stage follows.
-    missingFinishPenalty: { type: Number, default: 90 },
   },
   // Merk key of the stage, 6 rows: one correct letter and one explicitly false
   // letter per row. The merk column is scored vertically — the column as a whole

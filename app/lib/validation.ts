@@ -244,7 +244,6 @@ export function parseTimeConfig(value: unknown): StageTimeConfig {
       outOfWindowPenalty
     ),
     finishOutOfWindowFlat: raw.finishOutOfWindowFlat === true,
-    missingFinishPenalty: field('missingFinishPenalty', MAX_PENALTY),
   };
 }
 
