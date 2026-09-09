@@ -213,46 +213,16 @@ const stageSizing = (stageCount: number) => {
   return { col: 'w-10', body: 'text-[10px]', head: 'text-[10px]' };
 };
 
-// A routed sheet reads at three levels: the ORC's, Tijd, Diversen and subtotal
-// per stage, the same four per route, and the rally total behind them.
+// A routed sheet is the per-stage sheet with the legs written over it: the
+// ORC's, Tijd, Diversen and subtotal per stage, the stages grouped under the
+// route they are ridden in, and the rally total behind them.
 //
-// **Only a route that holds more than one stage gets the per-stage four.** A
-// one-stage route's four numbers *are* its route total's, so printing both would
-// print everything twice — the same reason a one-stage rally keeps the plain four
-// columns instead of adding a per-stage group. It is also what makes the sheet
-// fit: a rally of four stages over three routes prints 24 numeric columns this
-// way and 32 without the rule.
-//
-// Keyed on how many numeric columns the sheet holds rather than on the stage
-// count, because that is what the paper pays for. `stageSizing` above is left
-// exactly as it is: re-keying it would shrink a two-stage sheet from `w-10` to
-// `w-8`, a visible change on the eight rallies in ten that never see a route.
-const routeSizing = (detailedStages: number, routeCount: number, withStages: boolean) => {
-  const numbers = (withStages ? 4 * detailedStages : 0) + 4 * routeCount + 4;
-  if (numbers >= 30) return { stage: 'w-6', total: 'w-7', body: 'text-[8px]', head: 'text-[7px]' };
-  if (numbers >= 26) return { stage: 'w-6', total: 'w-8', body: 'text-[8px]', head: 'text-[7px]' };
-  if (numbers >= 20) return { stage: 'w-7', total: 'w-8', body: 'text-[8px]', head: 'text-[7px]' };
-  if (numbers >= 14) return { stage: 'w-7', total: 'w-9', body: 'text-[9px]', head: 'text-[8px]' };
-  return { stage: 'w-8', total: 'w-10', body: 'text-[10px]', head: 'text-[9px]' };
-};
-
-// A4 landscape less the 14 mm gutters, at 96 dpi, and the room two wrapped crew
-// names need. When the numbers leave less than that, the per-stage columns come
-// off and the sheet prints the four numbers per route: a result sheet a reader
-// has to hold beside another one to add up a crew is worse than one without the
-// per-stage breakdown, and that breakdown is on the crew's own page anyway.
-const PAPER_WIDTH = 1016;
-const MIN_NAME_WIDTH = 160;
-// Width in px of a Tailwind width class, for the fit test above.
-const COL_WIDTH: Record<string, number> = {
-  'w-6': 24,
-  'w-7': 28,
-  'w-8': 32,
-  'w-9': 36,
-  'w-10': 40,
-  'w-11': 44,
-  'w-12': 48,
-};
+// **It carries no route subtotal.** A leg's total is its stages added up, and an
+// official reading the sheet wants the proeven; the leg's own number is what the
+// per-route ranking sheets are for, where it is the thing being ranked. Leaving
+// it off is also what keeps the sheet the same width as the per-stage sheet —
+// `4 x stages + 4` numeric columns either way — so `stageSizing` sizes both and
+// the routes cost one header row rather than a column.
 
 // Print rules that Tailwind has no utility for: the paper size itself, the page
 // break between two sheets and the header row that repeats when a sheet runs
@@ -301,11 +271,6 @@ export default function StandingsPrintPage({
   const [standings, setStandings] = useState<StandingsEntry[]>([]);
   const [stages, setStages] = useState<StandingsStage[]>([]);
   const [routes, setRoutes] = useState<StandingsRouteRef[]>([]);
-  // Whether a routed sheet prints a column per stage beside the four per route.
-  // Defaults to whether they fit (see `fitsStageColumns`); the official can
-  // force it either way, because on this page every preselection is only that
-  // and the controls are what decide.
-  const [stageColumns, setStageColumns] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // What to print. The dashboard passes its own filter along — `?class=` for a
@@ -537,50 +502,12 @@ export default function StandingsPrintPage({
   const showStages = !showRoutes && stages.length > 1;
   const sizing = useMemo(() => stageSizing(stages.length), [stages.length]);
 
-  // The stages worth breaking out: the ones in a route that holds more than one.
-  // A one-stage route's four numbers are its route total's, so it is left with
-  // the route total alone.
-  const detailedStageCount = useMemo(
-    () =>
-      routeGroups.reduce(
-        (total, group) => total + (group.stages.length > 1 ? group.stages.length : 0),
-        0
-      ),
-    [routeGroups]
-  );
-
-  // Do the per-stage columns fit beside the four per route? The fixed columns
-  // are the place, the EQ and the class; what is left after the numbers is the
-  // two crew names'.
-  const fitsStageColumns = useMemo(() => {
-    if (!showRoutes || detailedStageCount === 0) return false;
-    const trial = routeSizing(detailedStageCount, routeGroups.length, true);
-    const numeric =
-      4 * detailedStageCount * COL_WIDTH[trial.stage] +
-      (4 * routeGroups.length + 4) * COL_WIDTH[trial.total];
-    return PAPER_WIDTH - 36 - 32 - 32 - numeric >= MIN_NAME_WIDTH;
-  }, [showRoutes, detailedStageCount, routeGroups.length]);
-
-  // Nothing to break out means nothing to print, whatever the checkbox says.
-  const showStageColumns =
-    detailedStageCount > 0 && (stageColumns === null ? fitsStageColumns : stageColumns);
-  const routeCols = useMemo(
-    () => routeSizing(detailedStageCount, routeGroups.length, showStageColumns),
-    [detailedStageCount, routeGroups.length, showStageColumns]
-  );
-
-  // Whether this leg prints its stages. Asked per route, because a rally can
-  // hold a one-stage leg and a three-stage leg at once.
-  const showsStages = (group: { stages: unknown[] }) =>
-    showStageColumns && group.stages.length > 1;
-
-  // How many columns one leg contributes: the four numbers per stage when the
-  // leg prints them, plus the four the leg itself cost. The `<colgroup>`, the
-  // three header rows and the body all have to agree on this — a header row
-  // that does not add up is what shears a printed table sideways — so the
-  // heading spans read it from here rather than restating the arithmetic.
-  const routeColumns = (group: { stages: unknown[] }) =>
-    (showsStages(group) ? 4 * group.stages.length : 0) + 4;
+  // How many columns one leg contributes: four per stage of it. The
+  // `<colgroup>`, the three header rows and the body all have to agree on this
+  // — a header row that does not add up is what shears a printed table sideways
+  // — so the route heading's span reads it from here rather than restating the
+  // arithmetic.
+  const routeColumns = (group: { stages: unknown[] }) => 4 * group.stages.length;
 
   const printedOn = useMemo(
     () =>
@@ -643,15 +570,10 @@ export default function StandingsPrintPage({
           )}
           {showRoutes && (
             <p className="text-gray-700 text-base mt-2">
-              {stages.length} stages over {routeGroups.length} routes, so the rally sheets show
-              {showStageColumns ? ' the ORC’s, Tijd, Diversen and subtotal per stage,' : ''} the
-              ORC&apos;s, Tijd, Diversen and subtotal per route, and the rally total behind them.{' '}
-              {detailedStageCount === 0
-                ? 'Every route holds one stage, so its route total is that stage’s score and there is nothing more to break out.'
-                : !showStageColumns && !fitsStageColumns
-                  ? 'The four numbers per stage do not fit on A4 beside them; a crew’s own stages are on their card page.'
-                  : ''}{' '}
-              Each route can also be printed as a ranking of its own.
+              {stages.length} stages over {routeGroups.length} routes, so the rally sheets show the
+              ORC&apos;s, Tijd, Diversen and subtotal per stage, grouped under the route it is
+              ridden in, with the rally total behind them. What a whole route cost is what the
+              per-route ranking sheets rank on — each route can be printed as a ranking of its own.
             </p>
           )}
           {routeGroups.length > 0 && !everyStageRouted && (
@@ -714,23 +636,6 @@ export default function StandingsPrintPage({
             </select>
           </div>
 
-          {/* Only worth offering when a route holds more than one stage: a
-              one-stage leg's four numbers are its route total's. */}
-          {showRoutes && detailedStageCount > 0 && (
-            <label className="flex items-center gap-2 text-base text-gray-700">
-              <input
-                type="checkbox"
-                checked={showStageColumns}
-                onChange={(event) => setStageColumns(event.target.checked)}
-                className="h-4 w-4"
-              />
-              Kolommen per proef
-              {!fitsStageColumns && (
-                <span className="text-sm text-amber-700">(does not fit on A4)</span>
-              )}
-            </label>
-          )}
-
           <div className="flex items-center gap-3">
             <span className="text-base text-gray-700">
               {printedSheets.length} sheet{printedSheets.length === 1 ? '' : 's'} ·{' '}
@@ -768,16 +673,9 @@ export default function StandingsPrintPage({
 
           // The fixed left-hand columns span every header row above the numbers,
           // so their label sits beside the sub-headings of the groups rather
-          // than above them. Three rows when a routed sheet also prints a column
-          // per stage (route → Proeven/Routetotaal → the numbers), two when it
-          // prints the four per route alone, and two on the per-stage sheet.
-          const headSpan = sheetGroupsByRoute
-            ? showStageColumns
-              ? 3
-              : 2
-            : sheetGroupsByStage
-              ? 2
-              : 1;
+          // than above them. Three rows on a routed sheet (route → stage → the
+          // numbers), two on the per-stage sheet, one on the plain one.
+          const headSpan = sheetGroupsByRoute ? 3 : sheetGroupsByStage ? 2 : 1;
           const fixedHeaders = (
             <>
               <th
@@ -893,42 +791,38 @@ export default function StandingsPrintPage({
                         <col className={sizing.col} />
                       </React.Fragment>
                     ))}
-                  {/* Per route: the four numbers per stage of it, when it holds
-                      more than one, and then the four the route cost. */}
+                  {/* Per route: the four numbers per stage of it. Same widths
+                      as the per-stage sheet — the routes cost a header row, not
+                      a column. */}
                   {sheetGroupsByRoute &&
                     routeGroups.map((group) => (
                       <React.Fragment key={group.route?._id || group.position}>
-                        {showsStages(group) &&
-                          group.stages.map((stage) => (
-                            <React.Fragment key={stage._id}>
-                              <col className={routeCols.stage} />
-                              <col className={routeCols.stage} />
-                              <col className={routeCols.stage} />
-                              <col className={routeCols.stage} />
-                            </React.Fragment>
-                          ))}
-                        <col className={routeCols.total} />
-                        <col className={routeCols.total} />
-                        <col className={routeCols.total} />
-                        <col className={routeCols.total} />
+                        {group.stages.map((stage) => (
+                          <React.Fragment key={stage._id}>
+                            <col className={sizing.col} />
+                            <col className={sizing.col} />
+                            <col className={sizing.col} />
+                            <col className={sizing.col} />
+                          </React.Fragment>
+                        ))}
                       </React.Fragment>
                     ))}
-                  <col className={sheetGroupsByRoute ? routeCols.total : 'w-12'} />
-                  <col className={sheetGroupsByRoute ? routeCols.total : 'w-12'} />
-                  <col className={sheetGroupsByRoute ? routeCols.total : 'w-12'} />
-                  <col className={sheetGroupsByRoute ? routeCols.total : 'w-12'} />
+                  <col className="w-12" />
+                  <col className="w-12" />
+                  <col className="w-12" />
+                  <col className="w-12" />
                 </colgroup>
                 <thead>
                   {sheetGroupsByRoute ? (
                     <>
-                      {/* One heading per leg, over what that leg cost. */}
+                      {/* One heading per leg, over the stages ridden in it. */}
                       <tr>
                         {fixedHeaders}
                         {routeGroups.map((group, index) => (
                           <th
                             key={group.route?._id || group.position}
                             colSpan={routeColumns(group)}
-                            className={`py-0.5 px-1 text-center font-bold uppercase tracking-wide break-words border-l-2 border-gray-800 ${routeCols.head}`}
+                            className={`py-0.5 px-1 text-center font-bold uppercase tracking-wide break-words border-l-2 border-gray-800 ${sizing.head}`}
                           >
                             {index + 1}. {group.route ? group.route.name : 'Zonder route'}
                           </th>
@@ -936,106 +830,60 @@ export default function StandingsPrintPage({
                         <th
                           colSpan={4}
                           rowSpan={headSpan - 1}
-                          className={`py-0.5 px-1 text-center align-bottom font-bold uppercase tracking-wide border-l-2 border-gray-800 ${routeCols.head}`}
+                          className={`py-0.5 px-1 text-center align-bottom font-bold uppercase tracking-wide border-l-2 border-gray-800 ${sizing.head}`}
                         >
                           Eindtotaal
                         </th>
                       </tr>
-                      {showStageColumns && (
-                        <tr>
-                          {routeGroups.map((group) => (
-                            <React.Fragment key={group.route?._id || group.position}>
-                              {/* The stage's own name over its four numbers.
-                                  Four columns is room enough for it, so the
-                                  sheet needs no legend to say which is which. */}
-                              {showsStages(group) &&
-                                group.stages.map((stage, index) => (
-                                  <th
-                                    key={stage._id}
-                                    colSpan={4}
-                                    className={`py-0.5 px-1 text-center font-bold uppercase tracking-wide break-words ${
-                                      index === 0
-                                        ? 'border-l-2 border-gray-800'
-                                        : 'border-l border-gray-500'
-                                    } ${routeCols.head}`}
-                                  >
-                                    {stage.name}
-                                  </th>
-                                ))}
+                      {/* The stages of each leg, each over the four it cost */}
+                      <tr>
+                        {routeGroups.flatMap((group) =>
+                          group.stages.map((stage, index) => (
+                            <th
+                              key={stage._id}
+                              colSpan={4}
+                              className={`py-0.5 px-1 text-center font-bold uppercase tracking-wide break-words ${
+                                index === 0
+                                  ? 'border-l-2 border-gray-800'
+                                  : 'border-l border-gray-500'
+                              } ${sizing.head}`}
+                            >
+                              {stage.name}
+                            </th>
+                          ))
+                        )}
+                      </tr>
+                      <tr className="border-b-2 border-gray-800">
+                        {routeGroups.flatMap((group) =>
+                          group.stages.map((stage, index) => (
+                            <React.Fragment key={stage._id}>
                               <th
-                                colSpan={4}
-                                className={`py-0.5 px-1 text-center font-bold uppercase tracking-wide ${
-                                  showsStages(group)
-                                    ? 'border-l border-gray-500'
-                                    : 'border-l-2 border-gray-800'
-                                } ${routeCols.head}`}
+                                className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${
+                                  index === 0
+                                    ? 'border-l-2 border-gray-800'
+                                    : 'border-l border-gray-500'
+                                } ${sizing.head}`}
                               >
-                                Routetotaal
+                                ORC
+                              </th>
+                              <th
+                                className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${sizing.head}`}
+                              >
+                                Tijd
+                              </th>
+                              <th
+                                className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${sizing.head}`}
+                              >
+                                Div.
+                              </th>
+                              <th
+                                className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${sizing.head}`}
+                              >
+                                Tot.
                               </th>
                             </React.Fragment>
-                          ))}
-                        </tr>
-                      )}
-                      <tr className="border-b-2 border-gray-800">
-                        {routeGroups.map((group) => (
-                          <React.Fragment key={group.route?._id || group.position}>
-                            {/* The same four numbers per stage, under the
-                                stage's own name in the row above. */}
-                            {showsStages(group) &&
-                              group.stages.map((stage, index) => (
-                                <React.Fragment key={stage._id}>
-                                  <th
-                                    className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${
-                                      index === 0
-                                        ? 'border-l-2 border-gray-800'
-                                        : 'border-l border-gray-500'
-                                    } ${routeCols.head}`}
-                                  >
-                                    ORC
-                                  </th>
-                                  <th
-                                    className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${routeCols.head}`}
-                                  >
-                                    Tijd
-                                  </th>
-                                  <th
-                                    className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${routeCols.head}`}
-                                  >
-                                    Div.
-                                  </th>
-                                  <th
-                                    className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${routeCols.head}`}
-                                  >
-                                    Tot.
-                                  </th>
-                                </React.Fragment>
-                              ))}
-                            <th
-                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${
-                                showsStages(group)
-                                  ? 'border-l border-gray-500'
-                                  : 'border-l-2 border-gray-800'
-                              } ${routeCols.head}`}
-                            >
-                              ORC
-                            </th>
-                            <th
-                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${routeCols.head}`}
-                            >
-                              Tijd
-                            </th>
-                            <th
-                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${routeCols.head}`}
-                            >
-                              Div.
-                            </th>
-                            <th
-                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${routeCols.head}`}
-                            >
-                              Tot.
-                            </th>
-                          </React.Fragment>
-                        ))}
+                          ))
+                        )}
                         {totalHeaders}
                       </tr>
                     </>
@@ -1121,73 +969,39 @@ export default function StandingsPrintPage({
                         {entry.driverName || '—'}
                       </td>
                       {sheetGroupsByRoute &&
-                        routeGroups.map((group) => {
-                          const score = group.route
-                            ? routeTotalsByEq.get(entry.eq)?.[group.route._id]
-                            : undefined;
-                          const cell = `py-0.5 px-0.5 text-right tabular-nums ${routeCols.body}`;
+                        routeGroups.flatMap((group) =>
+                          group.stages.map((stage, index) => {
+                            // No card for a stage is not a zero: the standings
+                            // score the crew on it as a blank card, and the *
+                            // says where the number came from.
+                            const score = entry.stagePenalties?.[stage._id];
+                            const cell = `py-0.5 px-0.5 text-right tabular-nums ${sizing.body}`;
+                            const edge =
+                              index === 0
+                                ? 'border-l-2 border-gray-800'
+                                : 'border-l border-gray-500';
 
-                          return (
-                            <React.Fragment key={group.route?._id || group.position}>
-                              {showsStages(group) &&
-                                group.stages.map((stage, index) => {
-                                  // No card for a stage is not a zero: the
-                                  // standings score the crew on it as a blank
-                                  // card, and the * says where the number came
-                                  // from.
-                                  const stageScore = entry.stagePenalties?.[stage._id];
-                                  const edge =
-                                    index === 0
-                                      ? 'border-l-2 border-gray-800'
-                                      : 'border-l border-gray-500';
-                                  return (
-                                    <React.Fragment key={stage._id}>
-                                      <td className={`${cell} ${edge}`}>
-                                        {stageScore ? stageScore.orcPenalty : ''}
-                                      </td>
-                                      <td className={cell}>
-                                        {stageScore ? stageScore.timePenalty : ''}
-                                      </td>
-                                      <td className={cell}>
-                                        {stageScore ? stageScore.merkPenalty : ''}
-                                      </td>
-                                      <td className={`${cell} font-semibold`}>
-                                        {stageScore ? (
-                                          <>
-                                            {stageScore.totalPenalty}
-                                            {stageScore.missingSheet ? '*' : ''}
-                                          </>
-                                        ) : (
-                                          <span className="text-gray-500">—</span>
-                                        )}
-                                      </td>
-                                    </React.Fragment>
-                                  );
-                                })}
-                              <td
-                                className={`${cell} ${
-                                  showsStages(group)
-                                    ? 'border-l border-gray-500'
-                                    : 'border-l-2 border-gray-800'
-                                }`}
-                              >
-                                {score ? score.orcPenalty : ''}
-                              </td>
-                              <td className={cell}>{score ? score.timePenalty : ''}</td>
-                              <td className={cell}>{score ? score.merkPenalty : ''}</td>
-                              <td className={`${cell} font-semibold`}>
-                                {score ? (
-                                  <>
-                                    {score.totalPenalty}
-                                    {score.missingSheets > 0 ? '*' : ''}
-                                  </>
-                                ) : (
-                                  <span className="text-gray-500">—</span>
-                                )}
-                              </td>
-                            </React.Fragment>
-                          );
-                        })}
+                            return (
+                              <React.Fragment key={stage._id}>
+                                <td className={`${cell} ${edge}`}>
+                                  {score ? score.orcPenalty : ''}
+                                </td>
+                                <td className={cell}>{score ? score.timePenalty : ''}</td>
+                                <td className={cell}>{score ? score.merkPenalty : ''}</td>
+                                <td className={`${cell} font-semibold`}>
+                                  {score ? (
+                                    <>
+                                      {score.totalPenalty}
+                                      {score.missingSheet ? '*' : ''}
+                                    </>
+                                  ) : (
+                                    <span className="text-gray-500">—</span>
+                                  )}
+                                </td>
+                              </React.Fragment>
+                            );
+                          })
+                        )}
                       {sheetGroupsByStage &&
                         stages.map((stage) => {
                           // No sheet for this stage is not a zero: the
