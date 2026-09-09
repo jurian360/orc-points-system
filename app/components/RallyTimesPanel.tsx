@@ -34,9 +34,18 @@ const CREW_COLUMNS = {
   crew: 'w-[168px] min-w-[168px] left-[116px]',
 };
 
-// Height of the stage row of the header, which the control row sticks to.
-const STAGE_ROW = 'h-8';
-const CONTROL_ROW_TOP = 'top-8';
+// The header rows are frozen one under the other, so every vertical offset is
+// the sum of the heights above it — the same rule the crew columns follow
+// horizontally. Changing a height means changing the offsets after it.
+//
+// The route row is only drawn on a rally that has routes; without one the stage
+// row sits at the top and the control row at 32px, which is where they have
+// always been.
+const ROUTE_ROW = 'h-7'; // 28px
+const STAGE_ROW = 'h-8'; // 32px
+const STAGE_ROW_TOP_WITH_ROUTES = 'top-[28px]';
+const CONTROL_ROW_TOP = 'top-8'; // 32px
+const CONTROL_ROW_TOP_WITH_ROUTES = 'top-[60px]'; // 28 + 32
 
 // The WPT overview of a rally: every control of every stage, with the time each
 // crew passed it.
@@ -122,6 +131,7 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
       .map((stage: RallyTimeStage, index) => ({
         stage,
         position: index + 1,
+        routeId: stage.routeId || '',
         columns: stage.columns.filter(
           (column) =>
             column.active || stage.entries.some((entry) => entry.cells[column.rowNumber - 1]?.wpt)
@@ -133,6 +143,38 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
       }))
       .filter(({ stage }) => !stageFilter || stage._id === stageFilter);
   }, [data, stageFilter]);
+
+  // Memoised because `routeBlocks` depends on it: a fresh `[]` every render
+  // would recompute the header blocks on every render.
+  const routes = useMemo(() => data?.routes || [], [data]);
+  const hasRoutes = routes.length > 0;
+
+  // One header block per leg, over the stages of it that are actually on screen.
+  // A route whose stages are all filtered out gets no block at all — a `<th>`
+  // spanning nothing is not valid. Empty on a rally with no routes, which is
+  // what keeps the header at the two rows it has always had.
+  const routeBlocks = useMemo(() => {
+    if (!hasRoutes) return [];
+
+    const blocks: { key: string; name: string; position: number; span: number }[] = [];
+    groups.forEach((group) => {
+      const previous = blocks[blocks.length - 1];
+      // The stages arrive in running order, so a leg is a run of them: a block
+      // ends where the route id changes.
+      if (previous && previous.key === group.routeId) {
+        previous.span += group.columns.length + 1;
+        return;
+      }
+      const index = routes.findIndex((route) => route._id === group.routeId);
+      blocks.push({
+        key: group.routeId,
+        name: index >= 0 ? routes[index].name : 'Zonder route',
+        position: index + 1,
+        span: group.columns.length + 1,
+      });
+    });
+    return blocks;
+  }, [groups, routes, hasRoutes]);
 
   // The same filter over the whole grid: a control is checked for one crew, or
   // for one class, across every stage at once.
@@ -146,6 +188,40 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
       return crewLabel(details).toLowerCase().includes(term);
     });
   }, [eqs, detailsByEq, search, classFilter]);
+
+  // The crew columns span every header row, and the control row is frozen under
+  // whatever is above it.
+  const crewRowSpan = hasRoutes ? 3 : 2;
+  const stageRowTop = hasRoutes ? STAGE_ROW_TOP_WITH_ROUTES : 'top-0';
+  const controlRowTop = hasRoutes ? CONTROL_ROW_TOP_WITH_ROUTES : CONTROL_ROW_TOP;
+
+  // One stage of the header. Rendered in the first row on a rally with no
+  // routes and in the second on one with them, so it is written once.
+  const renderStageHeader = ({
+    stage,
+    position,
+    columns,
+    withTimes,
+  }: (typeof groups)[number]) => (
+    <th
+      key={stage._id}
+      colSpan={columns.length + 1}
+      className={`sticky ${stageRowTop} z-20 ${STAGE_ROW} bg-gray-200 px-2 text-left text-sm font-semibold text-gray-800 whitespace-nowrap border-b border-l-2 border-gray-300`}
+    >
+      <Link
+        href={`/time-import?rallyId=${rallyId}&stageId=${stage._id}`}
+        className="hover:underline"
+        title="Import the times of a control of this stage"
+      >
+        <span className="text-gray-500">{position}.</span> {stage.name}
+      </Link>
+      <span className="ml-2 text-xs font-normal text-gray-600">
+        {columns.length === 0
+          ? 'no timetable yet'
+          : `${columns.length} controls · ${withTimes}/${stage.entries.length} with a time`}
+      </span>
+    </th>
+  );
 
   const renderCell = (cell: RallyTimeCell | undefined, active: boolean, hasSheet: boolean) => {
     if (!cell || (!cell.wpt && !cell.missing)) {
@@ -215,9 +291,11 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
         <div>
           <h2 className="text-lg font-semibold text-gray-800">Times (WPT)</h2>
           <p className="text-gray-600 text-sm mt-0.5">
-            One row per crew, the stages side by side in running order — every control, START and
-            FINISH included. Red was outside its window, amber sits on a row with no IPT 0. To
-            change a time, correct the sheet or import the control again.
+            One row per crew, the stages side by side in running order{
+              hasRoutes ? ', grouped by route' : ''
+            } — every control, START and FINISH included. Red was outside its window, amber sits
+            on a row with no IPT 0. To change a time, correct the sheet or import the control
+            again.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -249,11 +327,26 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
             className="px-3 py-1.5 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All stages</option>
-            {(data?.stages || []).map((stage, index) => (
-              <option key={stage._id} value={stage._id}>
-                {index + 1}. {stage.name}
-              </option>
-            ))}
+            {/* Grouped under their route when the rally has them, so the list
+                reads the way the grid does. `<optgroup>` is the native
+                primitive and disappears entirely without routes. */}
+            {hasRoutes
+              ? routes.map((route, routeIndex) => (
+                  <optgroup key={route._id} label={`${routeIndex + 1}. ${route.name}`}>
+                    {(data?.stages || [])
+                      .filter((stage) => (stage.routeId || '') === route._id)
+                      .map((stage, index) => (
+                        <option key={stage._id} value={stage._id}>
+                          {index + 1}. {stage.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))
+              : (data?.stages || []).map((stage, index) => (
+                  <option key={stage._id} value={stage._id}>
+                    {index + 1}. {stage.name}
+                  </option>
+                ))}
           </select>
           <select
             value={detail}
@@ -303,44 +396,38 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
                   import. */}
               <tr>
                 <th
-                  rowSpan={2}
+                  rowSpan={crewRowSpan}
                   className={`sticky top-0 z-30 ${CREW_COLUMNS.eq} bg-gray-100 px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-gray-300`}
                 >
                   EQ
                 </th>
                 <th
-                  rowSpan={2}
+                  rowSpan={crewRowSpan}
                   className={`sticky top-0 z-30 ${CREW_COLUMNS.classification} bg-gray-100 px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-gray-300`}
                 >
                   Class
                 </th>
                 <th
-                  rowSpan={2}
+                  rowSpan={crewRowSpan}
                   className={`sticky top-0 z-30 ${CREW_COLUMNS.crew} bg-gray-100 px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-r-2 border-gray-300`}
                 >
                   Crew
                 </th>
-                {groups.map(({ stage, position, columns, withTimes }) => (
-                  <th
-                    key={stage._id}
-                    colSpan={columns.length + 1}
-                    className={`sticky top-0 z-20 ${STAGE_ROW} bg-gray-200 px-2 text-left text-sm font-semibold text-gray-800 whitespace-nowrap border-b border-l-2 border-gray-300`}
-                  >
-                    <Link
-                      href={`/time-import?rallyId=${rallyId}&stageId=${stage._id}`}
-                      className="hover:underline"
-                      title="Import the times of a control of this stage"
-                    >
-                      <span className="text-gray-500">{position}.</span> {stage.name}
-                    </Link>
-                    <span className="ml-2 text-xs font-normal text-gray-600">
-                      {columns.length === 0
-                        ? 'no timetable yet'
-                        : `${columns.length} controls · ${withTimes}/${stage.entries.length} with a time`}
-                    </span>
-                  </th>
-                ))}
+                {/* On a rally ridden in legs this row is the legs, and the
+                    stages move down a row under them. */}
+                {hasRoutes
+                  ? routeBlocks.map((block) => (
+                      <th
+                        key={`route-${block.key}`}
+                        colSpan={block.span}
+                        className={`sticky top-0 z-20 ${ROUTE_ROW} bg-gray-300 px-2 text-left text-sm font-bold text-gray-900 whitespace-nowrap border-b border-l-2 border-gray-400`}
+                      >
+                        <span className="text-gray-600">{block.position}.</span> {block.name}
+                      </th>
+                    ))
+                  : groups.map(renderStageHeader)}
               </tr>
+              {hasRoutes && <tr>{groups.map(renderStageHeader)}</tr>}
               {/* The controls of each stage, headed with the IPT 0 they are
                   measured against: every crew's own ideal time is it plus their
                   EQ number. */}
@@ -349,7 +436,7 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
                   ...columns.map((column, index) => (
                     <th
                       key={`${stage._id}-${column.rowNumber}`}
-                      className={`sticky ${CONTROL_ROW_TOP} z-20 bg-gray-100 px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap border-b border-gray-300 ${
+                      className={`sticky ${controlRowTop} z-20 bg-gray-100 px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap border-b border-gray-300 ${
                         index === 0 ? 'border-l-2' : ''
                       }`}
                     >
@@ -361,7 +448,7 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
                   )),
                   <th
                     key={`${stage._id}-tijd`}
-                    className={`sticky ${CONTROL_ROW_TOP} z-20 bg-gray-100 px-2 py-1 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-gray-300 ${
+                    className={`sticky ${controlRowTop} z-20 bg-gray-100 px-2 py-1 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-gray-300 ${
                       columns.length === 0 ? 'border-l-2' : ''
                     }`}
                     title="The time penalty this stage cost the crew"

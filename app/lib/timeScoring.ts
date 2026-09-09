@@ -21,10 +21,13 @@
 //
 // Scoring is on the *change* of the delta, not on the delta itself:
 //
-//   * the delta starts at 0 at the start of the rally;
-//   * the start of the *first* stage is free: the rally begins there, so it
-//     costs nothing and does not move the delta. Every other control, the start
-//     of a later stage included, is scored;
+//   * the delta starts at 0 at the start of every **route**, and keeps running
+//     across the stages inside it. A rally with no routes is one route holding
+//     every stage, so there the delta starts at 0 once and runs to the last
+//     stage — which is what this file always did (app/lib/routes.ts);
+//   * the start of the first stage *of a route* is free: the leg begins there,
+//     so it costs nothing and does not move the delta. Every other control, the
+//     start of a later stage of the same route included, is scored;
 //   * each control costs 1 penalty point per minute the delta moved since the
 //     previous control — arriving +5 costs 5, and then dropping back from +5 to
 //     +3 costs another 2 (the participant has to *keep* their delta, not undo
@@ -32,22 +35,30 @@
 //   * a GTC outside its window (default 15 minutes early / 30 minutes late)
 //     costs a flat maximum (default 60) and the running delta reverts to the
 //     last valid one — a control passed outside its window never moves it;
-//   * the finish of a stage that is followed by another stage costs, when it is
-//     outside its window, that same maximum *plus* the length of the break after
-//     the stage, because the break itself varies per stage;
+//   * the finish of a stage that is followed by another stage *of the same
+//     route* costs, when it is outside its window, that same maximum *plus* the
+//     length of the break after the stage, because the break itself varies per
+//     stage. The finish of a stage that **ends its route** carries no break: the
+//     next leg re-starts the crew anyway, so there is nothing to carry into it;
 //   * the finish of the last stage has a wider window (default 15 early / 60
 //     late); outside it — and when it has no time at all, a DNF — the
-//     participant is disqualified;
+//     participant is disqualified. **Only the last stage of the last route**
+//     disqualifies: blowing the finish of an intermediate route costs the
+//     maximum and no more, because the crew went on to ride the next leg;
 //   * a control the stage *does* use (it has an IPT 0) but that has no WPT is a
 //     control the participant missed, and it is charged like one: a GTC costs
 //     the same flat maximum (default 60), the finish costs its own, higher
 //     maximum (`missingFinishPenalty`, default 90) plus the break after the
-//     stage when another stage follows. Like a blown window it never moves the
-//     delta. A missed finish of the *last* stage is a DNF: the participant
-//     never finished the rally, so they are disqualified as well as charged.
-//     The start row has no window and so has no maximum either: an untimed
-//     start costs nothing and leaves the delta where it was;
-//   * the delta keeps running across stages, up to the last one.
+//     stage when another stage of the same route follows. Like a blown window it
+//     never moves the delta. A missed finish of the last stage *of the last
+//     route* is a DNF: the participant never finished the rally, so they are
+//     disqualified as well as charged. The start row has no window and so has no
+//     maximum either: an untimed start costs nothing and leaves the delta where
+//     it was.
+//
+// The windows and the two maximums are stage settings, so the stage that closes
+// a route can be given its own closing window and its own missing-finish
+// penalty without either becoming a route-level setting.
 //
 // The windows, the maximum and the break are stage settings (`timeConfig`) so
 // an event can be run with different limits without touching this file.
@@ -56,6 +67,8 @@
 // shown on a card must agree with the total stored on the sheet. Like
 // `scoring.ts`, it is the single home of these rules — never re-implement a
 // rule in a component or a route.
+
+import { legPositions } from './routes';
 
 export const PENALTY_PER_MINUTE = 1;
 
@@ -122,7 +135,8 @@ export interface ScoredTimeRow {
   // participant missed it, and it is charged its maximum.
   missing: boolean;
   disqualified: boolean;
-  // The start of the first stage of a rally: shown, but never scored.
+  // The start of the first stage of a route: shown, but never scored. On a rally
+  // with no routes that is the first stage of the rally, as it always was.
   free: boolean;
 }
 
@@ -210,13 +224,24 @@ export interface ScoreStageTimesInput {
   timeConfig?: Partial<StageTimeConfig> | null;
   eq: number;
   entries?: TimeEntryRow[] | null;
-  // Delta the participant carried in from the previous stage.
+  // Delta the participant carried in from the previous stage. Zero at the start
+  // of every route: a route boundary neutralises it (app/lib/routes.ts).
   startDelta?: number;
-  // The start row of the first stage of a rally is where the delta begins, so
-  // it is free; the start of any later stage is scored like any other control.
-  isFirstStage?: boolean;
-  // The finish of the last stage is a disqualification, not a penalty.
-  isFinalStage: boolean;
+  // The first stage of its route. Its start row is where the leg's delta begins,
+  // so it is free; the start of any later stage of the same route is scored like
+  // any other control.
+  startsRoute?: boolean;
+  // The last stage of its route: no further stage of the same route follows, so
+  // the break after this stage is not charged with its finish.
+  endsRoute: boolean;
+  // The last stage of the last route — the rally's own finish. Outside its
+  // window, or with no finish time at all, the participant is disqualified. It
+  // implies `endsRoute`: the rally's finish has nothing behind it either.
+  //
+  // These two used to be one flag, because on a rally with no routes they are
+  // one stage. They are separate now because a route's last stage costs no
+  // break but does *not* put a crew out of the rally — they ride the next leg.
+  endsRally: boolean;
 }
 
 // Score the 10 time rows of one stage for one participant.
@@ -226,9 +251,15 @@ export function scoreStageTimes({
   eq,
   entries,
   startDelta = 0,
-  isFirstStage = false,
-  isFinalStage,
+  startsRoute = false,
+  endsRoute,
+  endsRally,
 }: ScoreStageTimesInput): StageTimeResult {
+  // Nothing follows this stage inside its own leg, so its finish carries no
+  // break. Derived from either flag rather than from `endsRoute` alone, so a
+  // caller that sets only the rally flag cannot charge a break the rally's
+  // finish does not have.
+  const endsLeg = endsRoute || endsRally;
   const config = resolveTimeConfig(timeConfig);
   const key = timeScoreKey || [];
   const entryRows = entries || [];
@@ -267,7 +298,7 @@ export function scoreStageTimes({
     const ipt = formatClock(idealMinutes);
     const actual = parseClock(wpt);
 
-    const free = kind === 'start' && isFirstStage;
+    const free = kind === 'start' && startsRoute;
 
     // The stage uses this control, but the sheet has no usable WPT for it: the
     // participant missed it (or nobody typed it in), and a missed control costs
@@ -281,13 +312,16 @@ export function scoreStageTimes({
         missingStrafp = config.outOfWindowPenalty;
       } else if (!free && kind === 'finish') {
         // The break after the stage is lost with the finish, exactly as it is
-        // when the finish is passed outside its window.
+        // when the finish is passed outside its window — unless nothing follows
+        // this stage in its own leg, because then there is no break to lose.
         missingStrafp =
-          config.missingFinishPenalty + (isFinalStage ? 0 : config.breakMinutes);
-        if (isFinalStage) {
+          config.missingFinishPenalty + (endsLeg ? 0 : config.breakMinutes);
+        if (endsRally) {
           // Never finished the rally: a DNF, ranked with the participants who
           // came in outside the finish window. The maximum is still charged so
-          // the card adds up.
+          // the card adds up. Missing the finish of an *intermediate* route is
+          // not this: the crew rode the next leg, so they are charged and stay
+          // in the rally.
           missingDisqualified = true;
           disqualified = true;
         }
@@ -343,15 +377,19 @@ export function scoreStageTimes({
     let rowDisqualified = false;
 
     if (outOfWindow) {
-      if (kind === 'finish' && isFinalStage) {
-        // Past the finish window of the last stage the participant is out of
-        // the rally; the maximum is still charged so the card adds up.
-        rowDisqualified = true;
-        disqualified = true;
-        strafp = config.outOfWindowPenalty;
-      } else if (kind === 'finish') {
-        // The break after the stage is lost as well, and it differs per stage.
-        strafp = config.outOfWindowPenalty + config.breakMinutes;
+      if (kind === 'finish') {
+        // The break after the stage is lost as well, and it differs per stage —
+        // unless nothing follows this stage in its own leg, because then there
+        // is no break behind it.
+        strafp = config.outOfWindowPenalty + (endsLeg ? 0 : config.breakMinutes);
+        if (endsRally) {
+          // Past the finish window of the rally's own finish the participant is
+          // out of it; the maximum is still charged so the card adds up. A
+          // route's finish is only a penalty — the next leg is still theirs to
+          // ride.
+          rowDisqualified = true;
+          disqualified = true;
+        }
       } else {
         strafp = config.outOfWindowPenalty;
       }
@@ -385,31 +423,62 @@ export function scoreStageTimes({
 
 export interface RallyStageTimeInput {
   stageId: string;
+  // The route (leg) this stage is ridden in, or null when the rally has no
+  // routes — one implicit leg, and the behaviour the app has always had.
+  //
+  // Required rather than optional on purpose. A caller that forgot it would
+  // silently score a two-leg rally as one, charging every crew the delta they
+  // carried out of the previous leg, and there are *two* independent callers of
+  // this function — the server (app/lib/rescore.ts) and the entry form's live
+  // preview (app/components/AnswerSheetForm.tsx). The compiler is the only
+  // thing that can catch a missing pass-through between them.
+  routeId: string | null;
   timeScoreKey?: TimeKeyRow[] | null;
   timeConfig?: Partial<StageTimeConfig> | null;
 }
 
 // Score every stage of a rally for one participant, carrying the delta from one
-// stage into the next. `stages` must be in running order: the start of the first
-// one is free, and the finish of the last one disqualifies instead of
-// penalising.
+// stage into the next — and starting it again from zero at every route
+// boundary.
+//
+// `stages` must be in running order, grouped by route: the routes in their
+// order, and inside a route the stages in theirs (`orderStagesByRoute` in
+// app/lib/routes.ts, which is what `GET /api/stages` returns). The leg
+// boundaries are read as adjacency on `routeId`, so a list that is not grouped
+// reads as more legs than the rally has.
 export function scoreRallyTimes(
   stages: RallyStageTimeInput[],
   eq: number,
   entriesByStage: Map<string, TimeEntryRow[]>
 ): Map<string, StageTimeResult> {
   const results = new Map<string, StageTimeResult>();
+  const positions = legPositions(stages);
   let delta = 0;
 
   stages.forEach((stage, index) => {
+    const position = positions[index];
+
+    // A route boundary neutralises the delta: the crew is re-started on a fresh
+    // schedule, so the next leg begins from zero.
+    //
+    // This is *not* the same thing as the free start row below, and both are
+    // needed. The free row returns without assigning `runningDelta`, so without
+    // this reset the first GTC of route 2 would still be measured against the
+    // delta the crew carried out of route 1; and without the free row the start
+    // itself would be charged the whole of that carry-over. On a rally with no
+    // routes both fire only at index 0, where the delta is already zero, which
+    // is why the two never had to be told apart before.
+    if (position.startsRoute) delta = 0;
+
     const result = scoreStageTimes({
       timeScoreKey: stage.timeScoreKey,
       timeConfig: stage.timeConfig,
       eq,
       entries: entriesByStage.get(stage.stageId) || [],
       startDelta: delta,
-      isFirstStage: index === 0,
-      isFinalStage: index === stages.length - 1,
+      startsRoute: position.startsRoute,
+      endsRoute: position.endsRoute,
+      endsRally: position.endsRally,
     });
     results.set(stage.stageId, result);
     delta = result.endDelta;
@@ -421,10 +490,14 @@ export function scoreRallyTimes(
 // Highest time penalty a stage can hand out, used for the "max" overview on the
 // stage form. The start row is left out: it has no window, so no maximum — an
 // untimed start is free too.
+//
+// It takes only `endsRoute` — whether the break after the stage is lost with its
+// finish. Whether the stage ends the *rally* is deliberately not a parameter: a
+// disqualification is not a penalty, so it changes nothing this overview shows.
 export function maxStageTimePenalty(
   timeScoreKey: TimeKeyRow[] | null | undefined,
   timeConfig: Partial<StageTimeConfig> | null | undefined,
-  isFinalStage: boolean
+  endsRoute: boolean
 ): number {
   const config = resolveTimeConfig(timeConfig);
   return (timeScoreKey || []).reduce((total, row) => {
@@ -437,7 +510,7 @@ export function maxStageTimePenalty(
       return (
         total +
         Math.max(config.outOfWindowPenalty, config.missingFinishPenalty) +
-        (isFinalStage ? 0 : config.breakMinutes)
+        (endsRoute ? 0 : config.breakMinutes)
       );
     }
     // A GTC costs the same maximum whether it was blown or missed.

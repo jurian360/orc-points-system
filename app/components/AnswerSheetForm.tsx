@@ -23,6 +23,11 @@ import {
 interface Stage {
   _id: string;
   name: string;
+  // The route (leg) this stage is ridden in, on a rally that has routes. The
+  // time chain needs it: the delta is neutralised at a route boundary, so a
+  // stage that opens a leg starts from zero however far off the crew were at the
+  // end of the previous one. Null on a rally with no routes.
+  routeId?: string | null;
   // The ORC key of the stage. It is read in full here: the strafpunten of a row
   // are *scored*, never typed, so the grid grades every row against the key
   // while the official types it — with the same module the server stores the
@@ -371,9 +376,13 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
 
   // Live time scoring for the sheet being typed. The stage is scored in the
   // context of the whole rally: the delta this participant carries out of the
-  // earlier stages is where this stage starts, and the finish of the last stage
-  // disqualifies instead of costing points. Same module the server scores with,
-  // so what the official sees here is what gets stored.
+  // earlier stages of the same route is where this stage starts — a stage that
+  // opens a route starts from zero — and the finish of the last stage of the
+  // last route disqualifies instead of costing points. Same module the server
+  // scores with, so what the official sees here is what gets stored.
+  //
+  // `stages` therefore has to arrive in running order, grouped by route, which
+  // is what GET /api/stages returns.
   const timeResult = useMemo(() => {
     if (!stageId) return null;
 
@@ -395,6 +404,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     const results = scoreRallyTimes(
       stages.map((stage) => ({
         stageId: stage._id,
+        routeId: stage.routeId || null,
         timeScoreKey: stage.timeScoreKey,
         timeConfig: stage.timeConfig,
       })),
@@ -906,15 +916,17 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
           <p className="text-[11px] text-gray-600 mt-1">
             Type the WPT (e.g. 8:05). The IPT is this participant&apos;s ideal time — the stage&apos;s
             IPT 0 plus their EQ in minutes — and the strafpunten follow from how far the delta moved
-            since the previous control. The start of the first stage is free; a control passed
-            outside its window costs the maximum and the delta reverts to the last valid one, and a
-            control the stage uses but that has no WPT was missed and costs its maximum too.
+            since the previous control. The start of the first stage of every route is free — the
+            delta is neutralised at a route boundary and starts again from zero there; a control
+            passed outside its window costs the maximum and the delta reverts to the last valid
+            one, and a control the stage uses but that has no WPT was missed and costs its maximum
+            too.
             {eq === '' && ' Select a participant to see their own times.'}
           </p>
           {timeResult?.disqualified && (
             <p className="mt-1 px-2 py-1 rounded bg-red-100 text-red-800 text-xs font-bold">
-              No finish time, or outside the finish window, on the last stage — this participant
-              is disqualified.
+              No finish time, or outside the finish window, on the last stage of the last route —
+              this participant is disqualified.
             </p>
           )}
           {timeResult && (

@@ -4,8 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 
 import dbConnect from '../../../../lib/mongodb';
-import { AnswerSheet, Participant, Rally, Stage } from '../../../../models';
+import { AnswerSheet, Participant, Rally } from '../../../../models';
 import { requireSession } from '../../../../lib/api-guard';
+import { loadRunningOrder } from '../../../../lib/rallyOrder';
 import { TIME_ROWS, parseClock, timeRowKind, timeRowLabel } from '../../../../lib/timeScoring';
 // The shape of the response lives with the other shared interfaces, so this
 // route and the panel that reads it (app/components/RallyTimesPanel.tsx) cannot
@@ -50,18 +51,20 @@ export async function GET(
       return NextResponse.json({ error: 'Rally not found' }, { status: 404 });
     }
 
-    // Running order, the same sort the stage list and the re-scoring use: the
-    // delta runs through the stages in this order, so the overview has to read
-    // left to right in it too.
-    const [stages, participants, sheets] = await Promise.all([
-      Stage.find({ rallyId: id })
-        .sort({ createdAt: 1, _id: 1 })
-        .select('_id name timeScoreKey'),
+    // Running order, the same order the stage list and the re-scoring use: the
+    // delta runs through the stages in this order — starting again at every
+    // route boundary — so the overview has to read left to right in it too, and
+    // it carries the rally's routes so the grid can head a block of stages with
+    // the leg they are ridden in.
+    const [order, participants, sheets] = await Promise.all([
+      loadRunningOrder(id, '_id name timeScoreKey'),
       Participant.find({ rallyId: id }).sort({ eq: 1 }),
       AnswerSheet.find({ rallyId: id }).select(
         'eq stageId timePenalties timePenalty disqualified startDelta endDelta'
       ),
     ]);
+
+    const { stages, routes } = order;
 
     const sheetsByStage = new Map<string, any[]>();
     for (const sheet of sheets) {
@@ -131,6 +134,7 @@ export async function GET(
       return {
         _id: String(stage._id),
         name: stage.name,
+        routeId: stage.routeId ? String(stage.routeId) : null,
         columns,
         entries,
       };
@@ -138,6 +142,9 @@ export async function GET(
 
     const payload: RallyTimes = {
       rally: { _id: String(rally._id), name: rally.name },
+      // The rally's legs, in the order they are ridden. Empty on a rally with no
+      // routes, so the grid draws the two header rows it always drew.
+      routes: routes.map((route: any) => ({ _id: String(route._id), name: route.name })),
       stages: stageTables,
       participants: participants.map((participant: any) => ({
         eq: participant.eq,

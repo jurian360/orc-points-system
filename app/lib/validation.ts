@@ -1,5 +1,7 @@
 import 'server-only';
 
+import mongoose from 'mongoose';
+
 import {
   DEFAULT_TIME_CONFIG,
   formatClock,
@@ -54,6 +56,10 @@ export const MAX_IMPORT_PARTICIPANTS = 100;
 // A time control hands in at most one time per participant, so the same bound
 // holds for the import of one control's times.
 export const MAX_IMPORT_TIMES = 100;
+// Legs of a rally. Two or three in practice — a morning and an afternoon, or a
+// day each — and the cap keeps headroom over that while keeping a caller from
+// making the running order and the printed result sheet arbitrarily wide.
+export const MAX_ROUTES = 20;
 
 // Clamp any value to a bounded string. Objects and arrays collapse to a safe
 // placeholder rather than being passed through.
@@ -87,6 +93,14 @@ export function parseEqParam(value: string | null): number | null {
   if (value === null) return null;
   if (!/^\d{1,3}$/.test(value)) return null;
   return parseEq(Number(value));
+}
+
+// An id as it arrives in a request body or a path segment. Every route in the
+// app inlines this check; new code goes through here so the guard has one home,
+// and so an id can never reach a Mongoose filter unchecked.
+export function parseObjectId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return mongoose.Types.ObjectId.isValid(value) ? value : null;
 }
 
 export function parseName(value: unknown): string | null {

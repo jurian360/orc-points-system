@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, MerkKeyRow, ScoreKeyRow } from '../lib/scoring';
 import { blankSheetPenalties } from '../lib/missingSheets';
+import { legPositions, type RallyRoute } from '../lib/routes';
 import { resolveStatus } from '../lib/standings';
 import type { StageTimeConfig, TimeKeyRow } from '../lib/timeScoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
@@ -22,6 +23,10 @@ interface Rally {
 interface Stage {
   _id: string;
   name: string;
+  // The route (leg) this stage is ridden in, so the page can group a crew's
+  // rally by leg and ask which finish is the rally's own. Null on a rally with
+  // no routes.
+  routeId?: string | null;
   createdAt: string;
   scoreKey: ScoreKeyRow[];
   // The time key and settings are only read for the maximum a stage can cost —
@@ -85,17 +90,21 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
+  // The rally's legs. Empty on a rally with no routes, and then this page lists
+  // the crew's stages the way it always did.
+  const [routes, setRoutes] = useState<RallyRoute[]>([]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const [rallyRes, stagesRes, sheetsRes, detailsRes] = await Promise.all([
+      const [rallyRes, stagesRes, sheetsRes, detailsRes, routesRes] = await Promise.all([
         fetch(`/api/rallies/${rallyId}`),
         fetch(`/api/stages?rallyId=${rallyId}`),
         fetch(`/api/answersheets?rallyId=${rallyId}&eq=${eq}`),
         fetch(`/api/rallies/${rallyId}/participants/${eq}`),
+        fetch(`/api/rallies/${rallyId}/routes`),
       ]);
 
       if (!rallyRes.ok) throw new Error('Failed to fetch rally');
@@ -103,6 +112,11 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
 
       if (!stagesRes.ok) throw new Error('Failed to fetch stages');
       setStages(await stagesRes.json());
+
+      if (routesRes.ok) {
+        const data = await routesRes.json();
+        setRoutes(data.routes || []);
+      }
 
       if (!sheetsRes.ok) throw new Error('Failed to fetch answer sheets');
       setSheets(await sheetsRes.json());
@@ -204,15 +218,32 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   // blank card it stands for, the same numbers the standings add for it, so this
   // page and the standings show one total.
   const sheetsByStage = new Map(sheets.map((sheet) => [sheet.stageId, sheet]));
+  // Where each stage sits in the rally's legs — which finish carries no break
+  // and which one is the rally's own. A rally with no routes is one leg, so this
+  // says what `index === stages.length - 1` used to say.
+  const legs = legPositions(stages);
+  // The heading to draw before a stage, when it opens a leg. Null on a rally
+  // with no routes — one leg needs no heading, and the list then reads exactly
+  // as it did before routes existed.
+  const routeHeadingFor = (index: number) => {
+    if (routes.length === 0 || !legs[index]?.startsRoute) return null;
+    const position = routes.findIndex((route) => route._id === legs[index].routeId);
+    return {
+      name: position >= 0 ? routes[position].name : 'Zonder route',
+      position: position + 1,
+      stageCount: legs.filter((leg) => leg.routeId === legs[index].routeId).length,
+    };
+  };
   const entries = stages.map((stage, index) => {
     const sheet = sheetsByStage.get(stage._id);
     const timeRows = sheet?.timePenalties || [];
     const merkRows = sheet?.merkScores || [];
 
     if (!sheet) {
-      const blank = blankSheetPenalties(stage, index === stages.length - 1);
+      const blank = blankSheetPenalties(stage, legs[index]);
       return {
         stage,
+        routeHeading: routeHeadingFor(index),
         sheet,
         timeRows,
         merkRows,
@@ -224,6 +255,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
 
     return {
       stage,
+      routeHeading: routeHeadingFor(index),
       sheet,
       timeRows,
       merkRows,
@@ -392,8 +424,12 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
           <div className="bg-red-100 border-l-4 border-red-500 text-red-800 px-6 py-3 rounded-lg mb-6 text-base font-bold shadow-md">
             DNF — did not finish:{' '}
             {disqualified
-              ? 'this participant passed the finish of the last stage outside its window, or has no finish time on it.'
-              : `no answer sheet was handed in for the last stage (${lastStage?.name}).`}{' '}
+              ? `this participant passed the finish of the last stage${
+                  routes.length > 0 ? ' of the last route' : ''
+                } outside its window, or has no finish time on it.`
+              : `no answer sheet was handed in for the last stage${
+                  routes.length > 0 ? ' of the last route' : ''
+                } (${lastStage?.name}).`}{' '}
             They are ranked behind everyone who finished; their points stand.
           </div>
         )}
@@ -405,11 +441,27 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
             </p>
           </div>
         ) : (
-          entries.map(({ stage, sheet, orcPenalty, tijdTotal: stageTijdTotal, diversenTotal: stageDiversenTotal }) => {
+          entries.map(({ stage, routeHeading, sheet, orcPenalty, tijdTotal: stageTijdTotal, diversenTotal: stageDiversenTotal }) => {
+            // One heading per leg, drawn before the leg's first stage.
+            const heading = routeHeading && (
+              <h2
+                key={`route-${routeHeading.position}`}
+                className="text-base font-bold uppercase tracking-wide text-indigo-900 border-b-2 border-indigo-200 pb-1 mb-3 mt-8 first:mt-0"
+              >
+                <span className="text-indigo-400 mr-2">Route {routeHeading.position}:</span>
+                {routeHeading.name}
+                <span className="ml-3 text-xs font-normal normal-case text-gray-600">
+                  {routeHeading.stageCount} stage{routeHeading.stageCount === 1 ? '' : 's'} — the
+                  delta starts again here
+                </span>
+              </h2>
+            );
+
             if (!sheet) {
               return (
+                <React.Fragment key={stage._id}>
+                {heading}
                 <div
-                  key={stage._id}
                   className="bg-white rounded-xl shadow-lg border-2 border-dashed border-amber-400 p-6 mb-6"
                 >
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
@@ -434,12 +486,14 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                     Enter an answer sheet &rarr;
                   </Link>
                 </div>
+                </React.Fragment>
               );
             }
 
             return (
+              <React.Fragment key={stage._id}>
+              {heading}
               <div
-                key={stage._id}
                 className="bg-white rounded-xl shadow-xl overflow-hidden border-2 border-gray-200 mb-6"
               >
                 <div className="px-6 py-3 border-b-2 border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
@@ -488,6 +542,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                   disqualified={sheet.disqualified}
                 />
               </div>
+              </React.Fragment>
             );
           })
         )}

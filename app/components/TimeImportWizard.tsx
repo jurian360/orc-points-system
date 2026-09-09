@@ -19,6 +19,7 @@ import {
 } from '../lib/timeImport';
 import { parseClock, TIME_ROWS, timeRowKind, timeRowLabel } from '../lib/timeScoring';
 import type { Participant, Rally, Stage } from '../types';
+import type { RallyRoute } from '../lib/routes';
 
 // Importing the times of one control into the time column of a stage.
 //
@@ -65,6 +66,9 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
   const [rallies, setRallies] = useState<Rally[]>([]);
   const [rallyId, setRallyId] = useState<string>(initialRallyId || '');
   const [stages, setStages] = useState<Stage[]>([]);
+  // The rally's legs. Empty on a rally with no routes, and then the stage list
+  // is the flat one it always was.
+  const [routes, setRoutes] = useState<RallyRoute[]>([]);
   const [stageId, setStageId] = useState<string>(initialStageId || '');
   const [rowNumber, setRowNumber] = useState<number>(2);
 
@@ -106,25 +110,29 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
     if (!rallyId) {
       setStages([]);
       setParticipants([]);
+      setRoutes([]);
       return;
     }
 
     const loadRally = async () => {
       setLoadingRally(true);
       try {
-        const [stagesRes, participantsRes] = await Promise.all([
+        const [stagesRes, participantsRes, routesRes] = await Promise.all([
           fetch(`/api/stages?rallyId=${rallyId}`),
           fetch(`/api/rallies/${rallyId}/participants`),
+          fetch(`/api/rallies/${rallyId}/routes`),
         ]);
         if (!stagesRes.ok) throw new Error('Failed to fetch stages');
         if (!participantsRes.ok) throw new Error('Failed to fetch participants');
 
         setStages(await stagesRes.json());
         setParticipants(await participantsRes.json());
+        setRoutes(routesRes.ok ? (await routesRes.json()).routes || [] : []);
         setError(null);
       } catch (err) {
         setStages([]);
         setParticipants([]);
+        setRoutes([]);
         setError('Failed to load this rally. Please try again.');
         console.error(err);
       } finally {
@@ -399,7 +407,8 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
       <div className={stepClass(Boolean(rallyId))}>
         <h2 className="text-xl font-semibold text-gray-800 mb-1">2. Stage</h2>
         <p className="text-gray-600 text-base mb-3">
-          The leg of the rally this control stands in, in running order.
+          The stage of the rally this control stands in, in running order
+          {routes.length > 0 ? ', grouped by route' : ''}.
         </p>
         <select
           id="time-import-stage"
@@ -412,11 +421,25 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
           }}
         >
           <option value="">— pick a stage —</option>
-          {stages.map((candidate, index) => (
-            <option key={candidate._id} value={candidate._id}>
-              {index + 1}. {candidate.name}
-            </option>
-          ))}
+          {/* Grouped under their route when the rally has them, and a flat
+              running-order list when it does not. */}
+          {routes.length > 0
+            ? routes.map((route, routeIndex) => (
+                <optgroup key={route._id} label={`${routeIndex + 1}. ${route.name}`}>
+                  {stages
+                    .filter((candidate) => (candidate.routeId || '') === route._id)
+                    .map((candidate, index) => (
+                      <option key={candidate._id} value={candidate._id}>
+                        {index + 1}. {candidate.name}
+                      </option>
+                    ))}
+                </optgroup>
+              ))
+            : stages.map((candidate, index) => (
+                <option key={candidate._id} value={candidate._id}>
+                  {index + 1}. {candidate.name}
+                </option>
+              ))}
         </select>
 
         {rallyId && !loadingRally && stages.length === 0 && (

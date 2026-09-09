@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { RallyRoute } from '../lib/routes';
 import { maxMerkPenalty, PENALTY_PER_ERROR } from '../lib/scoring';
 import {
   DEFAULT_TIME_CONFIG,
@@ -44,25 +45,47 @@ interface MerkScoreKeyRow {
   maxPenalty?: number;
 }
 
+// What the form hands back. An object rather than the five positional arguments
+// this used to take: both pages type their handler loosely, so a sixth argument
+// — the route — would have compiled silently and been dropped on the floor.
+export interface StageFormPayload {
+  name: string;
+  // The route this stage is ridden in, on a rally that has routes; null on one
+  // that has none, where there is no leg to put it in.
+  routeId: string | null;
+  scoreKey: ScoreKeyRow[];
+  timeScoreKey: TimeScoreKeyRow[];
+  merkScoreKey: MerkScoreKeyRow[];
+  timeConfig: StageTimeConfig;
+}
+
+// What the form is seeded with when an existing stage is edited. Exported so the
+// edit page can type its fetched stage as this instead of keeping a narrower
+// copy of the shape — a copy that has already been caught dropping fields.
+export interface StageFormInitialData {
+  name: string;
+  routeId?: string | null;
+  scoreKey: ScoreKeyRow[];
+  timeScoreKey?: TimeScoreKeyRow[];
+  merkScoreKey?: MerkScoreKeyRow[];
+  timeConfig?: Partial<StageTimeConfig>;
+}
+
 interface StageFormProps {
-  onSubmit: (
-    stageName: string,
-    scoreKey: ScoreKeyRow[],
-    timeScoreKey: TimeScoreKeyRow[],
-    merkScoreKey: MerkScoreKeyRow[],
-    timeConfig: StageTimeConfig
-  ) => void;
-  initialData?: {
-    name: string;
-    scoreKey: ScoreKeyRow[];
-    timeScoreKey?: TimeScoreKeyRow[];
-    merkScoreKey?: MerkScoreKeyRow[];
-    timeConfig?: Partial<StageTimeConfig>;
-  };
+  onSubmit: (payload: StageFormPayload) => void;
+  initialData?: StageFormInitialData;
   isEditing?: boolean;
-  // The finish of the last stage of a rally disqualifies instead of costing the
-  // maximum plus the break, which changes the maximum shown in the overview.
-  isFinalStage?: boolean;
+  // The rally's legs, in the order they are ridden. **Empty on a rally with no
+  // routes**, and then the form shows no route field at all: there is nothing to
+  // choose, and a rally that is one continuous leg should read exactly as it did
+  // before routes existed.
+  routes?: RallyRoute[];
+  // The last stage of its route: nothing of the same route follows, so its
+  // finish carries no break — which changes the maximum shown in the overview.
+  endsRoute?: boolean;
+  // The last stage of the last route: the rally's own finish, the one place a
+  // blown or missing finish disqualifies.
+  endsRally?: boolean;
 }
 
 // Layout constants matching the SARK controlekaart
@@ -79,9 +102,17 @@ const StageForm: React.FC<StageFormProps> = ({
   onSubmit,
   initialData,
   isEditing = false,
-  isFinalStage = true,
+  routes = [],
+  endsRoute = true,
+  endsRally = true,
 }) => {
   const [stageName, setStageName] = useState(initialData?.name || '');
+  // A new stage on a rally with routes lands in the last leg unless the official
+  // says otherwise: that is where a stage being added to a rally in progress
+  // belongs, and it is the answer the API requires.
+  const [routeId, setRouteId] = useState<string>(
+    initialData?.routeId || (routes.length > 0 ? routes[routes.length - 1]._id : '')
+  );
 
   const [scoreKey, setScoreKey] = useState<ScoreKeyRow[]>(() => {
     if (initialData?.scoreKey?.length) {
@@ -277,7 +308,10 @@ const StageForm: React.FC<StageFormProps> = ({
 
   // Max penalty totals for the overview box
   const orcTotal = scoreKey.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
-  const tijdTotal = maxStageTimePenalty(timeScoreKey, timeConfig, isFinalStage);
+  // The break behind a finish is what the maximum turns on, so this reads
+  // `endsRoute`. Being the rally's finish costs nothing extra — a
+  // disqualification is not a penalty.
+  const tijdTotal = maxStageTimePenalty(timeScoreKey, timeConfig, endsRoute);
   // Not the sum of the rows: the merk column is one error per distinct letter of
   // the key and one per letter it rules out, bounded by the cap those row
   // maximums add up to.
@@ -321,13 +355,14 @@ const StageForm: React.FC<StageFormProps> = ({
       maxPenalty: row.maxPenalty || 0,
     }));
 
-    onSubmit(
-      stageName,
-      processedScoreKey,
-      processedTimeScoreKey,
-      processedMerkScoreKey,
-      timeConfig
-    );
+    onSubmit({
+      name: stageName,
+      routeId: routes.length > 0 ? routeId || null : null,
+      scoreKey: processedScoreKey,
+      timeScoreKey: processedTimeScoreKey,
+      merkScoreKey: processedMerkScoreKey,
+      timeConfig,
+    });
   };
 
   // Render one ORC score-key row (letters correct/false + max penalty), used in both columns
@@ -461,19 +496,49 @@ const StageForm: React.FC<StageFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="w-full mx-auto p-6">
-      <div className="mb-8">
-        <label htmlFor="stageName" className="block text-lg font-medium mb-2 text-gray-800">
-          Stage Name
-        </label>
-        <input
-          type="text"
-          id="stageName"
-          className="w-full p-3 border border-gray-300 rounded-md shadow-sm text-lg text-gray-800"
-          value={stageName}
-          onChange={(e) => setStageName(e.target.value)}
-          placeholder="e.g. Stage 1 — Coastal leg"
-          required
-        />
+      {/* The name, and on a rally that is ridden in legs the leg this stage is
+          in. A rally with no routes shows the name on its own, full width, the
+          way it always did. */}
+      <div className={`mb-8 grid gap-4 ${routes.length > 0 ? 'sm:grid-cols-2' : ''}`}>
+        <div>
+          <label htmlFor="stageName" className="block text-lg font-medium mb-2 text-gray-800">
+            Stage Name
+          </label>
+          <input
+            type="text"
+            id="stageName"
+            className="w-full p-3 border border-gray-300 rounded-md shadow-sm text-lg text-gray-800"
+            value={stageName}
+            onChange={(e) => setStageName(e.target.value)}
+            placeholder="e.g. Stage 1 — Coastal leg"
+            required
+          />
+        </div>
+
+        {routes.length > 0 && (
+          <div>
+            <label htmlFor="stageRoute" className="block text-lg font-medium mb-2 text-gray-800">
+              Route
+            </label>
+            <select
+              id="stageRoute"
+              className="w-full p-3 border border-gray-300 rounded-md shadow-sm text-lg text-gray-800"
+              value={routeId}
+              onChange={(e) => setRouteId(e.target.value)}
+              required
+            >
+              {routes.map((route, index) => (
+                <option key={route._id} value={route._id}>
+                  {index + 1}. {route.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-600 mt-1">
+              The leg this stage is ridden in. The delta is neutralised at a route
+              boundary, so the first stage of a route starts free.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Answer key laid out as 4 main columns, like the SARK controlekaart:
@@ -685,14 +750,16 @@ const StageForm: React.FC<StageFormProps> = ({
               <p className="text-xs text-gray-600">
                 A control passed outside its window costs the maximum ({timeConfig.outOfWindowPenalty}
                 ) and the delta falls back to what it was before it. On the finish of a stage that is
-                followed by another one the break is charged on top ({timeConfig.outOfWindowPenalty} +{' '}
-                {timeConfig.breakMinutes} ={' '}
-                {timeConfig.outOfWindowPenalty + timeConfig.breakMinutes}); on the finish of the last
-                stage the same window means a disqualification. A control this stage uses but that
-                has no WPT at all was missed and costs its maximum too: a GTC{' '}
+                followed by another one of the same route the break is charged on top (
+                {timeConfig.outOfWindowPenalty} + {timeConfig.breakMinutes} ={' '}
+                {timeConfig.outOfWindowPenalty + timeConfig.breakMinutes}); on the finish of the
+                last stage of the rally the same window means a disqualification. A control this
+                stage uses but that has no WPT at all was missed and costs its maximum too: a GTC{' '}
                 {timeConfig.outOfWindowPenalty}, the finish {timeConfig.missingFinishPenalty}
-                {isFinalStage
-                  ? ' — and a missing finish on the last stage is a DNF, so the participant is disqualified'
+                {endsRoute
+                  ? endsRally
+                    ? ' — and a missing finish on the last stage of the rally is a DNF, so the participant is disqualified'
+                    : ''
                   : ` + ${timeConfig.breakMinutes} = ${timeConfig.missingFinishPenalty + timeConfig.breakMinutes}`}
                 . Defaults:{' '}
                 {DEFAULT_TIME_CONFIG.gtcEarlyWindow}/{DEFAULT_TIME_CONFIG.gtcLateWindow} for a GTC,{' '}
@@ -700,6 +767,14 @@ const StageForm: React.FC<StageFormProps> = ({
                 finish, {DEFAULT_TIME_CONFIG.outOfWindowPenalty} /{' '}
                 {DEFAULT_TIME_CONFIG.missingFinishPenalty} strafpunten.
               </p>
+              {endsRoute && !endsRally && (
+                <p className="text-xs text-gray-600 mt-2">
+                  This is the last stage of its route: after its finish the delta is
+                  neutralised and the next route starts free. Its own finish is a penalty
+                  and no more — no break behind it, and no disqualification, because the
+                  participant rides the next leg.
+                </p>
+              )}
             </div>
           </div>
         </div>

@@ -13,10 +13,26 @@ export interface Rally {
   createdAt: string;
 }
 
+// A sequential leg of a rally: every crew rides route 1, then route 2, and the
+// time delta is neutralised at the boundary. Most rallies have none — a rally
+// with no routes is one implicit leg (app/lib/routes.ts).
+export interface Route {
+  _id: string;
+  rallyId: string;
+  name: string;
+  // Place in the rally: 1, 2, 3 … The stages inside a route keep their creation
+  // order; the routes themselves are ordered by this.
+  order: number;
+  createdAt: string;
+}
+
 // Stage types (a stage holds the answer key for one leg of a rally)
 export interface Stage {
   _id: string;
   rallyId: string;
+  // The route this stage is ridden in. Absent on a rally with no routes, which
+  // is most of them.
+  routeId?: string | null;
   name: string;
   // Stable card number of this stage within its rally — what a submission from
   // the app is resolved by. Unlike the stage's place in the running order, it
@@ -118,6 +134,9 @@ export interface TimePenaltyRow {
   outOfWindow?: boolean;
   // The stage uses this control but the sheet has no WPT for it.
   missing?: boolean;
+  // The start row of the first stage of a route: the leg begins here, so it is
+  // shown but costs nothing and does not move the delta.
+  free?: boolean;
 }
 
 // Merk row of a sheet. Officials type the letter the participant wrote; the
@@ -133,6 +152,17 @@ export interface MerkScoreRow {
 // One stage of a rally as the standings name it: the running order, so a
 // per-stage column can be headed with the stage it belongs to.
 export interface StandingsStage {
+  _id: string;
+  name: string;
+  // The route this stage is ridden in, so the results can group their per-stage
+  // columns by leg. Null on a rally with no routes.
+  routeId?: string | null;
+}
+
+// One route of a rally as the standings name it, in the order it is ridden.
+// Empty on a rally with no routes — which is how a consumer tells a rally that
+// has legs from one that does not.
+export interface StandingsRoute {
   _id: string;
   name: string;
 }
@@ -279,13 +309,19 @@ export interface RallyTimeEntry {
 export interface RallyTimeStage {
   _id: string;
   name: string;
+  // The route (leg) this stage is ridden in. Null on a rally with no routes.
+  routeId?: string | null;
   columns: RallyTimeColumn[];
   entries: RallyTimeEntry[];
 }
 
 export interface RallyTimes {
   rally: { _id: string; name: string };
-  // In running order, the same order the stage list shows.
+  // The rally's legs, in the order they are ridden. Empty on a rally with no
+  // routes, so the grid draws the header rows it always drew.
+  routes: StandingsRoute[];
+  // In running order, the same order the stage list shows: the routes in their
+  // order, and inside a route its stages in theirs.
   stages: RallyTimeStage[];
   participants: {
     eq: number;

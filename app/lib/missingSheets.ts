@@ -13,9 +13,9 @@
 //   * the time column — `scoreStageTimes` with no entries: every control the
 //     stage uses is one the participant missed, which costs a GTC its flat
 //     maximum and the finish `missingFinishPenalty` plus the break after the
-//     stage. The start costs nothing (it has no window), and a missed control
-//     never moves the delta, so a stage nobody typed does not disturb the
-//     chain of the stages around it;
+//     stage, unless the stage ends its route. The start costs nothing (it has no
+//     window), and a missed control never moves the delta, so a stage nobody
+//     typed does not disturb the chain of the stages around it;
 //   * the merk column — `calculateMerkPenalty(merkScoreKey, [])`: an untyped
 //     column, so every letter of the key counts as missing.
 //
@@ -33,6 +33,7 @@
 
 import { calculateMerkPenalty, calculateTotalPenalty } from './scoring';
 import type { MerkKeyRow, ScoreKeyRow } from './scoring';
+import type { LegPosition } from './routes';
 import { scoreStageTimes } from './timeScoring';
 import type { StageTimeConfig, TimeKeyRow } from './timeScoring';
 
@@ -57,15 +58,22 @@ export interface StagePenaltyParts {
 
 // What one stage costs a crew who handed no card in for it: a blank card.
 //
-// `isFinalStage` matters for the time part only, and it is the finish row that
-// reads it: the finish of a stage that is followed by another one also loses the
-// break after it, and the finish of the last stage is where a participant with
-// no time is out of the rally. Neither the participant number nor the delta they
-// carry in is needed — every row of a blank card is a control they missed, and a
-// missed control is a flat penalty that leaves the delta where it was.
+// Where the stage sits in the rally matters for the time part only, and it is
+// the finish row that reads it: the finish of a stage another one follows *in
+// the same route* also loses the break after it, and the finish of the last
+// stage of the last route is where a participant with no time is out of the
+// rally. It is taken as an object rather than as two booleans because two
+// adjacent booleans is exactly how the wrong one gets passed.
+//
+// `startsRoute` is deliberately not among them: on a blank card the start row
+// has no WPT, and a missing start is free whether it opens a leg or not. Nor is
+// the participant number or the delta they carry in — every row of a blank card
+// is a control they missed, and a missed control is a flat penalty that leaves
+// the delta where it was. So a stage's blank card is still scored once and costs
+// every crew the same.
 export function blankSheetPenalties(
   stage: StageKeys | null | undefined,
-  isFinalStage: boolean
+  position: Pick<LegPosition, 'endsRoute' | 'endsRally'>
 ): StagePenaltyParts {
   const orcPenalty = calculateTotalPenalty(stage?.scoreKey || [], []);
   const timePenalty = scoreStageTimes({
@@ -73,7 +81,8 @@ export function blankSheetPenalties(
     timeConfig: stage?.timeConfig,
     eq: 0,
     entries: [],
-    isFinalStage,
+    endsRoute: position.endsRoute,
+    endsRally: position.endsRally,
   }).totalPenalty;
   const merkPenalty = calculateMerkPenalty(stage?.merkScoreKey || undefined, []).totalPenalty;
 

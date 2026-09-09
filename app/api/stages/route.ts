@@ -2,10 +2,11 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../lib/mongodb';
-import { Stage, Rally } from '../../models';
+import { Rally, Route, Stage } from '../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../lib/api-guard';
-import { parseName, processScoreKey } from '../../lib/validation';
+import { parseName, parseObjectId, processScoreKey } from '../../lib/validation';
 import { rescoreRally } from '../../lib/rescore';
+import { loadRunningOrder } from '../../lib/rallyOrder';
 import mongoose from 'mongoose';
 
 export async function GET(request: NextRequest) {
@@ -22,10 +23,17 @@ export async function GET(request: NextRequest) {
   try {
     await dbConnect();
 
-    // Creation order is the running order of the rally, and the order the time
-    // delta is chained in (app/lib/rescore.ts sorts identically) — `_id` breaks
-    // the tie when two stages were created in the same millisecond.
-    const stages = await Stage.find({ rallyId }).sort({ createdAt: 1, _id: 1 });
+    // Running order: the rally's routes in their order, and inside a route its
+    // stages in creation order — the order the time delta is chained in, and the
+    // one every client reads positionally ("the last one is the stage whose
+    // finish disqualifies"). A rally with no routes comes back in exactly the
+    // creation order it always did (app/lib/rallyOrder.ts).
+    //
+    // Still a bare array of stage documents: eight client files read it as one,
+    // several of them as `stages[stages.length - 1]`. Each stage names its route
+    // in `routeId`, which is enough to group them; the route *names* come from
+    // GET /api/rallies/[id]/routes.
+    const { stages } = await loadRunningOrder(rallyId);
     return NextResponse.json(stages);
   } catch (error) {
     console.error('Failed to fetch stages:', error);
@@ -63,13 +71,50 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Rally not found' }, { status: 404 });
     }
 
+    // A rally either has no routes — every stage is in the one implicit leg — or
+    // it has them, and then every stage belongs to one. So the route is required
+    // exactly when the rally has routes: a stage that silently landed in the
+    // wrong leg would move the delta reset for the whole field, and nothing on
+    // screen would say so.
+    const routes = await Route.find({ rallyId }).select('_id');
+
+    let routeId: unknown;
+    if (routes.length > 0) {
+      const requested = parseObjectId(body.routeId);
+      // It has to be one of *this* rally's routes, checked against the list
+      // already in hand. A route id from another rally would put a stage in a
+      // leg its crews never ride.
+      const route = requested
+        ? routes.find((entry: any) => String(entry._id) === requested)
+        : undefined;
+      if (!route) {
+        return NextResponse.json(
+          { error: 'This rally has routes, so the stage needs one of them' },
+          { status: 400 }
+        );
+      }
+      routeId = route._id;
+    } else if (body.routeId) {
+      // A rally with no routes has no leg to put a stage in.
+      return NextResponse.json({ error: 'This rally has no routes' }, { status: 400 });
+    }
+
     const { scoreKey, timeScoreKey, merkScoreKey, timeConfig } = processScoreKey(body);
 
-    const stage = new Stage({ rallyId, name, scoreKey, timeScoreKey, merkScoreKey, timeConfig });
+    const stage = new Stage({
+      rallyId,
+      routeId,
+      name,
+      scoreKey,
+      timeScoreKey,
+      merkScoreKey,
+      timeConfig,
+    });
     const savedStage = await stage.save();
 
-    // The new stage is now the last one, so the finish of the stage that used to
-    // be last stops being a disqualification and becomes a penalty. Every
+    // The new stage is now the last one of its route, so the finish of the stage
+    // that used to be last there stops carrying no break — and on the last route
+    // it stops being a disqualification and becomes a penalty. Every
     // participant's time chain has to be rebuilt.
     await rescoreRally(rallyId);
 

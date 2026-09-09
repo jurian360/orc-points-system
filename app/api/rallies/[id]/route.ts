@@ -2,7 +2,7 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
-import { Rally, Stage, AnswerSheet, Participant, CardAccess } from '../../../models';
+import { Rally, Route, Stage, AnswerSheet, Participant, CardAccess } from '../../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../../lib/api-guard';
 import { parseName } from '../../../lib/validation';
 import { parseRallyCode } from '../../../lib/rallyCodes';
@@ -125,9 +125,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Rally not found' }, { status: 404 });
     }
 
-    // Cascade: remove the stages, answer sheets, participants and printed QR
-    // codes of this rally.
+    // Cascade: remove the routes, stages, answer sheets, participants and
+    // printed QR codes of this rally.
     await Promise.all([
+      Route.deleteMany({ rallyId: id }),
       Stage.deleteMany({ rallyId: id }),
       AnswerSheet.deleteMany({ rallyId: id }),
       Participant.deleteMany({ rallyId: id }),

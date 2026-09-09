@@ -7,6 +7,7 @@ import dbConnect from '../../../../lib/mongodb';
 import { AnswerSheet, CardAccess, Participant, Rally, Stage } from '../../../../models';
 import { readBody, requireRallyAdmin } from '../../../../lib/api-guard';
 import { parseEq } from '../../../../lib/validation';
+import { loadRunningOrder } from '../../../../lib/rallyOrder';
 import {
   ensureCardAccess,
   ensureRallyCode,
@@ -36,13 +37,13 @@ interface CardRow {
 // Everything the printing page needs: the stage's identifiers as the app will
 // see them, and a row per participant of the rally.
 async function buildResponse(rally: any, stage: any) {
-  const [rallyCode, cardId, participants, accesses, sheets, stages] = await Promise.all([
+  const [rallyCode, cardId, participants, accesses, sheets, order] = await Promise.all([
     ensureRallyCode(rally),
     ensureStageCardId(stage),
     Participant.find({ rallyId: rally._id }).sort({ eq: 1 }),
     CardAccess.find({ stageId: stage._id }),
     AnswerSheet.find({ stageId: stage._id }).select('eq'),
-    Stage.find({ rallyId: rally._id }).sort({ createdAt: 1, _id: 1 }).select('_id'),
+    loadRunningOrder(rally._id, '_id'),
   ]);
 
   const codeByEq = new Map<number, any>(accesses.map((access: any) => [access.eq, access]));
@@ -61,10 +62,11 @@ async function buildResponse(rally: any, stage: any) {
     };
   });
 
-  // The running order is the creation order, so the card's number is its place
-  // in that order. `cardId` is what the app sends back; the position is only
-  // what the participant sees.
-  const position = stages.findIndex((entry: any) => String(entry._id) === String(stage._id)) + 1;
+  // The card's number is its place in the running order — the routes in their
+  // order, and inside a route its stages in theirs. `cardId` is what the app
+  // sends back; the position is only what the participant sees, which is why
+  // routes may move it and may not move `cardId`.
+  const position = order.positionByStage.get(String(stage._id))?.position || 0;
 
   return {
     rally: { _id: String(rally._id), name: rally.name, code: rallyCode },
