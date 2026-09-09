@@ -3,6 +3,7 @@ import type { RallyRoute } from '../lib/routes';
 import { maxMerkPenalty, PENALTY_PER_ERROR } from '../lib/scoring';
 import {
   DEFAULT_TIME_CONFIG,
+  finishOutOfWindowCost,
   maxStageTimePenalty,
   resolveTimeConfig,
   timeRowLabel,
@@ -160,6 +161,10 @@ const StageForm: React.FC<StageFormProps> = ({
   const handleTimeConfigChange = (field: keyof StageTimeConfig, value: string) => {
     const numValue = parseInt(value, 10);
     setTimeConfig((prev) => ({ ...prev, [field]: isNaN(numValue) ? 0 : Math.max(numValue, 0) }));
+  };
+
+  const handleTimeConfigToggle = (field: keyof StageTimeConfig, value: boolean) => {
+    setTimeConfig((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleAnswerChange = (rowIndex: number, colIndex: number, value: string) => {
@@ -717,13 +722,25 @@ const StageForm: React.FC<StageFormProps> = ({
                   />
                 </label>
                 <label className="text-sm text-gray-700">
-                  Max strafpunten buiten venster
+                  Max strafpunten GTC buiten venster
                   <input
                     type="number"
                     min={0}
                     className="mt-1 w-full h-10 p-1 border border-gray-300 rounded text-center text-base text-gray-700"
                     value={timeConfig.outOfWindowPenalty}
                     onChange={(e) => handleTimeConfigChange('outOfWindowPenalty', e.target.value)}
+                  />
+                </label>
+                <label className="text-sm text-gray-700">
+                  Max strafpunten finish (VTC) buiten venster
+                  <input
+                    type="number"
+                    min={0}
+                    className="mt-1 w-full h-10 p-1 border border-gray-300 rounded text-center text-base text-gray-700"
+                    value={timeConfig.finishOutOfWindowPenalty}
+                    onChange={(e) =>
+                      handleTimeConfigChange('finishOutOfWindowPenalty', e.target.value)
+                    }
                   />
                 </label>
                 <label className="text-sm text-gray-700">
@@ -747,15 +764,39 @@ const StageForm: React.FC<StageFormProps> = ({
                   />
                 </label>
               </div>
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={timeConfig.finishOutOfWindowFlat}
+                  onChange={(e) =>
+                    handleTimeConfigToggle('finishOutOfWindowFlat', e.target.checked)
+                  }
+                />
+                <span>
+                  Finish buiten venster is een vast bedrag
+                  <span className="block text-xs text-gray-600">
+                    The whole cost of a blown VTC, so the break after this stage is not charged
+                    on top of it — for an event that fines a blown finish a flat 150 or 180
+                    instead of a maximum plus the break.
+                  </span>
+                </span>
+              </label>
               <p className="text-xs text-gray-600">
-                A control passed outside its window costs the maximum ({timeConfig.outOfWindowPenalty}
-                ) and the delta falls back to what it was before it. On the finish of a stage that is
-                followed by another one of the same route the break is charged on top (
-                {timeConfig.outOfWindowPenalty} + {timeConfig.breakMinutes} ={' '}
-                {timeConfig.outOfWindowPenalty + timeConfig.breakMinutes}); on the finish of the
-                last stage of the rally the same window means a disqualification. A control this
-                stage uses but that has no WPT at all was missed and costs its maximum too: a GTC{' '}
-                {timeConfig.outOfWindowPenalty}, the finish {timeConfig.missingFinishPenalty}
+                A GTC passed outside its window costs its maximum ({timeConfig.outOfWindowPenalty})
+                and the delta falls back to what it was before it. The finish is a VTC and costs its
+                own ({timeConfig.finishOutOfWindowPenalty})
+                {endsRoute
+                  ? ''
+                  : timeConfig.finishOutOfWindowFlat
+                    ? ', a flat amount that already covers the break after this stage'
+                    : `, plus the break after this stage (${timeConfig.finishOutOfWindowPenalty} + ${timeConfig.breakMinutes} = ${finishOutOfWindowCost(timeConfig, endsRoute)})`}
+                {endsRally
+                  ? ' — and on the finish of the last stage of the rally that window also means a disqualification'
+                  : ''}
+                . A control this stage uses but that has no WPT at all was missed and costs its
+                maximum too: a GTC {timeConfig.outOfWindowPenalty}, the finish{' '}
+                {timeConfig.missingFinishPenalty}
                 {endsRoute
                   ? endsRally
                     ? ' — and a missing finish on the last stage of the rally is a DNF, so the participant is disqualified'
@@ -764,8 +805,10 @@ const StageForm: React.FC<StageFormProps> = ({
                 . Defaults:{' '}
                 {DEFAULT_TIME_CONFIG.gtcEarlyWindow}/{DEFAULT_TIME_CONFIG.gtcLateWindow} for a GTC,{' '}
                 {DEFAULT_TIME_CONFIG.finishEarlyWindow}/{DEFAULT_TIME_CONFIG.finishLateWindow} for the
-                finish, {DEFAULT_TIME_CONFIG.outOfWindowPenalty} /{' '}
-                {DEFAULT_TIME_CONFIG.missingFinishPenalty} strafpunten.
+                finish, {DEFAULT_TIME_CONFIG.outOfWindowPenalty} for a blown GTC and{' '}
+                {DEFAULT_TIME_CONFIG.missingFinishPenalty} for a missed finish. A stage that was
+                keyed before the VTC had a maximum of its own keeps the GTC&apos;s until it is
+                changed here.
               </p>
               {endsRoute && !endsRally && (
                 <p className="text-xs text-gray-600 mt-2">

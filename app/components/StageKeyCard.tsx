@@ -1,6 +1,7 @@
 import React from 'react';
 import { maxMerkPenalty, merkFalseLetters, PENALTY_PER_ERROR } from '../lib/scoring';
 import {
+  finishOutOfWindowCost,
   maxStageTimePenalty,
   resolveTimeConfig,
   timeRowKind,
@@ -343,10 +344,21 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
               </tr>
               <tr>
                 <td className="py-1 px-3 border-b border-r border-gray-300 text-sm font-semibold text-gray-800">
-                  Max strafpunten buiten venster
+                  Max strafpunten GTC buiten venster
                 </td>
                 <td className="py-1 px-3 border-b border-gray-300 text-right text-base font-bold text-gray-900">
                   {config.outOfWindowPenalty}
+                </td>
+              </tr>
+              <tr>
+                <td className="py-1 px-3 border-b border-r border-gray-300 text-sm font-semibold text-gray-800">
+                  Max strafpunten finish (VTC) buiten venster
+                </td>
+                <td className="py-1 px-3 border-b border-gray-300 text-right text-base font-bold text-gray-900">
+                  {config.finishOutOfWindowPenalty}
+                  {config.finishOutOfWindowFlat && (
+                    <span className="block text-xs font-normal text-gray-600">vast bedrag</span>
+                  )}
                 </td>
               </tr>
               <tr>
@@ -380,8 +392,10 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
           {endsRally
             ? 'This is the last stage of the last route: a participant outside the finish window, or with no finish time at all, is disqualified.'
             : endsRoute
-              ? 'This is the last stage of its route: after its finish the delta is neutralised, so the next route starts free. A blown finish window costs the maximum and no break, because nothing of this route follows it — and it is not a disqualification, because the participant rides on.'
-              : `Another stage of this route follows this one, so a blown finish window costs the maximum plus the break (${config.outOfWindowPenalty} + ${config.breakMinutes} = ${config.outOfWindowPenalty + config.breakMinutes}).`}{' '}
+              ? 'This is the last stage of its route: after its finish the delta is neutralised, so the next route starts free. A blown VTC costs its maximum and no break, because nothing of this route follows it — and it is not a disqualification, because the participant rides on.'
+              : config.finishOutOfWindowFlat
+                ? `Another stage of this route follows this one, but a blown VTC is charged a flat ${config.finishOutOfWindowPenalty} here, which is the whole cost — the break is not added on top.`
+                : `Another stage of this route follows this one, so a blown VTC costs its maximum plus the break (${config.finishOutOfWindowPenalty} + ${config.breakMinutes} = ${finishOutOfWindowCost(config, endsRoute)}).`}{' '}
           {`A control with an IPT but no WPT was missed and costs its maximum as well: ${config.outOfWindowPenalty} for a GTC, ${
             endsRoute
               ? config.missingFinishPenalty

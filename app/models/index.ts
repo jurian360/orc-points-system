@@ -177,7 +177,17 @@ const StageSchema = new mongoose.Schema({
     gtcLateWindow: { type: Number, default: 30 },
     finishEarlyWindow: { type: Number, default: 15 },
     finishLateWindow: { type: Number, default: 60 },
+    // The GTC's maximum only. The finish is a VTC and has its own, below.
     outOfWindowPenalty: { type: Number, default: 60 },
+    // The finish (VTC) passed outside its window. Deliberately without a schema
+    // default: a stage keyed before this setting existed stores nothing here,
+    // and `resolveTimeConfig` then falls back to that stage's own
+    // `outOfWindowPenalty` — what it was scored with — rather than to a default
+    // that would re-score it.
+    finishOutOfWindowPenalty: { type: Number },
+    // True when `finishOutOfWindowPenalty` is the whole cost of a blown VTC (a
+    // flat 150 or 180), so the break after the stage is not added on top.
+    finishOutOfWindowFlat: { type: Boolean, default: false },
     // A finish with no WPT at all — the participant missed it — costs more than
     // a blown window, plus the break when another stage follows.
     missingFinishPenalty: { type: Number, default: 90 },
