@@ -14,6 +14,11 @@ export interface TimePenaltyRow {
   // A control of the stage the participant has no time for: charged its
   // maximum, and shown like a blown window.
   missing?: boolean;
+  // The start row of the first stage of a route: the leg's delta begins here, so
+  // it is shown but costs nothing and does not move the delta. Marked on the
+  // card because it is the row an official reads to check that the delta really
+  // was neutralised at the boundary.
+  free?: boolean;
 }
 
 export interface MerkScoreRow {
@@ -105,6 +110,7 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                     </td>
                     <td className="py-1.5 px-1 border-b border-r border-gray-300 text-sm font-semibold text-gray-700">
                       {timeRowLabel(row.rowNumber)}
+                      {row.free && <span className="font-normal text-gray-500"> (vrij)</span>}
                     </td>
                     <td className="py-1.5 px-1 border-b border-r border-gray-300 text-center text-base text-gray-800">
                       {row.ipt || '-'}
@@ -130,7 +136,8 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
         )}
         {disqualified && (
           <p className="mt-2 px-2 py-1 rounded bg-red-100 text-red-800 text-sm font-bold">
-            Disqualified — no finish time, or outside the finish window, on the last stage.
+            Disqualified — no finish time, or outside the finish window, on the last stage of
+            the last route.
           </p>
         )}
       </div>

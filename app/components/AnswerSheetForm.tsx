@@ -916,15 +916,17 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
           <p className="text-[11px] text-gray-600 mt-1">
             Type the WPT (e.g. 8:05). The IPT is this participant&apos;s ideal time — the stage&apos;s
             IPT 0 plus their EQ in minutes — and the strafpunten follow from how far the delta moved
-            since the previous control. The start of the first stage is free; a control passed
-            outside its window costs the maximum and the delta reverts to the last valid one, and a
-            control the stage uses but that has no WPT was missed and costs its maximum too.
+            since the previous control. The start of the first stage of every route is free — the
+            delta is neutralised at a route boundary and starts again from zero there; a control
+            passed outside its window costs the maximum and the delta reverts to the last valid
+            one, and a control the stage uses but that has no WPT was missed and costs its maximum
+            too.
             {eq === '' && ' Select a participant to see their own times.'}
           </p>
           {timeResult?.disqualified && (
             <p className="mt-1 px-2 py-1 rounded bg-red-100 text-red-800 text-xs font-bold">
-              No finish time, or outside the finish window, on the last stage — this participant
-              is disqualified.
+              No finish time, or outside the finish window, on the last stage of the last route —
+              this participant is disqualified.
             </p>
           )}
           {timeResult && (
