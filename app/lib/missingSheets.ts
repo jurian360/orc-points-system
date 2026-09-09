@@ -12,7 +12,7 @@
 //     rows are scored, so every letter of the key counts as missing;
 //   * the time column — `scoreStageTimes` with no entries: every control the
 //     stage uses is one the participant missed, which costs a GTC its flat
-//     maximum and the finish `missingFinishPenalty` plus the break after the
+//     maximum and the finish the VTC's maximum plus the break after the
 //     stage, unless the stage ends its route. The start costs nothing (it has no
 //     window), and a missed control never moves the delta, so a stage nobody
 //     typed does not disturb the chain of the stages around it;

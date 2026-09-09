@@ -744,16 +744,6 @@ const StageForm: React.FC<StageFormProps> = ({
                   />
                 </label>
                 <label className="text-sm text-gray-700">
-                  Max strafpunten gemiste finish
-                  <input
-                    type="number"
-                    min={0}
-                    className="mt-1 w-full h-10 p-1 border border-gray-300 rounded text-center text-base text-gray-700"
-                    value={timeConfig.missingFinishPenalty}
-                    onChange={(e) => handleTimeConfigChange('missingFinishPenalty', e.target.value)}
-                  />
-                </label>
-                <label className="text-sm text-gray-700">
                   Pauze na deze etappe (min)
                   <input
                     type="number"
@@ -794,19 +784,16 @@ const StageForm: React.FC<StageFormProps> = ({
                 {endsRally
                   ? ' — and on the finish of the last stage of the rally that window also means a disqualification'
                   : ''}
-                . A control this stage uses but that has no WPT at all was missed and costs its
-                maximum too: a GTC {timeConfig.outOfWindowPenalty}, the finish{' '}
-                {timeConfig.missingFinishPenalty}
-                {endsRoute
-                  ? endsRally
-                    ? ' — and a missing finish on the last stage of the rally is a DNF, so the participant is disqualified'
-                    : ''
-                  : ` + ${timeConfig.breakMinutes} = ${timeConfig.missingFinishPenalty + timeConfig.breakMinutes}`}
+                . A control this stage uses but that has no WPT at all was missed, and missing a
+                control is blowing it: it costs exactly the same — a GTC {timeConfig.outOfWindowPenalty},
+                the finish {finishOutOfWindowCost(timeConfig, endsRoute)}
+                {endsRally
+                  ? ' — and a missing finish on the last stage of the rally is a DNF, so the participant is disqualified'
+                  : ''}
                 . Defaults:{' '}
                 {DEFAULT_TIME_CONFIG.gtcEarlyWindow}/{DEFAULT_TIME_CONFIG.gtcLateWindow} for a GTC,{' '}
                 {DEFAULT_TIME_CONFIG.finishEarlyWindow}/{DEFAULT_TIME_CONFIG.finishLateWindow} for the
-                finish, {DEFAULT_TIME_CONFIG.outOfWindowPenalty} for a blown GTC and{' '}
-                {DEFAULT_TIME_CONFIG.missingFinishPenalty} for a missed finish. A stage that was
+                finish and {DEFAULT_TIME_CONFIG.outOfWindowPenalty} strafpunten. A stage that was
                 keyed before the VTC had a maximum of its own keeps the GTC&apos;s until it is
                 changed here.
               </p>
