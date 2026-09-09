@@ -652,8 +652,9 @@ on a rally ridden in routes.
   The `<colgroup>`, the three header rows and the body all take a leg's width
   from **`routeColumns(group)`** rather than restating the arithmetic: a header
   row that does not add up is what shears a printed table sideways.
-- On a routed sheet the rally total's last heading is **`Tot.`**, so every group
-  ends in the same word; the plain and per-stage sheets keep `Totaal`.
+- On a routed sheet the rally total is headed **`ORC` … `Tot.`**, so every group
+  on the sheet reads the same; the plain and per-stage sheets keep `ORC's` and
+  `Totaal`.
 - A stage in **no** route would be dropped from every group, so a sheet that
   cannot place one falls back to the per-stage sheet and says so on screen.
 - **A crew who did not finish is printed as `DNF` and one who never started as

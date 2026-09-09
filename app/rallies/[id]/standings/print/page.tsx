@@ -718,12 +718,15 @@ export default function StandingsPrintPage({
           // numbers on the sheet when it does not.
           const totalHeaders = (
             <>
+              {/* On a routed sheet every group above reads ORC, so the rally
+                  total does too — the same reason its last column reads Tot.
+                  rather than Totaal. */}
               <th
                 className={`py-0.5 px-1 text-right align-bottom text-[10px] font-bold uppercase tracking-wide${
                   sheetGroupsByStage || sheetGroupsByRoute ? ' border-l-2 border-gray-800' : ''
                 }`}
               >
-                ORC&apos;s
+                {sheetGroupsByRoute ? 'ORC' : <>ORC&apos;s</>}
               </th>
               <th className="py-0.5 px-1 text-right align-bottom text-[10px] font-bold uppercase tracking-wide">
                 Tijd
