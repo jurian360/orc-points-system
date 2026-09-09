@@ -17,7 +17,7 @@ import {
 // POST /api/rallies/[id]/duplicate
 //
 // A new rally with the stages and the answer keys of this one, named
-// "<name>-copy". Rallies are run to the same route year after year: the keys,
+// "<name>-copy". Rallies are run over the same course year after year: the keys,
 // the timetable and the time settings are the work, and typing them again is
 // what this route saves.
 //

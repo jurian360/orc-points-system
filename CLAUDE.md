@@ -31,8 +31,9 @@ in code and UI — do not "translate" them:
 
 | Term | Meaning |
 | --- | --- |
-| **Rally** | Top-level event. Has many stages. |
-| **Stage** | One leg of a rally. Holds the answer key used to grade sheets. |
+| **Rally** | Top-level event. Has many routes and/or stages. |
+| **Route** | A sequential leg of a rally: every crew rides route 1, then route 2, and a route holds several stages. At a boundary the crews are re-started, so the time delta is neutralised. Two events a year use them; **a rally with no routes is one implicit leg** and behaves exactly as every rally did before routes existed. |
+| **Stage** | One proef of a rally. Holds the answer key used to grade sheets. |
 | **Answer sheet** | One participant's submission for **one** stage. |
 | **EQ** | Participant/equipe number, integer `1..100`. Identifies a competitor — crews have no account, only the officials do. |
 | **Classification** | The class a crew rides in: `B`, `A`, `H`, `I` or `T` (or empty while unknown). Recorded per participant, not used by the scoring. |
@@ -58,8 +59,9 @@ in code and UI — do not "translate" them:
 User                   (an official's account; owns no rally data)
 
 Rally ──< Stage ──< AnswerSheet
-   ├──────────────────┤  (AnswerSheet also stores rallyId for cheap standings)
-   │                  └─< CardAccess   (the QR code of one {stage, eq})
+   │        ↑        │  (AnswerSheet also stores rallyId for cheap standings)
+   ├──< Route┘       └─< CardAccess   (the QR code of one {stage, eq})
+   │      (Stage.routeId, unset on a rally with no routes)
    └──< Participant       (optional details of one EQ: class + crew names)
 ```
 
@@ -131,10 +133,89 @@ Rally ──< Stage ──< AnswerSheet
   Re-scoring goes through `app/lib/rescore.ts` (`rescoreRally` /
   `rescoreParticipants`, one `bulkWrite`) because the time part is a chain — see
   the scoring rules below.
-- The **running order** of a rally is the creation order of its stages
-  (`sort({ createdAt: 1, _id: 1 })`, both in `GET /api/stages` and in the
-  re-scoring). The last stage in that order is the one whose finish
-  disqualifies.
+- `Route` — `{ rallyId, name, order, createdAt }`, a sequential leg of a rally.
+  **Unique index `{rallyId, name}`** (the printed per-route rankings are headed
+  with it); the `11000` is mapped to a 409, like the rally code. `order` is an
+  explicit field rather than `createdAt`, because a route — unlike a stage — is
+  reordered by hand, and a creation timestamp that officials rewrite stops
+  meaning anything. `Stage.routeId` puts a stage in one and is **unset** on
+  every stage of the eight rallies in ten that have no routes, so those store no
+  new field at all.
+- The **running order** of a rally (`app/lib/routes.ts`, pure and shared;
+  `app/lib/rallyOrder.ts`, the query) is: if the rally has **no routes**, its
+  stages by `(createdAt, _id)` — the order it always was. If it **has routes**,
+  its routes by `(order, _id)` and inside each route its stages by
+  `(createdAt, _id)`. Everything positional is asked of that one helper rather
+  than of an array index, and it used to be a `{createdAt:1,_id:1}` sort written
+  out in seven files.
+  A stage whose `routeId` is absent or names a route of another rally sorts
+  **ahead** of every route, as a leading leg of its own. The API does not allow
+  one, but a document edited straight in the database can produce one, and
+  sorting it *last* would make its finish the rally's finish — the real last
+  stage would stop disqualifying and every crew who missed it would silently
+  read as having finished.
+- **"The last stage" is two questions now**, and they used to be one flag
+  (`isFinalStage`): `endsRoute` — nothing of the same route follows, so the break
+  after the stage is not charged with its finish — and `endsRally`, the last
+  stage of the last route, the one finish in the whole rally that disqualifies.
+  On a rally with no routes they are the same stage and the same answer.
+
+## Routes: the legs of a rally (`app/lib/routes.ts`)
+
+Two of the ten rallies a year are ridden in **separate legs**: the crews ride
+route 1, then route 2, and at the boundary they are re-started on a fresh
+schedule. A route holds several stages.
+
+**A rally with no routes is one implicit leg holding every stage.** That is not a
+special case bolted on the side — it is what makes the other eight rallies
+byte-identical, because every derived flag collapses to the value it had before.
+`groupStagesByRoute` returns `[]` for such a rally, which is the gate every view
+uses: `routes.length === 0` means "render exactly what you rendered before", not
+"render a group of one".
+
+- `app/lib/routes.ts` is **pure and shared, client + server**, like
+  `standings.ts` and `participants.ts`: the scoring, the standings route, the
+  entry form's live preview and the printed sheet all have to answer "which leg
+  is this stage in" the same way, and a second implementation is a second answer.
+  It holds `orderStagesByRoute`, `groupStagesByRoute`, `legPositions` (the
+  boundary flags), `stageLegPosition` and `routeTotals`.
+- `app/lib/rallyOrder.ts` is `server-only` and is only the query
+  (`loadRunningOrder`). It appends `routeId createdAt` to any projection it is
+  given, because a projection that left them out would silently collapse a rally
+  into one leg in creation order.
+- **The boundary flags are adjacency on `routeId` over an already-ordered list.**
+  That precondition is the function's contract and `orderStagesByRoute` is its
+  only producer; a list that is not grouped reads as more legs than the rally
+  has. It is checked nowhere on purpose — this runs in a browser render path, and
+  an exception there would take a page down over a data problem a re-score fixes.
+- **A crew's per-route totals are derived, never stored** (`routeTotals`, summed
+  from the `stagePenalties` the standings already return). A second copy of a
+  number is a second place for it to disagree, and it is the same reason the
+  printed sheet re-ranks the per-class results where it prints them instead of
+  asking the API for a second ranking.
+- **The routes API** is rally-scoped (`/api/rallies/[id]/routes`, and
+  `.../[routeId]` for a rename or a delete), `requireSession()` to read and
+  `requireRallyAdmin()` to write — a leg boundary moves the delta of the whole
+  field. No new `Permission`. A route of another rally answers **404** at that
+  path, not 403.
+- **A rally has one of two shapes and never a third**: no routes at all, or
+  routes with every stage in one of them. Creating the **first** route takes
+  every stage the rally already has (that leg is what its stages were typed as);
+  a stage created while routes exist has to name one (400 otherwise); and
+  **a route that still holds stages cannot be deleted** — 409, naming them.
+  Deleting a stage takes its answer sheets with it, and a mis-click on a
+  *grouping* must never be able to do that. Deleting the last route puts the
+  rally back to one implicit leg.
+- **Everything that moves a leg boundary re-scores the rally** — creating a
+  route, reordering them, deleting one, and moving a stage between them (a
+  `routeId` on `PUT /api/stages/[id]`, which is opt-in the way a rally's code is:
+  a body without it leaves the stored value alone). Renaming a route is the one
+  write that does not, a name being no part of the chain.
+- **Route management lives in the dashboard's Stages tab**, not on a page of its
+  own, so `middleware.ts`'s `RESTRICTED_PAGES` gains nothing: the dashboard is
+  deliberately not restricted, a data-entry official reads it. The panel is
+  gated on `manage:rally` in the component *and* every route it calls is guarded
+  — hiding a button is never the control.
 
 ## Scoring rules (`app/lib/scoring.ts`)
 
@@ -236,8 +317,8 @@ calls the three functions a real sheet is scored by, with nothing to score.
   standings show one total. A stage with no sheet is not re-scored and does not
   re-score: `rescore.ts` writes sheets, and there is none.
 - **The sheet's `disqualified` flag stays a card's business.** A missing sheet
-  never sets it — only the finish of the last stage does, on a card
-  (`app/lib/timeScoring.ts`). Missing the *last* stage's card is still not
+  never sets it — only the finish of the last stage of the last route does, on a
+  card (`app/lib/timeScoring.ts`). Missing that stage's card is still not
   finishing the rally, and that is `status: 'dnf'` on the standings entry, not a
   flag on a sheet that does not exist (see below).
 - A crew with **no sheets at all** is a DNS (below) and is scored on every stage
@@ -256,10 +337,12 @@ disagree:
 | `dnf` | Started but did not finish | Behind the field; prints **DNF** instead of a place |
 | `dns` | Did not start | Behind the DNF's; prints **DNS** |
 
-- **DNF is two things at once**: the last stage's card puts the crew outside its
-  finish window or holds no finish time at all (`disqualified` on the sheet, see
-  the time rules), **or** the crew has no card for the last stage at all. Either
-  way they did not finish the rally. Their points stand and are printed as they
+- **DNF is two things at once**: the card of the last stage of the last route
+  puts the crew outside its finish window or holds no finish time at all
+  (`disqualified` on the sheet, see the time rules), **or** the crew has no card
+  for that stage at all. Either way they did not finish the rally. The rule did
+  not change when routes arrived — only the order it is read off did, because
+  the last stage of the running order *is* the last stage of the last route. Their points stand and are printed as they
   stand — the place column says what happened, the numbers say what they scored.
 - **DNS is a crew on the entry list with no card in the whole rally.** They used
   to be left out of the standings; they are listed now, because a crew who was
@@ -271,6 +354,13 @@ disagree:
 - Only a `finished` crew has a place. The dashboard's rank column and the
   printed sheet's place column show `STATUS_LABEL` instead for the other two,
   and the rally header counts the crews that have a card, not the DNS's.
+- **The same three groups are read per route** on the printed route sheets
+  (`routeTotals` in `app/lib/routes.ts`) — a *reading* of this one rule, not a
+  fourth status. No card on the leg at all is a DNS for it; a card somewhere in
+  the route with a hole where its last stage should be is a DNF for it; and
+  `disqualified` counts **only on the last route**, because inside the rally a
+  blown finish is a penalty and the crew rode on. Printing a crew DNF for route
+  1 because they blew its last finish is a judgement the sport does not make.
 
 ## Time scoring rules (`app/lib/timeScoring.ts`)
 
@@ -279,24 +369,35 @@ disagree:
 holds the ideal time of participant 0, so `IPT(eq, row) = IPT0(row) + eq`
 minutes. Officials type the WPT; the delta is `WPT - IPT` in minutes.
 
-1. The delta starts at **0** at the start of the rally and **carries from stage
-   to stage**, up to the last one.
-2. The **start of the first stage is free**: it is where the rally begins, so it
-   costs nothing and does not move the delta — a participant sent away late does
-   not get to keep that as their delta. The start of every later stage *is*
-   scored (it has no window), so a participant who carries `+3` and starts the
-   next stage on time pays those 3 points.
+1. The delta starts at **0** at the start of every **route** and **carries from
+   stage to stage** inside it. A rally with no routes is one route holding every
+   stage, so there it starts at 0 once and runs to the last stage — which is what
+   this file always described.
+2. The **start of the first stage of a route is free**: it is where the leg
+   begins, so it costs nothing and does not move the delta — a participant sent
+   away late does not get to keep that as their delta. The start of every later
+   stage of the same route *is* scored (it has no window), so a participant who
+   carries `+3` and starts the next stage on time pays those 3 points.
+   **The reset needs both halves and only one of them is obvious.** The free start
+   row returns without assigning `runningDelta`, so setting the flag alone would
+   leave the carry-over in place and charge it at the next GTC; passing
+   `startDelta: 0` alone would charge it at the start row itself. Both fire at
+   index 0 on a rally with no routes, where the delta is already zero, which is
+   why they never had to be told apart.
 3. A control costs **1 point per minute the delta moved** since the previous
    control — arriving `+5` costs 5, then dropping back to `+3` costs 2 more.
    Participants have to *keep* their delta, not undo it.
 4. A **GTC outside its window** (default 15 early / 30 late) costs a flat
    maximum (default 60) and **never moves the delta**: it reverts to the last
    valid one, so the next control is measured against that.
-5. The **finish of a stage that is followed by another one**, outside its window,
-   costs that maximum **plus the break after the stage** (`timeConfig.breakMinutes`,
-   which differs per stage) — and, like any blown window, leaves the delta at the
-   last valid one.
-6. The **finish of the last stage** has a wider window (default 15 early / 60
+5. The **finish of a stage that is followed by another one of the same route**,
+   outside its window, costs that maximum **plus the break after the stage**
+   (`timeConfig.breakMinutes`, which differs per stage) — and, like any blown
+   window, leaves the delta at the last valid one. The finish of a stage that
+   **ends its route** carries no break: the next leg re-starts the crew anyway,
+   so there is nothing to carry into it.
+6. The **finish of the last stage of the last route** has a wider window
+   (default 15 early / 60
    late); outside it the participant is **disqualified** (`disqualified` on the
    sheet; standings rank them behind everyone else). So is a participant with no
    finish time at all on that stage — a DNF, see the next rule.
@@ -479,7 +580,8 @@ came in outside their window — instead of opening 56 cards.
 The standings tab is the whole field in one table, which is what an official
 reads on a screen. What goes on the wall at the finish is a **result sheet**:
 `/rallies/[id]/standings/print` (the *Print* button next to the standings
-filters) lays the same numbers out on A4, in one of three shapes.
+filters) lays the same numbers out on A4, in one of four shapes — the last only
+on a rally ridden in routes.
 
 - **Algemeen klassement** — every class together in one ranking, the whole field
   on one sheet. The place is the API's own rank, so this sheet *is* the standings
@@ -501,6 +603,18 @@ filters) lays the same numbers out on A4, in one of three shapes.
   does. *Per class* prints it first, ahead of the class sheets it combines; it
   can also be printed on its own (`?view=wedstrijd`), and no crews in either
   class means no sheet.
+- **Per route** — on a rally ridden in legs, one A4 per route with its own 1, 2,
+  3, ranked on what that leg alone cost a crew. A route is ridden by everybody,
+  so it gets a ranking of its own the way a class does; the rally is read on the
+  algemeen klassement and the leg on these. The route's numbers are written onto
+  the copied entry *as* its totals, the way a class sheet writes `placing`, so
+  the table prints a route sheet with no new rendering code and the DNF/DNS label
+  lands in the place column on its own. Its order is the standings' own
+  comparator read over the route's numbers (status, then points, then EQ) — the
+  first sheet on the page whose order is not the API's, because a rally rank says
+  nothing about one leg. Addressed as `?route=<id>` (or `?route=all`), and a
+  `route:<id>` `PrintMode`: a 24-character hex id cannot collide with a class
+  letter or with any of the words.
 - **It scores nothing.** It is `GET /api/rallies/[id]/standings` read onto paper,
   like `RallyTimesPanel` is for the times, and its guard is that route's
   `requireSession()`: reading the standings is a data-entry official's too, so
@@ -524,6 +638,24 @@ filters) lays the same numbers out on A4, in one of three shapes.
   blank card (`missingSheet`), which the standings charge them, so it is printed
   like any other stage with a `*` and a footnote under the table. More stages make the per-stage columns narrower and
   smaller (`stageSizing`) rather than pushing a stage off the sheet.
+- **A rally ridden in legs groups those columns under the route and adds the four
+  numbers per route** — but four per stage on top of four per route and four for
+  the rally do not fit on A4 (at seven stages the per-stage sheet already leaves
+  about 52px for two crew names), so there **a stage gets one column, its
+  subtotal, and a route gets the four**. That is the decomposition the results
+  are ranked on, and a crew's own per-stage split is on their card page. The
+  stage columns are *numbered* with a legend under the table, because a 28px
+  column cannot hold "Coastal leg". Where even that does not fit
+  (`fitsStageColumns`, measured against `PAPER_WIDTH` and `MIN_NAME_WIDTH`) the
+  stage columns come off and the sheet prints the four per route; the *Kolom per
+  proef* checkbox forces it either way, in keeping with this page's rule that
+  every preselection is only that. `routeSizing` is keyed on the **numeric column
+  count** rather than the stage count, because that is what the paper pays for;
+  `stageSizing` is deliberately left exactly as it is, since re-keying it would
+  shrink a two-stage sheet from `w-10` to `w-8` on the eight rallies in ten that
+  never see a route.
+- A stage in **no** route would be dropped from every group, so a sheet that
+  cannot place one falls back to the per-stage sheet and says so on screen.
 - **A crew who did not finish is printed as `DNF` and one who never started as
   `DNS`, not as a place.** They are ranked behind the field because the standings
   have to put them somewhere, not because they finished last, so the place column
@@ -555,14 +687,18 @@ filters) lays the same numbers out on A4, in one of three shapes.
 
 ## Duplicating a rally
 
-An event is run to the same route year after year: the stages, the answer keys,
+An event is run over the same course year after year: the stages, the answer keys,
 the timetable and the time settings are the work. *Duplicate* — on the rally list
 and in the rally dashboard header — is `POST /api/rallies/[id]/duplicate`, and it
 copies exactly that.
 
-- **The setup is copied, the running of it is not.** Every stage comes over in
-  running order with its `scoreKey` (the appeal answers and the `orderMatters`
-  ticks included), `timeScoreKey`, `merkScoreKey`, `timeConfig` and `cardId`. The
+- **The setup is copied, the running of it is not.** The **routes** come over
+  first, re-numbered 1..n, and every stage comes over in running order onto the
+  copy of the leg it was ridden in — a route is a document of its own, not a
+  subdocument, so `withoutIds` never sees it and the stages are remapped through
+  an old-id → new-id map. A stage keeps its `scoreKey` (the appeal answers and
+  the `orderMatters` ticks included), `timeScoreKey`, `merkScoreKey`,
+  `timeConfig` and `cardId`. The
   entry list, the answer sheets and the printed QR codes stay behind: a duplicate
   is a rally waiting for its crews, not a second copy of last year's results. It
   therefore re-scores nothing — it has no sheets, because it has no crews.
@@ -573,8 +709,9 @@ copies exactly that.
   shared, so the confirm dialog can name the copy before the request is sent) and
   the route loops until the unique index accepts a code, or answers 409.
 - **The stages are stamped one millisecond apart** rather than left to default to
-  the same `Date.now()`: the running order is the creation order, so the copy has
-  to keep the order of the original rather than leave it to the `_id` tie-break.
+  the same `Date.now()`, in the order they are *read* — the flat running order,
+  legs included — so the copy keeps the order of the original inside each leg
+  rather than leaving it to the `_id` tie-break.
 - Mongoose gives every subdocument an `_id`; the copies get their own, so the
   keys are stripped of them on the way over.
 - It takes no body — the rally in the path is the whole request — and its guard
@@ -688,6 +825,8 @@ app/
   api/            route handlers (rallies, stages, answersheets, auth, standings,
                   users + users/[id] to manage the officials' accounts,
                   auth/login + auth/check + auth/password (own password),
+                  rallies/[id]/routes to list/add the legs of a rally and to
+                  reorder them, .../[routeId] to rename or remove one,
                   rallies/[id]/participants to list/add the crews of a rally,
                   .../[eq] to read, save or drop one, .../import for an entry list,
                   rallies/[id]/rescore to re-score a whole rally on demand,
@@ -704,6 +843,9 @@ app/
                   the blank card it stands for, shared client + server),
                   standings (finished / DNF / DNS: the three groups a result
                   sheet ranks, shared client + server),
+                  routes (the legs of a rally: the running order, the leg
+                  boundaries and a crew's totals per route, shared client +
+                  server) + rallyOrder (that order read out of the database),
                   api-guard, roles (the two roles and their permissions, shared
                   client + server), passwords (scrypt), users (accounts + the
                   recovery admin), participants (class letters and the
@@ -756,8 +898,9 @@ Do not regress them.**
 - Every API route starts with a guard from `app/lib/api-guard.ts` and reads its
   body with `readBody()` (256 KB cap, object-only JSON). The guard is
   `requireSession()` for a read and for writing an **answer sheet**,
-  `requireRallyAdmin()` for **everything else that writes** — a rally, a stage
-  or its key, the entry list, the imports, the access codes, the re-score — and
+  `requireRallyAdmin()` for **everything else that writes** — a rally, its
+  routes, a stage or its key, the entry list, the imports, the access codes, the
+  re-score — and
   `requireUserAdmin()` for `/api/users`. They all return
   `{ ok, user | response }`, so a handler starts
   `if (!session.ok) return session.response;` and can read `session.user`.
@@ -770,8 +913,16 @@ Do not regress them.**
 - **A new mutating route defaults to `requireRallyAdmin()`.** Typing a
   participant's card is the one thing a data-entry account may change; if a new
   route is not that, it is an admin's.
+- **A `routeId` off the wire is looked up against the *stored* stage's rally**,
+  never against a rally id from the body (`PUT /api/stages/[id]`), and on POST
+  against the rally's own route list already in hand. A route of another rally
+  would put a stage in a leg its crews never ride; this is the one
+  authorization-shaped field the feature added, and it is closed twice —
+  `parseObjectId` before the value reaches a query, and the rally from the
+  document in the filter.
 - **Never interpolate an unvalidated value into a Mongoose query.** Ids go
-  through `mongoose.Types.ObjectId.isValid`, `eq` through
+  through `mongoose.Types.ObjectId.isValid` (or the newer `parseObjectId` in
+  `app/lib/validation.ts`, which new code uses), `eq` through
   `parseEq` / `parseEqParam`, names through `parseName`, arrays through the
   bounded parsers in `app/lib/validation.ts`. This is what closes NoSQL
   operator injection (`{"$gt": 0}`); `sanitizeFilter` is only a backstop.
@@ -867,6 +1018,18 @@ Do not regress them.**
   silently drift. A time
   change never affects one sheet only: it moves the delta of every later stage of
   that participant.
+- **The same rule covers the legs: any write that changes `Stage.routeId` or
+  `Route.order`, or creates or deletes a `Route`, must re-score the rally.** A
+  leg boundary is where the delta is neutralised, so moving one moves the delta
+  of the whole field — and it can move which stage ends the rally, which is the
+  only finish that disqualifies. Renaming a route is the one exception, and the
+  *absence* of a re-score there is commented for the next reader.
+- **`maxStageTimePenalty`'s third parameter is `endsRoute`, not "is this the last
+  stage".** Renaming it from `isFinalStage` left a boolean taking a boolean, so
+  the compiler could not find its call sites — they had to be visited by hand.
+  Any future rename of a same-typed flag has the same hazard; changing the
+  parameter's *type* (as `blankSheetPenalties` did, to an object) is what makes
+  the compiler do the work.
 - `ControlekaartCard` recomputes the ORC and the merk total from the stage's keys
   rather than reading `totalPenalty`, and sums the time penalties stored on the
   sheet's rows (it cannot recompute them without the rest of the rally).
