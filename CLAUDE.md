@@ -388,14 +388,24 @@ minutes. Officials type the WPT; the delta is `WPT - IPT` in minutes.
    control — arriving `+5` costs 5, then dropping back to `+3` costs 2 more.
    Participants have to *keep* their delta, not undo it.
 4. A **GTC outside its window** (default 15 early / 30 late) costs a flat
-   maximum (default 60) and **never moves the delta**: it reverts to the last
-   valid one, so the next control is measured against that.
-5. The **finish of a stage that is followed by another one of the same route**,
-   outside its window, costs that maximum **plus the break after the stage**
-   (`timeConfig.breakMinutes`, which differs per stage) — and, like any blown
-   window, leaves the delta at the last valid one. The finish of a stage that
-   **ends its route** carries no break: the next leg re-starts the crew anyway,
-   so there is nothing to carry into it.
+   maximum (`outOfWindowPenalty`, default 60) and **never moves the delta**: it
+   reverts to the last valid one, so the next control is measured against that.
+   It is the **GTC's** maximum only — the finish is a VTC and has its own.
+5. The **finish is a VTC** — a *verplichte* control, not a secret one — so a
+   blown finish window costs `finishOutOfWindowPenalty`, not the GTC's maximum.
+   The sport's usual is that maximum **plus the break after the stage**
+   (`timeConfig.breakMinutes`, which differs per stage), and some events instead
+   fine a blown VTC one flat amount (150, 180) that is the whole cost:
+   `finishOutOfWindowFlat` is that, and it means the break is already in the
+   number. Either way it leaves the delta at the last valid one, like any blown
+   window, and the finish of a stage that **ends its route** carries no break at
+   all: the next leg re-starts the crew anyway, so there is nothing to carry
+   into it. **A stage that stores no `finishOutOfWindowPenalty` falls back to
+   its own `outOfWindowPenalty`** — what it was scored with before the VTC had a
+   maximum of its own — so adding this setting re-scored nothing. Falling back
+   to the *default* 60 instead would have moved every stage keyed with other
+   limits, which is why the fallback is in `resolveTimeConfig` and in
+   `parseTimeConfig` rather than a schema default.
 6. The **finish of the last stage of the last route** has a wider window
    (default 15 early / 60
    late); outside it the participant is **disqualified** (`disqualified` on the
@@ -414,8 +424,13 @@ minutes. Officials type the WPT; the delta is `WPT - IPT` in minutes.
    costs nothing and leaves the delta where it was. The start of the first stage
    is free in any case.
 
-Windows, the two maximums and the break live in `Stage.timeConfig` so an event
+Windows, the three maximums and the break live in `Stage.timeConfig` so an event
 can be run with different limits; `DEFAULT_TIME_CONFIG` holds the standard ones.
+**The maximums are split by control, not by what went wrong**: `outOfWindowPenalty`
+is the GTC's, `finishOutOfWindowPenalty` the VTC's, and `missingFinishPenalty`
+the finish nobody has a time for. `finishOutOfWindowCost` is the one place that
+reads a blown VTC's cost — the scoring and the stage form's maximum overview both
+call it, so they cannot read the flat flag differently.
 
 ## Merk scoring rules (`app/lib/scoring.ts`)
 

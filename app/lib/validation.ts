@@ -208,16 +208,24 @@ export interface NormalizedScoreKey {
 const MAX_MINUTES = 1440; // a day
 const MAX_PENALTY = 100000;
 
+// The numeric settings of a stage's time config, so the boolean one below
+// cannot be passed to the number parser by mistake.
+type NumericTimeConfigKey = {
+  [K in keyof StageTimeConfig]: StageTimeConfig[K] extends number ? K : never;
+}[keyof StageTimeConfig];
+
 export function parseTimeConfig(value: unknown): StageTimeConfig {
   const raw = (value ?? {}) as Record<string, unknown>;
 
-  const field = (key: keyof StageTimeConfig, max: number): number => {
-    const candidate = raw[key];
-    if (typeof candidate !== 'number' || !Number.isFinite(candidate)) {
-      return DEFAULT_TIME_CONFIG[key];
-    }
+  const clamp = (candidate: unknown, max: number, fallback: number): number => {
+    if (typeof candidate !== 'number' || !Number.isFinite(candidate)) return fallback;
     return Math.min(Math.max(Math.round(candidate), 0), max);
   };
+
+  const field = (key: NumericTimeConfigKey, max: number): number =>
+    clamp(raw[key], max, DEFAULT_TIME_CONFIG[key]);
+
+  const outOfWindowPenalty = field('outOfWindowPenalty', MAX_PENALTY);
 
   return {
     breakMinutes: field('breakMinutes', MAX_MINUTES),
@@ -225,7 +233,17 @@ export function parseTimeConfig(value: unknown): StageTimeConfig {
     gtcLateWindow: field('gtcLateWindow', MAX_MINUTES),
     finishEarlyWindow: field('finishEarlyWindow', MAX_MINUTES),
     finishLateWindow: field('finishLateWindow', MAX_MINUTES),
-    outOfWindowPenalty: field('outOfWindowPenalty', MAX_PENALTY),
+    outOfWindowPenalty,
+    // A body that says nothing about the VTC keeps this stage on the GTC's
+    // maximum — what it was scored with before the VTC had one of its own — and
+    // not on the standard 60, which would re-score a stage keyed with other
+    // limits. Same fallback as `resolveTimeConfig`.
+    finishOutOfWindowPenalty: clamp(
+      raw.finishOutOfWindowPenalty,
+      MAX_PENALTY,
+      outOfWindowPenalty
+    ),
+    finishOutOfWindowFlat: raw.finishOutOfWindowFlat === true,
     missingFinishPenalty: field('missingFinishPenalty', MAX_PENALTY),
   };
 }

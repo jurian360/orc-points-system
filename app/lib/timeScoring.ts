@@ -35,11 +35,16 @@
 //   * a GTC outside its window (default 15 minutes early / 30 minutes late)
 //     costs a flat maximum (default 60) and the running delta reverts to the
 //     last valid one — a control passed outside its window never moves it;
-//   * the finish of a stage that is followed by another stage *of the same
-//     route* costs, when it is outside its window, that same maximum *plus* the
-//     length of the break after the stage, because the break itself varies per
-//     stage. The finish of a stage that **ends its route** carries no break: the
-//     next leg re-starts the crew anyway, so there is nothing to carry into it;
+//   * the finish is a VTC — a *verplichte* time control, not a secret one — and
+//     it has a maximum of its own (`finishOutOfWindowPenalty`), because the
+//     sport does not charge a blown VTC what it charges a blown GTC. The usual
+//     is that maximum *plus* the length of the break after the stage, which
+//     varies per stage; an event may instead charge one flat amount (150, 180)
+//     that is the whole cost, which is what `finishOutOfWindowFlat` says. The
+//     finish of a stage that **ends its route** carries no break in either case:
+//     the next leg re-starts the crew anyway, so there is nothing to carry into
+//     it. A stage keyed before the VTC had a maximum of its own has none stored
+//     and falls back to `outOfWindowPenalty` — what it was scored with;
 //   * the finish of the last stage has a wider window (default 15 early / 60
 //     late); outside it — and when it has no time at all, a DNF — the
 //     participant is disqualified. **Only the last stage of the last route**
@@ -89,9 +94,19 @@ export interface StageTimeConfig {
   // Finish window, in minutes early / late around the participant's IPT.
   finishEarlyWindow: number;
   finishLateWindow: number;
-  // Flat penalty for a control passed outside its window, and for a GTC the
-  // participant has no time for at all.
+  // Flat penalty for a GTC passed outside its window, and for a GTC the
+  // participant has no time for at all. It is the GTC's maximum only: the
+  // finish is a VTC and carries its own, below.
   outOfWindowPenalty: number;
+  // Penalty for the finish (VTC) passed outside its window. Charged plus the
+  // break after the stage while another stage of the same route follows, unless
+  // `finishOutOfWindowFlat` says the amount is already the whole cost.
+  finishOutOfWindowPenalty: number;
+  // True when `finishOutOfWindowPenalty` is the whole cost of a blown VTC — the
+  // flat 150 or 180 some events charge — so the break after the stage is not
+  // added on top of it. It changes nothing on a stage that ends its route,
+  // which has no break behind it to charge.
+  finishOutOfWindowFlat: boolean;
   // Penalty for a finish with no WPT — a finish the participant missed. Higher
   // than `outOfWindowPenalty`, and charged plus the break after the stage while
   // this is not the last stage.
@@ -105,6 +120,13 @@ export const DEFAULT_TIME_CONFIG: StageTimeConfig = {
   finishEarlyWindow: 15,
   finishLateWindow: 60,
   outOfWindowPenalty: 60,
+  // The same as the GTC's maximum, so a stage that says nothing about its VTC
+  // is scored exactly as it was before the VTC had a maximum of its own.
+  // `resolveTimeConfig` overrides this with the stage's *own*
+  // `outOfWindowPenalty` when the stage stores no VTC maximum, which is the
+  // fallback that actually matters on a stage keyed with other limits.
+  finishOutOfWindowPenalty: 60,
+  finishOutOfWindowFlat: false,
   missingFinishPenalty: 90,
 };
 
@@ -210,7 +232,27 @@ export function formatDelta(delta: number): string {
 }
 
 export function resolveTimeConfig(config?: Partial<StageTimeConfig> | null): StageTimeConfig {
-  return { ...DEFAULT_TIME_CONFIG, ...(config || {}) };
+  const merged = { ...DEFAULT_TIME_CONFIG, ...(config || {}) };
+  // A stage keyed before the VTC had a maximum of its own stores none, and it
+  // was scored with the GTC's — so that stays its VTC maximum. Falling back to
+  // the *default* 60 instead would silently re-score every stage that was given
+  // a maximum of its own, which is the one thing this setting may not do.
+  const stored = config?.finishOutOfWindowPenalty;
+  return {
+    ...merged,
+    finishOutOfWindowPenalty:
+      typeof stored === 'number' && Number.isFinite(stored) ? stored : merged.outOfWindowPenalty,
+  };
+}
+
+// What a blown VTC costs on this stage: its own maximum, plus the break the
+// crew loses with the finish while another stage of the same leg follows — or
+// just the maximum, when the stage charges one flat amount that is the whole
+// cost. Shared by the scoring and by the stage form's maximum overview, so the
+// two cannot read the setting differently.
+export function finishOutOfWindowCost(config: StageTimeConfig, endsLeg: boolean): number {
+  if (config.finishOutOfWindowFlat) return config.finishOutOfWindowPenalty;
+  return config.finishOutOfWindowPenalty + (endsLeg ? 0 : config.breakMinutes);
 }
 
 // The ideal passage time of participant `eq` on a row, given the IPT of
@@ -378,10 +420,10 @@ export function scoreStageTimes({
 
     if (outOfWindow) {
       if (kind === 'finish') {
-        // The break after the stage is lost as well, and it differs per stage —
-        // unless nothing follows this stage in its own leg, because then there
-        // is no break behind it.
-        strafp = config.outOfWindowPenalty + (endsLeg ? 0 : config.breakMinutes);
+        // A VTC is not charged the GTC's maximum: it has one of its own, and
+        // the break after the stage is lost with it unless the stage charges a
+        // flat amount or nothing of this leg follows it.
+        strafp = finishOutOfWindowCost(config, endsLeg);
         if (endsRally) {
           // Past the finish window of the rally's own finish the participant is
           // out of it; the maximum is still charged so the card adds up. A
@@ -505,12 +547,16 @@ export function maxStageTimePenalty(
     const kind = timeRowKind(row.rowNumber);
     if (kind === 'start') return total;
     if (kind === 'finish') {
-      // A finish can cost the out-of-window maximum or, when it was missed
-      // altogether, the (higher) missing-finish maximum; both lose the break.
+      // A finish can cost the blown-VTC maximum or, when it was missed
+      // altogether, the (usually higher) missing-finish maximum. Only the
+      // missing one always loses the break on top: a blown VTC charged as a
+      // flat amount already has it in the number.
       return (
         total +
-        Math.max(config.outOfWindowPenalty, config.missingFinishPenalty) +
-        (endsRoute ? 0 : config.breakMinutes)
+        Math.max(
+          finishOutOfWindowCost(config, endsRoute),
+          config.missingFinishPenalty + (endsRoute ? 0 : config.breakMinutes)
+        )
       );
     }
     // A GTC costs the same maximum whether it was blown or missed.
