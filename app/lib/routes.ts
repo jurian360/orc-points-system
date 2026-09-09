@@ -214,6 +214,32 @@ export function groupStagesByRoute<S extends RoutedStage & { _id: unknown }>(
   return groups;
 }
 
+// Where one stage sits in the rally's legs, for a page that holds the rally's
+// stage list and asks about one of them. `stages` must be in running order,
+// which is what `GET /api/stages` returns.
+//
+// A stage the list does not hold — the list has not loaded yet, or the stage was
+// deleted under the page — reads as a leg of its own: its start is free, its
+// finish carries no break, and it ends the rally. Those are the same defaults
+// the stage form and the key card have always had, so a page shows the same
+// thing while it waits as it did before routes existed.
+export function stageLegPosition<S extends RoutedStage & { _id: unknown }>(
+  stageId: string,
+  stages: readonly S[]
+): LegPosition {
+  return (
+    legPositionsById(stages).get(stageId) || {
+      routeId: NO_ROUTE,
+      legIndex: 0,
+      position: 0,
+      positionInLeg: 0,
+      startsRoute: true,
+      endsRoute: true,
+      endsRally: true,
+    }
+  );
+}
+
 // What a crew scored on one stage, as the standings carry it. Declared here
 // rather than imported from app/types, which imports *from* app/lib.
 export interface RouteStageScore {

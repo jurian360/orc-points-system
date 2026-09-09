@@ -35,9 +35,16 @@ interface StageKeyCardProps {
   timeScoreKey?: TimeKeyRow[];
   merkScoreKey?: StageMerkKeyRow[];
   timeConfig?: Partial<StageTimeConfig> | null;
-  // The finish of the last stage of a rally disqualifies instead of costing the
-  // maximum plus the break, which changes the maximum shown in the overview.
-  isFinalStage?: boolean;
+  // The first stage of its route: its START row is free, because the leg's delta
+  // begins there.
+  startsRoute?: boolean;
+  // The last stage of its route: nothing of the same route follows, so its
+  // finish carries no break — which changes the maximum shown in the overview.
+  endsRoute?: boolean;
+  // The last stage of the last route: the rally's own finish, where a blown or
+  // missing finish disqualifies instead of costing points. A route's own finish
+  // is only a penalty, because the crew rides the next leg.
+  endsRally?: boolean;
 }
 
 const LETTER_COLUMNS = 4;
@@ -51,7 +58,9 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
   timeScoreKey,
   merkScoreKey,
   timeConfig,
-  isFinalStage = true,
+  startsRoute = true,
+  endsRoute = true,
+  endsRally = true,
 }) => {
   const sortedRows = [...(scoreKey || [])].sort((a, b) => a.rowNumber - b.rowNumber);
   const half = Math.ceil(sortedRows.length / 2);
@@ -63,7 +72,10 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
   const config = resolveTimeConfig(timeConfig);
 
   const orcTotal = sortedRows.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
-  const tijdTotal = maxStageTimePenalty(timeRows, config, isFinalStage);
+  // The break behind a finish is what the maximum turns on, so this reads
+  // `endsRoute`. Being the rally's finish costs nothing extra — a
+  // disqualification is not a penalty.
+  const tijdTotal = maxStageTimePenalty(timeRows, config, endsRoute);
   // The merk column is scored vertically, so its maximum is not the sum of the
   // rows: it is one error per distinct letter of the key and one per letter it
   // rules out, bounded by the cap the stage's row maximums add up to.
@@ -357,12 +369,21 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
           </table>
         </div>
 
+        {startsRoute && !endsRally && (
+          <p className="text-sm text-gray-600 mt-2">
+            This is the first stage of its route, so its START is free: it costs nothing
+            and the delta begins here.
+          </p>
+        )}
+
         <p className="text-sm text-gray-600 mt-2">
-          {isFinalStage
-            ? 'This is the last stage of the rally: a participant outside the finish window, or with no finish time at all, is disqualified.'
-            : `Another stage follows this one, so a blown finish window costs the maximum plus the break (${config.outOfWindowPenalty} + ${config.breakMinutes} = ${config.outOfWindowPenalty + config.breakMinutes}).`}{' '}
+          {endsRally
+            ? 'This is the last stage of the last route: a participant outside the finish window, or with no finish time at all, is disqualified.'
+            : endsRoute
+              ? 'This is the last stage of its route: after its finish the delta is neutralised, so the next route starts free. A blown finish window costs the maximum and no break, because nothing of this route follows it — and it is not a disqualification, because the participant rides on.'
+              : `Another stage of this route follows this one, so a blown finish window costs the maximum plus the break (${config.outOfWindowPenalty} + ${config.breakMinutes} = ${config.outOfWindowPenalty + config.breakMinutes}).`}{' '}
           {`A control with an IPT but no WPT was missed and costs its maximum as well: ${config.outOfWindowPenalty} for a GTC, ${
-            isFinalStage
+            endsRoute
               ? config.missingFinishPenalty
               : `${config.missingFinishPenalty} + ${config.breakMinutes} = ${config.missingFinishPenalty + config.breakMinutes}`
           } for the finish.`}

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import ClassificationBadge from '../../components/ClassificationBadge';
 import ParticipantsPanel from '../../components/ParticipantsPanel';
 import RallyTimesPanel from '../../components/RallyTimesPanel';
+import RouteManagerPanel, { type ManagedRoute } from '../../components/RouteManagerPanel';
 import { useAuth } from '../../components/AuthContext';
 import { crewLabel, CLASSIFICATIONS, type ClassificationValue } from '../../lib/participants';
 import { copyRallyName } from '../../lib/rallyCodes';
@@ -16,6 +17,7 @@ import {
   type StandingsStatus,
 } from '../../lib/standings';
 import { PAGE_CONTAINER } from '../../lib/layout';
+import { groupStagesByRoute } from '../../lib/routes';
 
 interface Rally {
   _id: string;
@@ -29,6 +31,9 @@ interface Rally {
 interface Stage {
   _id: string;
   name: string;
+  // The route (leg) this stage is ridden in, so the list can group by leg. Null
+  // on a rally with no routes, which is most of them.
+  routeId?: string | null;
   createdAt: string;
 }
 
@@ -72,6 +77,12 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
   const [rallyId, setRallyId] = useState<string>('');
   const [rally, setRally] = useState<Rally | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
+  // The rally's legs, in the order they are ridden. Empty on a rally with no
+  // routes, and then everything below reads exactly as it did before routes
+  // existed — that is the gate, not a flag.
+  const [routes, setRoutes] = useState<ManagedRoute[]>([]);
+  const [unassignedStages, setUnassignedStages] = useState(0);
+  const [managingRoutes, setManagingRoutes] = useState(false);
   const [standings, setStandings] = useState<StandingsEntry[]>([]);
   const [totalStages, setTotalStages] = useState<number>(0);
   const [participantCount, setParticipantCount] = useState<number>(0);
@@ -105,10 +116,11 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
     if (!rallyId) return;
     try {
       if (showLoading) setLoading(true);
-      const [rallyRes, stagesRes, standingsRes] = await Promise.all([
+      const [rallyRes, stagesRes, standingsRes, routesRes] = await Promise.all([
         fetch(`/api/rallies/${rallyId}`),
         fetch(`/api/stages?rallyId=${rallyId}`),
         fetch(`/api/rallies/${rallyId}/standings`),
+        fetch(`/api/rallies/${rallyId}/routes`),
       ]);
 
       if (!rallyRes.ok) throw new Error('Failed to fetch rally');
@@ -118,6 +130,12 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
       if (stagesRes.ok) {
         stagesData = await stagesRes.json();
         setStages(stagesData);
+      }
+
+      if (routesRes.ok) {
+        const data = await routesRes.json();
+        setRoutes(data.routes || []);
+        setUnassignedStages(data.unassignedStages || 0);
       }
 
       if (standingsRes.ok) {
@@ -258,6 +276,11 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
 
   // The crews with a card in this rally. The standings also list the ones who
   // did not start, and a DNS has nothing scored to count.
+  // The rally's legs with their stages. **Empty on a rally with no routes**, and
+  // the list below then renders the flat table it always rendered rather than a
+  // group of one.
+  const routeGroups = useMemo(() => groupStagesByRoute(stages, routes), [stages, routes]);
+
   const crewsScored = useMemo(
     () => standings.filter((entry) => entry.sheetsSubmitted > 0).length,
     [standings]
@@ -320,6 +343,60 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
     { id: 'times', label: 'Times', count: Math.max(timesStageCount, stages.length) },
   ];
 
+  // One row of the stage list. Extracted so the flat list and the per-route
+  // grouping below render exactly the same row.
+  const renderStageRow = (stage: Stage, number: number) => (
+            <tr key={stage._id} className="hover:bg-gray-50">
+              <td className="px-6 py-3 whitespace-nowrap">
+                <div className="text-base font-medium text-gray-900">
+                  <span className="text-gray-400 mr-2">{number}.</span>
+                  {stage.name}
+                </div>
+              </td>
+              <td className="px-6 py-3 whitespace-nowrap">
+                <div className="text-sm text-gray-600">{formatDate(stage.createdAt)}</div>
+              </td>
+              <td className="px-6 py-3 whitespace-nowrap text-right">
+                <div className="flex justify-end space-x-4">
+                  <Link
+                    href={`/rallies/${rally._id}/stages/${stage._id}`}
+                    className="text-blue-600 hover:text-blue-900 font-medium text-base"
+                  >
+                    View
+                  </Link>
+                  {isAdmin && (
+                    <>
+                      <Link
+                        href={`/rallies/${rally._id}/stages/${stage._id}/edit`}
+                        className="text-indigo-600 hover:text-indigo-900 font-medium text-base"
+                      >
+                        Edit
+                      </Link>
+                      <Link
+                        href={`/rallies/${rally._id}/stages/${stage._id}/qr-codes`}
+                        className="text-green-700 hover:text-green-900 font-medium text-base"
+                      >
+                        QR Codes
+                      </Link>
+                      <Link
+                        href={`/time-import?rallyId=${rally._id}&stageId=${stage._id}`}
+                        className="text-emerald-700 hover:text-emerald-900 font-medium text-base"
+                      >
+                        Import Times
+                      </Link>
+                      <button
+                        onClick={() => handleDeleteStage(stage._id)}
+                        className="text-red-600 hover:text-red-900 font-medium text-base"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </td>
+            </tr>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header and tabs stay on screen: the actions of this rally are reachable
@@ -351,7 +428,9 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 )}
               </div>
               <p className="text-gray-500 text-sm">
-                Created {formatDate(rally.createdAt)} · {stages.length} stage
+                Created {formatDate(rally.createdAt)} ·{' '}
+                {routes.length > 0 ? `${routes.length} routes · ` : ''}
+                {stages.length} stage
                 {stages.length === 1 ? '' : 's'} · {crewsScored} crew
                 {crewsScored === 1 ? '' : 's'} scored · {sheetsSubmitted} sheet
                 {sheetsSubmitted === 1 ? '' : 's'}
@@ -474,18 +553,43 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
               <div>
                 <h2 className="text-xl font-semibold text-gray-800">Stages</h2>
                 <p className="text-gray-600 text-sm mt-1">
-                  In running order — the last one is the stage whose finish disqualifies.
+                  {routes.length > 0
+                    ? 'In running order, by route — the last stage of the last route is the one whose finish disqualifies.'
+                    : 'In running order — the last one is the stage whose finish disqualifies.'}
                 </p>
               </div>
               {isAdmin && (
-                <Link
-                  href={`/rallies/${rally._id}/stages/new`}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm whitespace-nowrap"
-                >
-                  Add Stage
-                </Link>
+                <div className="flex flex-wrap gap-3">
+                  {/* The routes of the rally, managed under the list they group.
+                      Admin-only in the UI, and every route it calls is guarded
+                      as well — hiding a button is never the control. */}
+                  <button
+                    onClick={() => setManagingRoutes((current) => !current)}
+                    className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-md hover:bg-indigo-200 font-medium whitespace-nowrap transition-colors"
+                  >
+                    {managingRoutes ? 'Close Routes' : `Routes${routes.length > 0 ? ` (${routes.length})` : ''}`}
+                  </button>
+                  <Link
+                    href={`/rallies/${rally._id}/stages/new`}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm whitespace-nowrap"
+                  >
+                    Add Stage
+                  </Link>
+                </div>
               )}
             </div>
+            {isAdmin && managingRoutes && (
+              <div className="px-6 pt-5">
+                <RouteManagerPanel
+                  rallyId={rally._id}
+                  routes={routes}
+                  unassignedStages={unassignedStages}
+                  onChanged={() => loadData(false)}
+                  onClose={() => setManagingRoutes(false)}
+                />
+              </div>
+            )}
+
             {stages.length === 0 ? (
               <div className="p-8 text-center">
                 <p className="text-lg text-gray-600 mb-4">
@@ -519,57 +623,31 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {stages.map((stage, index) => (
-                      <tr key={stage._id} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 whitespace-nowrap">
-                          <div className="text-base font-medium text-gray-900">
-                            <span className="text-gray-400 mr-2">{index + 1}.</span>
-                            {stage.name}
-                          </div>
-                        </td>
-                        <td className="px-6 py-3 whitespace-nowrap">
-                          <div className="text-sm text-gray-600">{formatDate(stage.createdAt)}</div>
-                        </td>
-                        <td className="px-6 py-3 whitespace-nowrap text-right">
-                          <div className="flex justify-end space-x-4">
-                            <Link
-                              href={`/rallies/${rally._id}/stages/${stage._id}`}
-                              className="text-blue-600 hover:text-blue-900 font-medium text-base"
-                            >
-                              View
-                            </Link>
-                            {isAdmin && (
-                              <>
-                                <Link
-                                  href={`/rallies/${rally._id}/stages/${stage._id}/edit`}
-                                  className="text-indigo-600 hover:text-indigo-900 font-medium text-base"
-                                >
-                                  Edit
-                                </Link>
-                                <Link
-                                  href={`/rallies/${rally._id}/stages/${stage._id}/qr-codes`}
-                                  className="text-green-700 hover:text-green-900 font-medium text-base"
-                                >
-                                  QR Codes
-                                </Link>
-                                <Link
-                                  href={`/time-import?rallyId=${rally._id}&stageId=${stage._id}`}
-                                  className="text-emerald-700 hover:text-emerald-900 font-medium text-base"
-                                >
-                                  Import Times
-                                </Link>
-                                <button
-                                  onClick={() => handleDeleteStage(stage._id)}
-                                  className="text-red-600 hover:text-red-900 font-medium text-base"
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {routeGroups.length === 0
+                      ? stages.map((stage, index) => renderStageRow(stage, index + 1))
+                      : routeGroups.flatMap((group) => [
+                          // A heading per leg, and the stages numbered inside
+                          // it: on a rally ridden in legs, "stage 2" means the
+                          // second stage of its route.
+                          <tr key={`route-${group.position}`} className="bg-indigo-50">
+                            <td colSpan={3} className="px-6 py-2">
+                              <span className="text-sm font-bold uppercase tracking-wide text-indigo-900">
+                                <span className="text-indigo-400 mr-2">{group.position}.</span>
+                                {group.route ? group.route.name : 'Zonder route'}
+                              </span>
+                              <span className="text-xs text-gray-600 ml-3">
+                                {group.stages.length} stage
+                                {group.stages.length === 1 ? '' : 's'}
+                                {group.isLast
+                                  ? ' — the last one is the stage whose finish disqualifies'
+                                  : ' — the delta starts again at the next route'}
+                              </span>
+                            </td>
+                          </tr>,
+                          ...group.stages.map((stage, index) =>
+                            renderStageRow(stage, index + 1)
+                          ),
+                        ])}
                   </tbody>
                 </table>
               </div>

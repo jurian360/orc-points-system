@@ -7,6 +7,7 @@ import { useAuth } from '../../../../components/AuthContext';
 import type { StageMerkKeyRow, StageScoreKeyRow } from '../../../../components/StageKeyCard';
 import type { StageTimeConfig, TimeKeyRow } from '../../../../lib/timeScoring';
 import { PAGE_CONTAINER } from '../../../../lib/layout';
+import { stageLegPosition, type LegPosition, type RallyRoute } from '../../../../lib/routes';
 
 interface Stage {
   _id: string;
@@ -28,10 +29,11 @@ export default function ViewStagePage({
   const [rallyId, setRallyId] = useState<string>('');
   const [stageId, setStageId] = useState<string>('');
   const [stage, setStage] = useState<Stage | null>(null);
-  // Whether this is the last stage of the rally decides what its finish row
-  // does — a penalty plus the break, or a disqualification — and so the maximum
-  // the stage can hand out.
-  const [isFinalStage, setIsFinalStage] = useState(true);
+  const [routes, setRoutes] = useState<RallyRoute[]>([]);
+  // Where the stage sits in the rally's legs decides what its start and finish
+  // rows do — a free start, a finish with or without the break behind it, a
+  // finish that disqualifies — and so the maximum the stage can hand out.
+  const [position, setPosition] = useState<LegPosition | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,17 +51,24 @@ export default function ViewStagePage({
 
     const fetchStage = async () => {
       try {
-        const [stageRes, stagesRes] = await Promise.all([
+        const [stageRes, stagesRes, routesRes] = await Promise.all([
           fetch(`/api/stages/${stageId}`),
           fetch(`/api/stages?rallyId=${rallyId}`),
+          fetch(`/api/rallies/${rallyId}/routes`),
         ]);
         if (!stageRes.ok) throw new Error('Failed to fetch stage');
         setStage(await stageRes.json());
 
+        if (routesRes.ok) {
+          const data = await routesRes.json();
+          setRoutes(data.routes || []);
+        }
+
         if (stagesRes.ok) {
-          // Stages are returned in running order (creation order).
-          const stages: { _id: string }[] = await stagesRes.json();
-          setIsFinalStage(stages.length === 0 || stages[stages.length - 1]._id === stageId);
+          // Stages come back in running order, so the legs are read straight off
+          // the list (app/lib/routes.ts).
+          const stages = await stagesRes.json();
+          setPosition(stageLegPosition(stageId, stages));
         }
       } catch (err) {
         setError('Failed to load stage. Please try again later.');
@@ -71,6 +80,16 @@ export default function ViewStagePage({
 
     fetchStage();
   }, [stageId, rallyId]);
+
+  // Until the stage list has landed the page reads as it always did: a stage
+  // that ends its route and the rally, which is what the key card defaults to.
+  const endsRoute = position ? position.endsRoute : true;
+  const endsRally = position ? position.endsRally : true;
+  const routeIndex = position
+    ? routes.findIndex((route) => route._id === position.routeId)
+    : -1;
+  const route = routeIndex >= 0 ? routes[routeIndex] : null;
+  const routePosition = routeIndex + 1;
 
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('en-US', {
@@ -106,11 +125,27 @@ export default function ViewStagePage({
     <div className="min-h-screen bg-gray-100 py-4">
       <div className={`${PAGE_CONTAINER} py-4`}>
         <div className="mb-4">
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">{stage.name}</h1>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">{stage.name}</h1>
+            {/* The leg this stage is ridden in, shown the way the rally code is
+                on the dashboard: only when there is one. */}
+            {route && (
+              <span
+                className="text-base font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded px-2 py-0.5"
+                title="The route this stage is ridden in"
+              >
+                Route {routePosition}: {route.name}
+              </span>
+            )}
+          </div>
           <p className="text-gray-700 text-base">
             Answer key of this stage, laid out as the controlekaart. Created:{' '}
             {formatDate(stage.createdAt)}
-            {isFinalStage ? ' — last stage of the rally.' : ''}
+            {endsRally
+              ? ' — last stage of the rally.'
+              : endsRoute
+                ? ' — last stage of its route.'
+                : ''}
           </p>
         </div>
 
@@ -150,7 +185,9 @@ export default function ViewStagePage({
             timeScoreKey={stage.timeScoreKey}
             merkScoreKey={stage.merkScoreKey}
             timeConfig={stage.timeConfig}
-            isFinalStage={isFinalStage}
+            startsRoute={position ? position.startsRoute : true}
+            endsRoute={endsRoute}
+            endsRally={endsRally}
           />
         </div>
 
