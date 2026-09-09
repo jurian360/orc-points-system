@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../lib/scoring';
 import type { AnswerRow, MerkKeyRow, ScoreKeyRow } from '../lib/scoring';
 import { blankSheetPenalties } from '../lib/missingSheets';
+import { legPositions } from '../lib/routes';
 import { resolveStatus } from '../lib/standings';
 import type { StageTimeConfig, TimeKeyRow } from '../lib/timeScoring';
 import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
@@ -22,6 +23,10 @@ interface Rally {
 interface Stage {
   _id: string;
   name: string;
+  // The route (leg) this stage is ridden in, so the page can group a crew's
+  // rally by leg and ask which finish is the rally's own. Null on a rally with
+  // no routes.
+  routeId?: string | null;
   createdAt: string;
   scoreKey: ScoreKeyRow[];
   // The time key and settings are only read for the maximum a stage can cost —
@@ -204,13 +209,17 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   // blank card it stands for, the same numbers the standings add for it, so this
   // page and the standings show one total.
   const sheetsByStage = new Map(sheets.map((sheet) => [sheet.stageId, sheet]));
+  // Where each stage sits in the rally's legs — which finish carries no break
+  // and which one is the rally's own. A rally with no routes is one leg, so this
+  // says what `index === stages.length - 1` used to say.
+  const legs = legPositions(stages);
   const entries = stages.map((stage, index) => {
     const sheet = sheetsByStage.get(stage._id);
     const timeRows = sheet?.timePenalties || [];
     const merkRows = sheet?.merkScores || [];
 
     if (!sheet) {
-      const blank = blankSheetPenalties(stage, index === stages.length - 1);
+      const blank = blankSheetPenalties(stage, legs[index]);
       return {
         stage,
         sheet,

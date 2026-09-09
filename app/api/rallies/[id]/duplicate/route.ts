@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 
 import dbConnect from '../../../../lib/mongodb';
-import { Rally, Stage } from '../../../../models';
+import { Rally, Route, Stage } from '../../../../models';
+import { loadRunningOrder } from '../../../../lib/rallyOrder';
 import { requireRallyAdmin } from '../../../../lib/api-guard';
 import {
   copyRallyCode,
@@ -20,8 +21,9 @@ import {
 // the timetable and the time settings are the work, and typing them again is
 // what this route saves.
 //
-// What is copied is the *setup* — the stages in their running order, with their
-// scoreKey, timeScoreKey, merkScoreKey and timeConfig. What is deliberately not
+// What is copied is the *setup* — the routes, and the stages in their running
+// order with their scoreKey, timeScoreKey, merkScoreKey and timeConfig, each
+// stage on the copy of the route it was ridden in. What is deliberately not
 // copied is everything that belongs to a running of it: the entry list, the
 // answer sheets and the printed QR codes. A duplicate is a rally waiting for its
 // crews, not a second copy of last year's results.
@@ -102,17 +104,47 @@ export async function POST(
       );
     }
 
-    // Running order is creation order (app/lib/rescore.ts sorts identically), so
-    // the copies are stamped one millisecond apart in the order they are read.
-    // Letting them all default to `Date.now()` would leave the order of the copy
-    // to the `_id` tie-break; this makes it the order of the original.
-    const stages = await Stage.find({ rallyId: id }).sort({ createdAt: 1, _id: 1 });
+    // The legs come over with the stages: a rally is run to the same route year
+    // after year, and how it is broken into legs is part of that. A route is a
+    // document of its own rather than a subdocument, so `withoutIds` never sees
+    // it — the copies get their own ids and the stages are remapped onto them.
+    const { stages, legs } = await loadRunningOrder(id);
+
+    const sourceRoutes = legs
+      .map((leg) => leg.route)
+      .filter((route): route is NonNullable<typeof route> => Boolean(route));
+    const routeIdMap = new Map<string, unknown>();
+
+    if (sourceRoutes.length > 0) {
+      const routeCopies = await Route.insertMany(
+        sourceRoutes.map((route: any, index: number) => ({
+          rallyId: duplicate._id,
+          name: route.name,
+          // Re-numbered 1..n from the order they are read in rather than copied,
+          // so a source whose places have gaps comes over consecutive.
+          order: index + 1,
+        }))
+      );
+      sourceRoutes.forEach((route: any, index: number) => {
+        routeIdMap.set(String(route._id), routeCopies[index]._id);
+      });
+    }
+
+    // The copies are stamped one millisecond apart in the order they are read —
+    // the flat running order, legs included. Letting them all default to
+    // `Date.now()` would leave the order inside a leg to the `_id` tie-break;
+    // this makes it the order of the original.
     const stamp = Date.now();
 
     const copies = stages.map((stage: any, index: number) => {
       const plain = stage.toObject();
       return {
         rallyId: duplicate._id,
+        // A stage of a leg goes onto the copy of that leg; a stage in no route
+        // has none on the copy either. A stage whose route no longer exists maps
+        // to nothing and lands in the copy's implicit leg, mirroring the source:
+        // a duplicate is a copy, not a repair.
+        routeId: plain.routeId ? routeIdMap.get(String(plain.routeId)) : undefined,
         name: plain.name,
         // The stable card number the Android app resolves a submission by. It is
         // unique within a rally, and the copy is a different rally with a
@@ -135,6 +167,7 @@ export async function POST(
       {
         rally: duplicate,
         stages: copies.length,
+        routes: sourceRoutes.length,
       },
       { status: 201 }
     );

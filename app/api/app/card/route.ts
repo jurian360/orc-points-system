@@ -6,6 +6,7 @@ import dbConnect from '../../../lib/mongodb';
 import { CardAccess, Participant, Rally, Stage } from '../../../models';
 import { clientIp, rateLimit } from '../../../lib/rate-limit';
 import { ensureRallyCode, ensureStageCardId, parseAppCode } from '../../../lib/appCards';
+import { loadRunningOrder } from '../../../lib/rallyOrder';
 
 // The participants' half of the API: what the Android app calls when a QR code
 // is scanned, or its code typed in by hand.
@@ -64,15 +65,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unknown code' }, { status: 404 });
     }
 
-    const [rallyCode, cardId, participant, stages] = await Promise.all([
+    const [rallyCode, cardId, participant, order] = await Promise.all([
       ensureRallyCode(rally),
       ensureStageCardId(stage),
       Participant.findOne({ rallyId: rally._id, eq: access.eq }),
-      Stage.find({ rallyId: rally._id }).sort({ createdAt: 1, _id: 1 }).select('_id'),
+      loadRunningOrder(rally._id, '_id'),
     ]);
 
-    const position =
-      stages.findIndex((entry: any) => String(entry._id) === String(stage._id)) + 1;
+    // The card's place in the running order — the routes in their order, and
+    // inside a route its stages in theirs. It is what the crew reads on the
+    // card, not what the card is resolved by: `kaartid` is the stable number and
+    // is untouched by routes, which is exactly why it exists.
+    const position = order.positionByStage.get(String(stage._id))?.position || 0;
 
     const crew = [participant?.driverName, participant?.navigatorName]
       .filter((name) => Boolean(name))

@@ -2,9 +2,10 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/mongodb';
-import { Rally, Stage, AnswerSheet, Participant } from '../../../../models';
+import { Rally, AnswerSheet, Participant } from '../../../../models';
 import { requireSession } from '../../../../lib/api-guard';
 import { blankSheetPenalties } from '../../../../lib/missingSheets';
+import { loadRunningOrder } from '../../../../lib/rallyOrder';
 import {
   resolveStatus,
   STATUS_ORDER,
@@ -20,7 +21,12 @@ import mongoose from 'mongoose';
 // Diversen (merk) part, so the standings show where a crew lost their points —
 // and carries the same three parts per stage (`stagePenalties`), against the
 // `stages` running order this route also returns, so a result sheet can show
-// what each leg of the rally cost a crew.
+// what each stage of the rally cost a crew.
+//
+// The rally's `routes` come back with them, in the order they are ridden, and
+// each stage names the one it is in — so the results can group their per-stage
+// columns by leg and rank each leg on its own. A rally with no routes returns an
+// empty list, which is exactly what it means: one leg, holding every stage.
 //
 // A stage a crew has **no sheet for** is scored as a blank card
 // (app/lib/missingSheets.ts): the letters of the key all missing, every control
@@ -70,14 +76,16 @@ export async function GET(
       return NextResponse.json({ error: 'Rally not found' }, { status: 404 });
     }
 
-    // The stages in running order — their creation order, the same sort the
-    // re-scoring uses — so the per-stage parts below come back in the order the
-    // rally is ridden and a result sheet can head a column with its stage.
-    // The keys come with them: a crew with no sheet for a stage is scored on
-    // that stage as a blank card, which is scored against its keys.
-    const stages = await Stage.find({ rallyId: id })
-      .select('name scoreKey timeScoreKey merkScoreKey timeConfig')
-      .sort({ createdAt: 1, _id: 1 });
+    // The stages in running order — the routes in their order, and inside a
+    // route the creation order of its stages, the same order the re-scoring uses
+    // — so the per-stage parts below come back in the order the rally is ridden
+    // and a result sheet can head a column with its stage and group it under its
+    // route. The keys come with them: a crew with no sheet for a stage is scored
+    // on that stage as a blank card, which is scored against its keys.
+    const { stages, routes, positionByStage } = await loadRunningOrder(
+      id,
+      'name scoreKey timeScoreKey merkScoreKey timeConfig'
+    );
     const totalStages = stages.length;
     const sheets = await AnswerSheet.find({ rallyId: id });
     const participants = await Participant.find({ rallyId: id });
@@ -192,13 +200,17 @@ export async function GET(
 
     // A stage a crew has no sheet for is scored as a blank card. A blank card
     // costs every crew the same, so it is scored once per stage and then added
-    // to each crew that is short of that stage's card. Whether the stage is the
-    // last one of the rally is what the finish row reads: the break after a
-    // stage is lost with its finish.
+    // to each crew that is short of that stage's card. Where the stage sits in
+    // the legs is what the finish row reads: the break after a stage is lost
+    // with its finish unless nothing follows it in its own route, and only the
+    // rally's own finish is a disqualification.
     const blankByStage = new Map(
-      stages.map((stage, index) => [
+      stages.map((stage: any) => [
         String(stage._id),
-        blankSheetPenalties(stage, index === stages.length - 1),
+        blankSheetPenalties(stage, {
+          endsRoute: Boolean(positionByStage.get(String(stage._id))?.endsRoute),
+          endsRally: Boolean(positionByStage.get(String(stage._id))?.endsRally),
+        }),
       ])
     );
 
@@ -227,6 +239,10 @@ export async function GET(
     // Did they start, and did they finish? A crew with no card at all never
     // started; a crew whose last stage has no card, or whose last card puts them
     // outside the finish window, started but did not finish.
+    //
+    // "The last stage" is the last one in the running order, which on a rally
+    // with routes is the last stage of the last route — the one finish that
+    // disqualifies. The rule does not change; the order it is read off does.
     const lastStageId = stages.length > 0 ? String(stages[stages.length - 1]._id) : '';
 
     for (const entry of byParticipant.values()) {
@@ -263,7 +279,18 @@ export async function GET(
 
     return NextResponse.json({
       totalStages,
-      stages: stages.map((stage) => ({ _id: String(stage._id), name: stage.name })),
+      // The rally's legs, in the order they are ridden. **Empty on a rally with
+      // no routes**, which is how a reader tells the two kinds of rally apart —
+      // the same way it uses `totalStages > 1` to decide whether per-stage
+      // columns are worth printing. Per-route totals are not returned: they are
+      // these stages' numbers added up, and a second copy of a number is a
+      // second place for it to disagree (app/lib/routes.ts `routeTotals`).
+      routes: routes.map((route: any) => ({ _id: String(route._id), name: route.name })),
+      stages: stages.map((stage: any) => ({
+        _id: String(stage._id),
+        name: stage.name,
+        routeId: stage.routeId ? String(stage.routeId) : null,
+      })),
       standings,
     });
   } catch (error) {

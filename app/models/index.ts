@@ -47,6 +47,47 @@ const RallySchema = new mongoose.Schema({
   },
 });
 
+// A route is a sequential leg of a rally: every crew rides route 1, then route
+// 2, and a route holds several stages. Most rallies have none — a rally with no
+// routes is one implicit leg and is ridden, scored and printed exactly as every
+// rally was before routes existed (app/lib/routes.ts). The two events a year
+// that do have them are re-started at each boundary, which is what a route is
+// for: the time delta is neutralised and the next leg's first start is free.
+const RouteSchema = new mongoose.Schema({
+  rallyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Rally',
+    required: true,
+    index: true,
+  },
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 200,
+  },
+  // Place of this route in the rally: 1, 2, 3 … A route, unlike a stage, is
+  // reordered by hand — officials swap two legs — so it carries its place rather
+  // than leaving it to a timestamp nobody may rewrite. `_id` breaks a tie, so a
+  // rally whose routes all read 0 still has one stable order.
+  order: {
+    type: Number,
+    required: true,
+    default: 0,
+    min: 0,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+// Two routes of one rally may not answer to one name: the printed per-route
+// rankings are headed with it. The index is the guard, and the 11000
+// duplicate-key error is mapped to a 409 — the same rule as the sheets, the
+// participants and the rally code.
+RouteSchema.index({ rallyId: 1, name: 1 }, { unique: true });
+
 // A stage belongs to a rally and carries the answer key (score key) used to
 // score the participant answer sheets submitted for that stage.
 const StageSchema = new mongoose.Schema({
@@ -55,6 +96,16 @@ const StageSchema = new mongoose.Schema({
     ref: 'Rally',
     required: true,
     index: true,
+  },
+  // The route (leg) this stage is ridden in, on a rally that has routes. Unset
+  // on every stage of the eight rallies in ten that have none: no `routeId` is
+  // the one implicit leg the whole app assumed before routes existed, so those
+  // rallies store no new field at all. Deliberately not indexed, like `cardId`:
+  // every query that reads it is already scoped by `rallyId`.
+  routeId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Route',
+    default: undefined,
   },
   name: {
     type: String,
@@ -248,6 +299,15 @@ const AnswerSheetSchema = new mongoose.Schema({
     missing: {
       type: Boolean,
       default: false
+    },
+    // True on the start row of the first stage of a route: the leg begins there,
+    // so it is shown but costs nothing and does not move the delta. Stored so a
+    // scored card can say so — it is the row an official reads to check that the
+    // delta was neutralised at the boundary, and on a rally with routes there is
+    // one per route instead of one per rally.
+    free: {
+      type: Boolean,
+      default: false
     }
   }],
   // Merk rows, 6 of them. Officials type only the `merk` letter the participant
@@ -406,6 +466,7 @@ const UserSchema = new mongoose.Schema({
 
 // Create models if they don't already exist
 export const Rally = mongoose.models.Rally || mongoose.model('Rally', RallySchema);
+export const Route = mongoose.models.Route || mongoose.model('Route', RouteSchema);
 export const Stage = mongoose.models.Stage || mongoose.model('Stage', StageSchema);
 export const Participant = mongoose.models.Participant ||
   mongoose.model('Participant', ParticipantSchema);

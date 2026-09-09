@@ -15,15 +15,10 @@ import 'server-only';
 
 import mongoose from 'mongoose';
 
-import { AnswerSheet, Stage } from '../models';
+import { AnswerSheet } from '../models';
 import { calculateMerkPenalty, calculateTotalPenalty, scoreAnswerRows } from './scoring';
+import { loadRunningOrder } from './rallyOrder';
 import { scoreRallyTimes, type RallyStageTimeInput, type TimeEntryRow } from './timeScoring';
-
-// The running order of a rally is the order its stages were created in — the
-// same order the stage list and the participant view show.
-async function loadStagesInOrder(rallyId: unknown) {
-  return Stage.find({ rallyId }).sort({ createdAt: 1, _id: 1 });
-}
 
 interface RescoreOptions {
   // Limit the work to these participants. Omit to rescore the whole rally,
@@ -35,7 +30,11 @@ interface RescoreOptions {
 // cells and the disqualification flag for a rally, or for just some of its
 // participants.
 export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {}) {
-  const stages = await loadStagesInOrder(rallyId);
+  // The running order — the routes in their order, and inside a route the
+  // creation order of its stages. It is what the time chain is: which start is
+  // free, where the delta is neutralised, and which finish disqualifies
+  // (app/lib/rallyOrder.ts).
+  const { stages } = await loadRunningOrder(rallyId);
 
   const query: Record<string, unknown> = { rallyId };
   if (options.eqs) {
@@ -55,6 +54,7 @@ export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {
   const stageById = new Map(stages.map((stage: any) => [String(stage._id), stage]));
   const stageInputs: RallyStageTimeInput[] = stages.map((stage: any) => ({
     stageId: String(stage._id),
+    routeId: stage.routeId ? String(stage.routeId) : null,
     timeScoreKey: stage.timeScoreKey,
     timeConfig: stage.timeConfig,
   }));
@@ -109,6 +109,7 @@ export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {
                     strafp: row.strafp,
                     outOfWindow: row.outOfWindow,
                     missing: row.missing,
+                    free: row.free,
                   }))
                 : sheet.timePenalties,
               timePenalty,
