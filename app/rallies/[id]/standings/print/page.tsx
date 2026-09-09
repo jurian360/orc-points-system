@@ -6,8 +6,14 @@ import Link from 'next/link';
 import {
   isRanked,
   STATUS_LABEL,
+  STATUS_ORDER,
   type StandingsStatus,
 } from '../../../../lib/standings';
+import {
+  groupStagesByRoute,
+  routeTotals,
+  type RouteScore,
+} from '../../../../lib/routes';
 import {
   CLASSIFICATIONS,
   WEDSTRIJDKLASSE_CLASSES,
@@ -20,7 +26,8 @@ import {
 //
 // The dashboard's standings tab is one long table of the whole field, which is
 // what an official reads on a screen. What goes on the wall at the finish is a
-// result sheet, and there are three of those:
+// result sheet, and there are four of those — the last only on a rally that is
+// ridden in routes:
 //
 //   * **Per klasse** — one A4 per classification, each with its own 1, 2, 3,
 //     because a class rides against its own class.
@@ -56,6 +63,23 @@ import {
 // both behind the crews who finished and with their points as they stand: a
 // place is for the crews that came in.
 //
+//   * **Per route** — on a rally ridden in legs, one A4 per route with its own
+//     1, 2, 3, ranked on what that leg alone cost a crew. A route is ridden by
+//     everybody, so it has a ranking of its own the way a class does; the rally
+//     is read on the algemeen klassement and the leg on these. The three groups
+//     are read per route as well: no card on the leg at all is a DNS for it, and
+//     a hole where its last stage should be is a DNF for it — but only the last
+//     route can carry the rally's own disqualification, because inside the rally
+//     a blown finish is a penalty and the crew rode on.
+//
+// A rally ridden in legs also changes what the *rally* sheets show. Four numbers
+// per stage on top of four per route and four for the rally do not fit on A4, so
+// there **a stage gets one column — its subtotal — and a route gets the four**.
+// That is the decomposition the results are ranked on, and a crew's own
+// per-stage split is on their card page. Where even that does not fit the
+// per-stage columns come off and the sheet prints the four numbers per route;
+// the checkbox beside the select forces it either way.
+//
 // A crew whose class was never recorded is not dropped — they are on the
 // combined sheet like everybody else, and get a sheet of their own at the back
 // of the per-class print, because a missing class is a gap in the entry list,
@@ -76,8 +100,16 @@ interface Rally {
 }
 
 // One stage of the rally, in running order: the heading of a per-stage group of
-// columns.
+// columns, and the route it is ridden in.
 interface StandingsStage {
+  _id: string;
+  name: string;
+  routeId?: string | null;
+}
+
+// One route of the rally, in the order it is ridden. Empty on a rally with no
+// routes, which is how this page tells the two kinds of rally apart.
+interface StandingsRouteRef {
   _id: string;
   name: string;
 }
@@ -123,9 +155,17 @@ type SheetEntry = StandingsEntry & { placing: number };
 interface Sheet {
   key: string;
   title: string;
+  // Under the title, on a sheet that ranks part of the rally: what these numbers
+  // are, so nobody adds a route sheet to the rally sheet.
+  subtitle?: string;
   // The combined sheet mixes the classes, so it names the class of every crew;
   // a class sheet has it in the heading already.
   showClass: boolean;
+  // A **rally** sheet ranks the whole rally and can therefore carry the
+  // per-stage and per-route columns. A **route** sheet ranks one leg and prints
+  // that leg's numbers *as* the crew's totals, so the groups would print the
+  // same numbers twice and are left off.
+  kind: 'rally' | 'route';
   entries: SheetEntry[];
 }
 
@@ -133,7 +173,22 @@ interface Sheet {
 // is a sheet per class (the wedstrijdklasse included), `wedstrijd` is that
 // combined ranking on its own, and a bare class letter (or `''`, the crews
 // without one) is that single class.
-type PrintMode = 'combined' | 'classes' | 'wedstrijd' | ClassificationValue;
+//
+// A rally ridden in legs adds three: `routes` is a sheet per route, each with
+// its own 1, 2, 3; `combined-routes` is the rally sheet with those behind it;
+// and `route:<id>` is one route on its own. A 24-character hex id cannot collide
+// with a class letter, with `''`, or with any of the words, so a mode is still
+// one string.
+type PrintMode =
+  | 'combined'
+  | 'classes'
+  | 'wedstrijd'
+  | 'routes'
+  | 'combined-routes'
+  | `route:${string}`
+  | ClassificationValue;
+
+const ROUTE_MODE_PREFIX = 'route:';
 
 // The key of the wedstrijdklasse sheet. It cannot collide with a class letter
 // or with `'none'`, so a sheet is still addressed by its key alone.
@@ -156,6 +211,42 @@ const stageSizing = (stageCount: number) => {
   if (stageCount >= 5) return { col: 'w-7', body: 'text-[9px]', head: 'text-[8px]' };
   if (stageCount >= 3) return { col: 'w-8', body: 'text-[10px]', head: 'text-[9px]' };
   return { col: 'w-10', body: 'text-[10px]', head: 'text-[10px]' };
+};
+
+// A rally ridden in legs is the rally with many stages, and four columns per
+// stage on top of four per route and four for the rally does not fit on A4. So
+// on a routed sheet **a stage gets one column — its subtotal — and a route gets
+// the four**: that is the decomposition the results are ranked on, and the split
+// per stage stays available per crew on their own page.
+//
+// Keyed on how many numeric columns the sheet holds rather than on the stage
+// count, because that is what the paper pays for. `stageSizing` above is left
+// exactly as it is: re-keying it would shrink a two-stage sheet from `w-10` to
+// `w-8`, a visible change on the eight rallies in ten that never see a route.
+const routeSizing = (stageCount: number, routeCount: number, withStages: boolean) => {
+  const numbers = (withStages ? stageCount : 0) + 4 * routeCount + 4;
+  if (numbers >= 26) return { stage: 'w-6', total: 'w-8', body: 'text-[8px]', head: 'text-[7px]' };
+  if (numbers >= 20) return { stage: 'w-7', total: 'w-8', body: 'text-[8px]', head: 'text-[7px]' };
+  if (numbers >= 14) return { stage: 'w-7', total: 'w-9', body: 'text-[9px]', head: 'text-[8px]' };
+  return { stage: 'w-8', total: 'w-10', body: 'text-[10px]', head: 'text-[9px]' };
+};
+
+// A4 landscape less the 14 mm gutters, at 96 dpi, and the room two wrapped crew
+// names need. When the numbers leave less than that, the per-stage columns come
+// off and the sheet prints the four numbers per route: a result sheet a reader
+// has to hold beside another one to add up a crew is worse than one without the
+// per-stage breakdown, and that breakdown is on the crew's own page anyway.
+const PAPER_WIDTH = 1016;
+const MIN_NAME_WIDTH = 160;
+// Width in px of a Tailwind width class, for the fit test above.
+const COL_WIDTH: Record<string, number> = {
+  'w-6': 24,
+  'w-7': 28,
+  'w-8': 32,
+  'w-9': 36,
+  'w-10': 40,
+  'w-11': 44,
+  'w-12': 48,
 };
 
 // Print rules that Tailwind has no utility for: the paper size itself, the page
@@ -204,6 +295,12 @@ export default function StandingsPrintPage({
   const [rally, setRally] = useState<Rally | null>(null);
   const [standings, setStandings] = useState<StandingsEntry[]>([]);
   const [stages, setStages] = useState<StandingsStage[]>([]);
+  const [routes, setRoutes] = useState<StandingsRouteRef[]>([]);
+  // Whether a routed sheet prints a column per stage beside the four per route.
+  // Defaults to whether they fit (see `fitsStageColumns`); the official can
+  // force it either way, because on this page every preselection is only that
+  // and the controls are what decide.
+  const [stageColumns, setStageColumns] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // What to print. The dashboard passes its own filter along — `?class=` for a
@@ -230,6 +327,18 @@ export default function StandingsPrintPage({
       return;
     }
 
+    // One route, or a sheet per route. A well-formed id that is not a route of
+    // this rally falls into the same empty state `?class=Z` already gets.
+    const route = query.get('route');
+    if (route === 'all') {
+      setMode('routes');
+      return;
+    }
+    if (route && /^[a-f0-9]{24}$/i.test(route)) {
+      setMode(`${ROUTE_MODE_PREFIX}${route}`);
+      return;
+    }
+
     const requested = query.get('class');
     if (requested === null) return;
     if (requested === '' || (CLASSIFICATIONS as readonly string[]).includes(requested)) {
@@ -253,6 +362,7 @@ export default function StandingsPrintPage({
       const data = await standingsRes.json();
       setStandings(data.standings || []);
       setStages(data.stages || []);
+      setRoutes(data.routes || []);
       setError(null);
     } catch (err) {
       console.error(err);
@@ -278,6 +388,7 @@ export default function StandingsPrintPage({
             key: 'combined',
             title: 'Algemeen klassement',
             showClass: true,
+            kind: 'rally' as const,
             entries: standings.map((entry) => ({ ...entry, placing: entry.rank })),
           },
     [standings]
@@ -291,6 +402,7 @@ export default function StandingsPrintPage({
         key: classification || 'none',
         title: classLabel(classification),
         showClass: false,
+        kind: 'rally' as const,
         entries: standings
           .filter((entry) => (entry.classification || '') === classification)
           .map((entry, index) => ({ ...entry, placing: index + 1 })),
@@ -313,24 +425,130 @@ export default function StandingsPrintPage({
           key: WEDSTRIJD_KEY,
           title: `${WEDSTRIJDKLASSE_LABEL} (${WEDSTRIJDKLASSE_CLASSES.join(' + ')})`,
           showClass: true,
+          kind: 'rally' as const,
           entries,
         };
   }, [standings]);
 
+  // The rally's legs with their stages, in the order they are ridden. Empty on a
+  // rally with no routes — the gate for everything per-route below.
+  const routeGroups = useMemo(() => groupStagesByRoute(stages, routes), [stages, routes]);
+
+  // A crew's totals per route, added up from the per-stage numbers the standings
+  // already carry (app/lib/routes.ts). Derived, not fetched: the route sheets and
+  // the route subtotals on the rally sheet are then the same numbers by
+  // construction rather than by agreement.
+  const routeTotalsByEq = useMemo(() => {
+    const totals = new Map<number, Record<string, RouteScore>>();
+    if (routeGroups.length === 0) return totals;
+    standings.forEach((entry) => {
+      totals.set(entry.eq, routeTotals(entry.stagePenalties, routeGroups, entry));
+    });
+    return totals;
+  }, [standings, routeGroups]);
+
+  // One sheet per route: the same field, ranked on what that leg alone cost
+  // them. A route is ridden by everybody, so it has its own 1, 2, 3 — the rally
+  // is read on the algemeen klassement and the leg on these.
+  //
+  // The route's numbers are written onto the copied entry *as its totals*, the
+  // way a class sheet writes `placing`: the table below then prints a route
+  // sheet with no new code, and the DNF/DNS label lands in the place column on
+  // its own.
+  const routeSheets = useMemo<Sheet[]>(
+    () =>
+      routeGroups
+        .filter((group) => group.route)
+        .map((group, index) => {
+          const route = group.route as { _id: string; name: string };
+          const entries = standings
+            .map((entry) => ({ entry, score: routeTotalsByEq.get(entry.eq)?.[route._id] }))
+            .filter((row): row is { entry: StandingsEntry; score: RouteScore } =>
+              Boolean(row.score)
+            )
+            // The route's own order, and it is the standings' comparator read
+            // over the route's numbers: status, then points, then EQ. It is the
+            // first sheet on this page whose order is not the API's — a rally
+            // rank says nothing about one leg.
+            .sort(
+              (a, b) =>
+                STATUS_ORDER[a.score.status] - STATUS_ORDER[b.score.status] ||
+                a.score.totalPenalty - b.score.totalPenalty ||
+                a.entry.eq - b.entry.eq
+            )
+            .map(({ entry, score }, place) => ({
+              ...entry,
+              orcPenalty: score.orcPenalty,
+              timePenalty: score.timePenalty,
+              merkPenalty: score.merkPenalty,
+              totalPenalty: score.totalPenalty,
+              missingSheets: score.missingSheets,
+              status: score.status,
+              placing: place + 1,
+            }));
+
+          return {
+            key: `route-${route._id}`,
+            title: `Routeklassement ${index + 1}: ${route.name}`,
+            subtitle: `${group.stages.length} proeven — alleen de strafpunten van deze route`,
+            showClass: true,
+            kind: 'route' as const,
+            entries,
+          };
+        })
+        .filter((sheet) => sheet.entries.length > 0),
+    [routeGroups, standings, routeTotalsByEq]
+  );
+
   const printedSheets = useMemo<Sheet[]>(() => {
     if (mode === 'combined') return combinedSheet ? [combinedSheet] : [];
     if (mode === 'wedstrijd') return wedstrijdSheet ? [wedstrijdSheet] : [];
+    if (mode === 'routes') return routeSheets;
+    if (mode === 'combined-routes')
+      return combinedSheet ? [combinedSheet, ...routeSheets] : routeSheets;
+    if (mode.startsWith(ROUTE_MODE_PREFIX)) {
+      const routeId = mode.slice(ROUTE_MODE_PREFIX.length);
+      return routeSheets.filter((sheet) => sheet.key === `route-${routeId}`);
+    }
     // Per class prints the wedstrijdklasse first: it is the ranking the two
     // classes ride for, and their own sheets follow it.
     if (mode === 'classes') return wedstrijdSheet ? [wedstrijdSheet, ...classSheets] : classSheets;
     return classSheets.filter((sheet) => sheet.key === (mode || 'none'));
-  }, [mode, combinedSheet, wedstrijdSheet, classSheets]);
+  }, [mode, combinedSheet, wedstrijdSheet, classSheets, routeSheets]);
+
+  // A rally ridden in legs groups its stage columns under them and adds the four
+  // numbers per route. A stage in no route would be dropped from every group, so
+  // a sheet that cannot place one falls back to the per-stage sheet and says so
+  // on screen.
+  const everyStageRouted =
+    stages.length > 0 &&
+    stages.every((stage) => routes.some((route) => route._id === stage.routeId));
+  const showRoutes = routeGroups.length > 0 && everyStageRouted;
 
   // A rally of one stage scores the same numbers twice — the stage total *is*
   // the rally total — so the per-stage columns only appear once there is more
-  // than one stage to tell apart.
-  const showStages = stages.length > 1;
+  // than one stage to tell apart. Unchanged, and it is what a rally with no
+  // routes still uses.
+  const showStages = !showRoutes && stages.length > 1;
   const sizing = useMemo(() => stageSizing(stages.length), [stages.length]);
+
+  // Do the per-stage columns fit beside the four per route? The fixed columns
+  // are the place, the EQ and the class; what is left after the numbers is the
+  // two crew names'.
+  const fitsStageColumns = useMemo(() => {
+    if (!showRoutes) return false;
+    const trial = routeSizing(stages.length, routeGroups.length, true);
+    const numeric =
+      stages.length * COL_WIDTH[trial.stage] +
+      (4 * routeGroups.length + 4) * COL_WIDTH[trial.total];
+    return PAPER_WIDTH - 36 - 32 - 32 - numeric >= MIN_NAME_WIDTH;
+  }, [showRoutes, stages.length, routeGroups.length]);
+
+  const showStageColumns = stageColumns === null ? fitsStageColumns : stageColumns;
+  const routeCols = useMemo(
+    () => routeSizing(stages.length, routeGroups.length, showStageColumns),
+    [stages.length, routeGroups.length, showStageColumns]
+  );
 
   const printedOn = useMemo(
     () =>
@@ -380,14 +598,33 @@ export default function StandingsPrintPage({
           </h1>
           <p className="text-gray-700 text-base">
             The results on A4: every class together in one ranking, a sheet per classification
-            with its own 1, 2, 3, or the wedstrijdklasse — {WEDSTRIJDKLASSE_CLASSES.join(' and ')}{' '}
-            ranked as one competition. The numbers are the standings as they are on screen —
-            printing scores nothing of its own.
+            with its own 1, 2, 3, the wedstrijdklasse — {WEDSTRIJDKLASSE_CLASSES.join(' and ')}{' '}
+            ranked as one competition
+            {routeSheets.length > 0 ? ', or a ranking per route' : ''}. The numbers are the
+            standings as they are on screen — printing scores nothing of its own.
           </p>
           {showStages && (
             <p className="text-gray-700 text-base mt-2">
               {stages.length} stages, so every sheet shows the ORC&apos;s, Tijd, Diversen and the
               subtotal per stage in running order, with the rally total behind them.
+            </p>
+          )}
+          {showRoutes && (
+            <p className="text-gray-700 text-base mt-2">
+              {stages.length} stages over {routeGroups.length} routes, so the rally sheets show
+              {showStageColumns ? ' the subtotal per stage,' : ''} the ORC&apos;s, Tijd, Diversen
+              and subtotal per route, and the rally total behind them
+              {showStageColumns
+                ? '.'
+                : ' — a column per stage does not fit on A4 beside them, and a crew&rsquo;s own stages are on their card page.'}{' '}
+              Each route can also be printed as a ranking of its own.
+            </p>
+          )}
+          {routeGroups.length > 0 && !everyStageRouted && (
+            <p className="text-amber-700 text-base font-medium mt-2">
+              {stages.filter((stage) => !routes.some((route) => route._id === stage.routeId)).length}{' '}
+              stage(s) of this rally are in no route, so these sheets print per stage instead of
+              per route. Give them a route on the stage&apos;s Edit page.
             </p>
           )}
         </div>
@@ -420,8 +657,43 @@ export default function StandingsPrintPage({
                   {sheet.title} ({sheet.entries.length})
                 </option>
               ))}
+              {/* Only on a rally ridden in legs. With no routes the select is
+                  byte-identical to what it has always been. */}
+              {routeSheets.length > 0 && (
+                <>
+                  <option value="combined-routes">
+                    Algemeen klassement + a sheet per route ({1 + routeSheets.length})
+                  </option>
+                  <option value="routes">
+                    Per route — one sheet each ({routeSheets.length})
+                  </option>
+                  {routeSheets.map((sheet) => (
+                    <option
+                      key={sheet.key}
+                      value={`${ROUTE_MODE_PREFIX}${sheet.key.slice('route-'.length)}`}
+                    >
+                      {sheet.title} ({sheet.entries.length})
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
           </div>
+
+          {showRoutes && (
+            <label className="flex items-center gap-2 text-base text-gray-700">
+              <input
+                type="checkbox"
+                checked={showStageColumns}
+                onChange={(event) => setStageColumns(event.target.checked)}
+                className="h-4 w-4"
+              />
+              Kolom per proef
+              {!fitsStageColumns && (
+                <span className="text-sm text-amber-700">(does not fit on A4)</span>
+              )}
+            </label>
+          )}
 
           <div className="flex items-center gap-3">
             <span className="text-base text-gray-700">
@@ -452,10 +724,24 @@ export default function StandingsPrintPage({
       {/* The sheets themselves: an A4 page on screen, an A4 page on paper */}
       <div className="mx-auto w-full max-w-[1120px] px-4 sm:px-6 print:max-w-none print:px-0">
         {printedSheets.map((sheet) => {
-          // The fixed left-hand columns. On a sheet with per-stage columns they
-          // span both header rows, so their label sits beside the sub-headings
-          // of the groups rather than above them.
-          const headSpan = showStages ? 2 : 1;
+          // A **route** sheet prints one leg's numbers *as* the crew's totals,
+          // so it never carries the groups — they would print the same numbers
+          // twice. Only the rally sheets group.
+          const sheetGroupsByRoute = showRoutes && sheet.kind === 'rally';
+          const sheetGroupsByStage = showStages && sheet.kind === 'rally';
+
+          // The fixed left-hand columns span every header row above the numbers,
+          // so their label sits beside the sub-headings of the groups rather
+          // than above them. Three rows when a routed sheet also prints a column
+          // per stage (route → Proeven/Routetotaal → the numbers), two when it
+          // prints the four per route alone, and two on the per-stage sheet.
+          const headSpan = sheetGroupsByRoute
+            ? showStageColumns
+              ? 3
+              : 2
+            : sheetGroupsByStage
+              ? 2
+              : 1;
           const fixedHeaders = (
             <>
               <th
@@ -500,7 +786,7 @@ export default function StandingsPrintPage({
             <>
               <th
                 className={`py-0.5 px-1 text-right align-bottom text-[10px] font-bold uppercase tracking-wide${
-                  showStages ? ' border-l-2 border-gray-800' : ''
+                  sheetGroupsByStage || sheetGroupsByRoute ? ' border-l-2 border-gray-800' : ''
                 }`}
               >
                 ORC&apos;s
@@ -534,6 +820,9 @@ export default function StandingsPrintPage({
                     ) : null}
                   </h2>
                   <p className="text-base font-semibold text-black">Uitslag — {sheet.title}</p>
+                  {sheet.subtitle && (
+                    <p className="text-xs text-black">{sheet.subtitle}</p>
+                  )}
                 </div>
                 <div className="text-right text-xs text-gray-600">
                   <p>
@@ -549,12 +838,14 @@ export default function StandingsPrintPage({
                     one thing on this sheet that cannot be abbreviated. A long
                     name wraps onto a second line rather than being cut off. */}
                 <colgroup>
-                  <col className={showStages ? 'w-9' : 'w-11'} />
-                  <col className={showStages ? 'w-8' : 'w-10'} />
-                  {sheet.showClass && <col className={showStages ? 'w-8' : 'w-10'} />}
+                  <col className={sheetGroupsByStage || sheetGroupsByRoute ? 'w-9' : 'w-11'} />
+                  <col className={sheetGroupsByStage || sheetGroupsByRoute ? 'w-8' : 'w-10'} />
+                  {sheet.showClass && (
+                    <col className={sheetGroupsByStage || sheetGroupsByRoute ? 'w-8' : 'w-10'} />
+                  )}
                   <col />
                   <col />
-                  {showStages &&
+                  {sheetGroupsByStage &&
                     stages.map((stage) => (
                       <React.Fragment key={stage._id}>
                         <col className={sizing.col} />
@@ -563,13 +854,112 @@ export default function StandingsPrintPage({
                         <col className={sizing.col} />
                       </React.Fragment>
                     ))}
-                  <col className="w-12" />
-                  <col className="w-12" />
-                  <col className="w-12" />
-                  <col className="w-12" />
+                  {/* Per route: one narrow column per stage of it — its
+                      subtotal — and then the four the route cost. */}
+                  {sheetGroupsByRoute &&
+                    routeGroups.map((group) => (
+                      <React.Fragment key={group.route?._id || group.position}>
+                        {showStageColumns &&
+                          group.stages.map((stage) => (
+                            <col key={stage._id} className={routeCols.stage} />
+                          ))}
+                        <col className={routeCols.total} />
+                        <col className={routeCols.total} />
+                        <col className={routeCols.total} />
+                        <col className={routeCols.total} />
+                      </React.Fragment>
+                    ))}
+                  <col className={sheetGroupsByRoute ? routeCols.total : 'w-12'} />
+                  <col className={sheetGroupsByRoute ? routeCols.total : 'w-12'} />
+                  <col className={sheetGroupsByRoute ? routeCols.total : 'w-12'} />
+                  <col className={sheetGroupsByRoute ? routeCols.total : 'w-12'} />
                 </colgroup>
                 <thead>
-                  {showStages ? (
+                  {sheetGroupsByRoute ? (
+                    <>
+                      {/* One heading per leg, over what that leg cost. */}
+                      <tr>
+                        {fixedHeaders}
+                        {routeGroups.map((group, index) => (
+                          <th
+                            key={group.route?._id || group.position}
+                            colSpan={(showStageColumns ? group.stages.length : 0) + 4}
+                            className={`py-0.5 px-1 text-center font-bold uppercase tracking-wide break-words border-l-2 border-gray-800 ${routeCols.head}`}
+                          >
+                            {index + 1}. {group.route ? group.route.name : 'Zonder route'}
+                          </th>
+                        ))}
+                        <th
+                          colSpan={4}
+                          rowSpan={headSpan - 1}
+                          className={`py-0.5 px-1 text-center align-bottom font-bold uppercase tracking-wide border-l-2 border-gray-800 ${routeCols.head}`}
+                        >
+                          Eindtotaal
+                        </th>
+                      </tr>
+                      {showStageColumns && (
+                        <tr>
+                          {routeGroups.map((group) => (
+                            <React.Fragment key={group.route?._id || group.position}>
+                              <th
+                                colSpan={group.stages.length}
+                                className={`py-0.5 px-1 text-center font-bold uppercase tracking-wide border-l-2 border-gray-800 ${routeCols.head}`}
+                              >
+                                Proeven
+                              </th>
+                              <th
+                                colSpan={4}
+                                className={`py-0.5 px-1 text-center font-bold uppercase tracking-wide border-l border-gray-500 ${routeCols.head}`}
+                              >
+                                Routetotaal
+                              </th>
+                            </React.Fragment>
+                          ))}
+                        </tr>
+                      )}
+                      <tr className="border-b-2 border-gray-800">
+                        {routeGroups.map((group) => (
+                          <React.Fragment key={group.route?._id || group.position}>
+                            {/* The stages are numbered, not named: a column this
+                                narrow cannot hold "Coastal leg", and the legend
+                                under the table says which is which. */}
+                            {showStageColumns &&
+                              group.stages.map((stage, index) => (
+                                <th
+                                  key={stage._id}
+                                  className={`py-0.5 px-0.5 text-right align-bottom font-bold ${
+                                    index === 0 ? 'border-l-2 border-gray-800' : ''
+                                  } ${routeCols.head}`}
+                                >
+                                  {index + 1}
+                                </th>
+                              ))}
+                            <th
+                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase border-l border-gray-500 ${routeCols.head}`}
+                            >
+                              ORC
+                            </th>
+                            <th
+                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${routeCols.head}`}
+                            >
+                              Tijd
+                            </th>
+                            <th
+                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${routeCols.head}`}
+                            >
+                              Div.
+                            </th>
+                            <th
+                              className={`py-0.5 px-0.5 text-right align-bottom font-bold uppercase ${routeCols.head}`}
+                            >
+                              Tot.
+                            </th>
+                          </React.Fragment>
+                        ))}
+                        {totalHeaders}
+                      </tr>
+                    </>
+                  ) : sheetGroupsByStage ? (
                     <>
                       {/* One heading per stage, over the four numbers it cost */}
                       <tr>
@@ -650,7 +1040,59 @@ export default function StandingsPrintPage({
                       <td className="py-0.5 px-1 text-[0.65rem]/[0.85rem] break-words">
                         {entry.driverName || '—'}
                       </td>
-                      {showStages &&
+                      {sheetGroupsByRoute &&
+                        routeGroups.map((group) => {
+                          const score = group.route
+                            ? routeTotalsByEq.get(entry.eq)?.[group.route._id]
+                            : undefined;
+                          const cell = `py-0.5 px-0.5 text-right tabular-nums ${routeCols.body}`;
+
+                          return (
+                            <React.Fragment key={group.route?._id || group.position}>
+                              {showStageColumns &&
+                                group.stages.map((stage, index) => {
+                                  // No card for a stage is not a zero: the
+                                  // standings score the crew on it as a blank
+                                  // card, and the * says where the number came
+                                  // from.
+                                  const stageScore = entry.stagePenalties?.[stage._id];
+                                  return (
+                                    <td
+                                      key={stage._id}
+                                      className={`${cell} ${
+                                        index === 0 ? 'border-l-2 border-gray-800' : ''
+                                      }`}
+                                    >
+                                      {stageScore ? (
+                                        <>
+                                          {stageScore.totalPenalty}
+                                          {stageScore.missingSheet ? '*' : ''}
+                                        </>
+                                      ) : (
+                                        <span className="text-gray-500">—</span>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              <td className={`${cell} border-l border-gray-500`}>
+                                {score ? score.orcPenalty : ''}
+                              </td>
+                              <td className={cell}>{score ? score.timePenalty : ''}</td>
+                              <td className={cell}>{score ? score.merkPenalty : ''}</td>
+                              <td className={`${cell} font-semibold`}>
+                                {score ? (
+                                  <>
+                                    {score.totalPenalty}
+                                    {score.missingSheets > 0 ? '*' : ''}
+                                  </>
+                                ) : (
+                                  <span className="text-gray-500">—</span>
+                                )}
+                              </td>
+                            </React.Fragment>
+                          );
+                        })}
+                      {sheetGroupsByStage &&
                         stages.map((stage) => {
                           // No sheet for this stage is not a zero: the
                           // standings score the crew on it as a blank card, so
@@ -681,7 +1123,9 @@ export default function StandingsPrintPage({
                         })}
                       <td
                         className={`py-0.5 px-1 text-xs text-right tabular-nums${
-                          showStages ? ' border-l-2 border-gray-800' : ''
+                          sheetGroupsByStage || sheetGroupsByRoute
+                            ? ' border-l-2 border-gray-800'
+                            : ''
                         }`}
                       >
                         {entry.orcPenalty}
@@ -702,12 +1146,41 @@ export default function StandingsPrintPage({
 
               {/* Only when a crew on *this* sheet is short of a card: the * has
                   to be explained where it is printed, and nowhere else. */}
-              {showStages &&
+              {(sheetGroupsByStage || sheetGroupsByRoute) &&
                 sheet.entries.some((entry) =>
                   stages.some((stage) => entry.stagePenalties?.[stage._id]?.missingSheet)
                 ) && (
                   <p className="mt-1 text-[0.6rem] text-gray-700">
                     * Geen ingeleverde kaart voor die proef — geteld als blanco kaart.
+                  </p>
+                )}
+
+              {/* The stage columns are numbered per route, so the names go
+                  under the table: a 28px column cannot hold one. */}
+              {sheetGroupsByRoute && showStageColumns && (
+                <p className="mt-1 text-[0.6rem] text-gray-700">
+                  Proeven —{' '}
+                  {routeGroups
+                    .map(
+                      (group, index) =>
+                        `${index + 1}. ${
+                          group.route ? group.route.name : 'Zonder route'
+                        }: ${group.stages
+                          .map((stage, place) => `${place + 1} ${stage.name}`)
+                          .join(', ')}`
+                    )
+                    .join(' · ')}
+                  .
+                </p>
+              )}
+
+              {/* On a route sheet: what a place, a DNF and a DNS mean for one
+                  leg, which is not what they mean for the rally. */}
+              {sheet.kind === 'route' &&
+                sheet.entries.some((entry) => !isRanked(entry.status)) && (
+                  <p className="mt-1 text-[0.6rem] text-gray-700">
+                    DNF — geen ingeleverde kaart voor de laatste proef van deze route. DNS —
+                    geen enkele kaart op deze route.
                   </p>
                 )}
             </section>

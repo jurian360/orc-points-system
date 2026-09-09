@@ -642,6 +642,14 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                                   ? ' — the last one is the stage whose finish disqualifies'
                                   : ' — the delta starts again at the next route'}
                               </span>
+                              {group.route && (
+                                <Link
+                                  href={`/rallies/${rally._id}/standings/print?route=${group.route._id}`}
+                                  className="text-xs text-blue-600 hover:underline ml-3"
+                                >
+                                  Print klassement
+                                </Link>
+                              )}
                             </td>
                           </tr>,
                           ...group.stages.map((stage, index) =>

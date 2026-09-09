@@ -247,7 +247,9 @@ export interface RouteStageScore {
   orcPenalty: number;
   timePenalty: number;
   merkPenalty: number;
-  missingSheet: boolean;
+  // Absent on a response that predates blank cards being filled in, which is
+  // read as "no card" rather than as a clean one.
+  missingSheet?: boolean;
 }
 
 // What a crew scored on one route: the three parts of their rally total over that
@@ -326,7 +328,7 @@ export function routeTotals<S extends RoutedStage & { _id: unknown }>(
     score.status = resolveStatus({
       sheetsSubmitted: score.sheetsSubmitted,
       disqualified: group.isLast && entry.disqualified,
-      missingLastStageSheet: Boolean(lastStage) && (!lastScore || lastScore.missingSheet),
+      missingLastStageSheet: Boolean(lastStage) && Boolean(!lastScore || lastScore.missingSheet),
     });
 
     totals[String(group.route._id)] = score;
