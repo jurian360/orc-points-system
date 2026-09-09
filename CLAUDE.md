@@ -638,22 +638,23 @@ on a rally ridden in routes.
   blank card (`missingSheet`), which the standings charge them, so it is printed
   like any other stage with a `*` and a footnote under the table. More stages make the per-stage columns narrower and
   smaller (`stageSizing`) rather than pushing a stage off the sheet.
-- **A rally ridden in legs groups those columns under the route and adds the four
-  numbers per route** — but four per stage on top of four per route and four for
-  the rally do not fit on A4 (at seven stages the per-stage sheet already leaves
-  about 52px for two crew names), so there **a stage gets one column, its
-  subtotal, and a route gets the four**. That is the decomposition the results
-  are ranked on, and a crew's own per-stage split is on their card page. The
-  stage columns are *numbered* with a legend under the table, because a 28px
-  column cannot hold "Coastal leg". Where even that does not fit
-  (`fitsStageColumns`, measured against `PAPER_WIDTH` and `MIN_NAME_WIDTH`) the
-  stage columns come off and the sheet prints the four per route; the *Kolom per
-  proef* checkbox forces it either way, in keeping with this page's rule that
-  every preselection is only that. `routeSizing` is keyed on the **numeric column
-  count** rather than the stage count, because that is what the paper pays for;
-  `stageSizing` is deliberately left exactly as it is, since re-keying it would
-  shrink a two-stage sheet from `w-10` to `w-8` on the eight rallies in ten that
-  never see a route.
+- **A rally ridden in legs prints the per-stage sheet with the legs written over
+  it**: the four numbers per stage, the stages grouped under the route they are
+  ridden in, and the rally total behind them. Three header rows — route, stage,
+  the numbers.
+  **It carries no route subtotal.** A leg's total is its stages added up, and an
+  official reading the sheet wants the proeven; the leg's own number is what the
+  per-route ranking sheets rank on, which is where it is the point. Leaving it
+  off also keeps the sheet exactly as wide as the per-stage sheet — `4 × stages +
+  4` numeric columns either way — so **`stageSizing` sizes both** and the routes
+  cost a header row rather than a column. That is why there is no fit test and no
+  per-stage toggle on this sheet: there is no narrower shape to fall back to.
+  The `<colgroup>`, the three header rows and the body all take a leg's width
+  from **`routeColumns(group)`** rather than restating the arithmetic: a header
+  row that does not add up is what shears a printed table sideways.
+- On a routed sheet the rally total is headed **`ORC` … `Tot.`**, so every group
+  on the sheet reads the same; the plain and per-stage sheets keep `ORC's` and
+  `Totaal`.
 - A stage in **no** route would be dropped from every group, so a sheet that
   cannot place one falls back to the per-stage sheet and says so on screen.
 - **A crew who did not finish is printed as `DNF` and one who never started as
