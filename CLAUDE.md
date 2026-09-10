@@ -36,7 +36,7 @@ in code and UI — do not "translate" them:
 | **Stage** | One proef of a rally. Holds the answer key used to grade sheets. |
 | **Answer sheet** | One participant's submission for **one** stage. |
 | **EQ** | Participant/equipe number, integer `1..100`. Identifies a competitor — crews have no account, only the officials do. |
-| **Classification** | The class a crew rides in: `B`, `A`, `H`, `I` or `T` (or empty while unknown). Recorded per participant, not used by the scoring. |
+| **Classification** | The class a crew rides in: `B`, `A`, `H`, `I`, `T`, `N` or `S` (or empty while unknown) — `N` is Nickerie and `S` is Stad, where the crew rides. `CLASSIFICATIONS` in `app/lib/participants.ts` is the one list, and `CLASSIFICATION_LIST` is that list in the sentence a rejected class answers with, so adding a class does not leave four hand-written messages behind. Recorded per participant, not used by the scoring. |
 | **Controlekaart** | The paper control card the whole UI is modelled on: 4 columns — ORC's 1–15 \| ORC's 16–30 \| For Official Use Only (time) \| Merk + TOTAAL STRAFPUNTEN. |
 | **ORC's** | The 30 lettered answer rows, up to 4 letters (columns) per row. |
 | **Strafp. / strafpunten** | Penalty points. |

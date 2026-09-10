@@ -5,7 +5,7 @@ import Link from 'next/link';
 import ClassificationBadge from './ClassificationBadge';
 import ParticipantDetailsForm from './ParticipantDetailsForm';
 import ParticipantImportPanel from './ParticipantImportPanel';
-import type { ClassificationValue } from '../lib/participants';
+import { CLASSIFICATION_LIST, type ClassificationValue } from '../lib/participants';
 
 interface Participant {
   _id: string;
@@ -165,7 +165,7 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Participants</h2>
           <p className="text-gray-600 text-sm mt-1">
-            Who rides under which EQ number: their classification (B, A, H, I or T) and the full
+            Who rides under which EQ number: their classification ({CLASSIFICATION_LIST}) and the full
             names of the driver and the navigator.
           </p>
         </div>

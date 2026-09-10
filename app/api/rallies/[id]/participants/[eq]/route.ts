@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../../lib/mongodb';
 import { AnswerSheet, Participant, Rally } from '../../../../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../../../../lib/api-guard';
+import { CLASSIFICATION_LIST } from '../../../../../lib/participants';
 import {
   parseClassification,
   parseEqParam,
@@ -92,7 +93,7 @@ export async function PUT(
   const classification = parseClassification(body.classification);
   if (classification === null) {
     return NextResponse.json(
-      { error: 'Classification must be one of B, A, H, I or T' },
+      { error: `Classification must be one of ${CLASSIFICATION_LIST}` },
       { status: 400 }
     );
   }

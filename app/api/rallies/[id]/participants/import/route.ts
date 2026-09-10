@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../../lib/mongodb';
 import { Participant, Rally } from '../../../../../models';
 import { readBody, requireRallyAdmin } from '../../../../../lib/api-guard';
+import { CLASSIFICATION_LIST } from '../../../../../lib/participants';
 import {
   MAX_IMPORT_PARTICIPANTS,
   parseClassification,
@@ -83,7 +84,7 @@ export async function POST(
     const classification = parseClassification(raw.classification);
     if (classification === null) {
       return NextResponse.json(
-        { error: `Row ${position}: classification must be one of B, A, H, I or T` },
+        { error: `Row ${position}: classification must be one of ${CLASSIFICATION_LIST}` },
         { status: 400 }
       );
     }
