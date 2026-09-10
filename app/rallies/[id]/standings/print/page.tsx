@@ -194,7 +194,7 @@ const ROUTE_MODE_PREFIX = 'route:';
 // or with `'none'`, so a sheet is still addressed by its key alone.
 const WEDSTRIJD_KEY = 'wedstrijd';
 
-// The class sheets, in order: the five classes as they are written on the entry
+// The class sheets, in order: the classes as they are written on the entry
 // list, then the crews without one.
 const SECTION_CLASSES: ClassificationValue[] = [...CLASSIFICATIONS, ''];
 

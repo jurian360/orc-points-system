@@ -16,7 +16,11 @@ import {
   guessColumnMap,
   type ColumnIndexMap,
 } from './columnMapping';
-import { isClassification, type ClassificationValue } from './participants';
+import {
+  CLASSIFICATION_LIST,
+  isClassification,
+  type ClassificationValue,
+} from './participants';
 
 export const MAX_NAME_LENGTH = 200;
 
@@ -109,7 +113,7 @@ export function buildImportRows(
     } else if (seen.has(eq)) {
       error = `EQ ${eq} appears twice (line ${seen.get(eq)})`;
     } else if (rawClassification && !isClassification(rawClassification)) {
-      error = `Classification "${rawClassification}" is not B, A, H, I or T`;
+      error = `Classification "${rawClassification}" is not ${CLASSIFICATION_LIST}`;
     } else if (
       driverName.length > MAX_NAME_LENGTH ||
       navigatorName.length > MAX_NAME_LENGTH

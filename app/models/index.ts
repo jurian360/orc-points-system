@@ -223,7 +223,7 @@ const ParticipantSchema = new mongoose.Schema({
     min: 1,
     max: 100,
   },
-  // One of the five class letters, or '' while the class is still unknown.
+  // One of the class letters, or '' while the class is still unknown.
   classification: {
     type: String,
     enum: [...CLASSIFICATIONS, ''],

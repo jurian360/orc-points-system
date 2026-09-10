@@ -8,9 +8,10 @@
 // Shared by the API and the React views on purpose: the class letters an
 // official can pick from must be the same ones the API accepts.
 
-// The five classes a participant can ride in. Kept as bare letters — they are
-// what is written on the entry list and on the card.
-export const CLASSIFICATIONS = ['B', 'A', 'H', 'I', 'T'] as const;
+// The classes a participant can ride in. Kept as bare letters — they are what
+// is written on the entry list and on the card. `N` and `S` are Nickerie and
+// Stad, where the crew rides.
+export const CLASSIFICATIONS = ['B', 'A', 'H', 'I', 'T', 'N', 'S'] as const;
 
 export type Classification = (typeof CLASSIFICATIONS)[number];
 
@@ -27,6 +28,14 @@ export interface ParticipantDetails {
 export function isClassification(value: unknown): value is Classification {
   return typeof value === 'string' && (CLASSIFICATIONS as readonly string[]).includes(value);
 }
+
+// The classes in a sentence, for the message a rejected class answers with:
+// "B, A, H, I, T, N or S". Derived rather than written out, because it was
+// spelled out in four places and adding a class left all four of them lying.
+export const CLASSIFICATION_LIST = CLASSIFICATIONS.join(', ').replace(
+  /, ([^,]+)$/,
+  ' or $1'
+);
 
 // The **wedstrijdklasse**: the classes that are ranked together as one
 // competition. `A` and `H` ride the same rally against each other, so the
