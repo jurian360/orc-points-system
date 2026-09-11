@@ -24,6 +24,9 @@ export interface UserValue {
   username: string;
   email?: string;
   role: Role;
+  // Whether this account may sign in. Absent only on a value this app never
+  // wrote itself; treated as active everywhere it is read.
+  active?: boolean;
   lastLoginAt?: string | null;
   lastLoginIp?: string | null;
   createdAt?: string;

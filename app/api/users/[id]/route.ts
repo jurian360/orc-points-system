@@ -94,6 +94,34 @@ export async function PUT(
       user.role = role;
     }
 
+    if (parsed.body.active !== undefined) {
+      if (typeof parsed.body.active !== 'boolean') {
+        return NextResponse.json({ error: 'Invalid active flag' }, { status: 400 });
+      }
+
+      if (parsed.body.active === false) {
+        // Deactivating yourself would end your own session on the very next
+        // request — the same accident the delete route already guards
+        // against.
+        if (String(user._id) === session.user.sub) {
+          return NextResponse.json(
+            { error: 'You cannot deactivate your own account.' },
+            { status: 409 }
+          );
+        }
+        // An inactive admin cannot sign in, so it is no longer a working
+        // admin either — the same floor as demoting or deleting the last one.
+        if (user.role === 'admin' && (await adminCount()) <= 1) {
+          return NextResponse.json(
+            { error: 'This is the last admin. Add another admin first.' },
+            { status: 409 }
+          );
+        }
+      }
+
+      user.active = parsed.body.active;
+    }
+
     if (parsed.body.password !== undefined) {
       const password = parsePassword(parsed.body.password);
       if (!password) {
@@ -118,6 +146,7 @@ export async function PUT(
       username: user.username,
       email: user.email ?? '',
       role: user.role,
+      active: user.active,
       lastLoginAt: user.lastLoginAt,
       lastLoginIp: user.lastLoginIp,
       passwordChangedAt: user.passwordChangedAt,

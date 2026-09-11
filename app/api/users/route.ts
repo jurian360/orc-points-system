@@ -14,7 +14,8 @@ import { EMAIL_RULE, PASSWORD_RULE, USERNAME_RULE } from '../../lib/roles';
 //
 // A password hash never leaves this route: every response projects the same
 // fields.
-const PUBLIC_FIELDS = 'username email role lastLoginAt lastLoginIp passwordChangedAt createdAt';
+const PUBLIC_FIELDS =
+  'username email role active lastLoginAt lastLoginIp passwordChangedAt createdAt';
 
 // GET /api/users — every account, oldest first.
 export async function GET() {
@@ -90,6 +91,7 @@ export async function POST(request: NextRequest) {
         username: user.username,
         email: user.email ?? '',
         role: user.role,
+        active: user.active,
         createdAt: user.createdAt,
       },
       { status: 201 }

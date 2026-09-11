@@ -487,6 +487,18 @@ const UserSchema = new mongoose.Schema({
     required: true,
     enum: [...ROLES],
   },
+  // Whether this account may sign in. Every account starts active; an admin
+  // flips this off to lock an official out without deleting their history or
+  // losing the account name to `isEnvAdminUsername`'s guard. `authenticate()`
+  // refuses an inactive account exactly like a wrong password, and
+  // `currentUser()` refuses it too, so a session open at the moment an admin
+  // deactivates it is cut off on its next request rather than surviving to its
+  // 24-hour expiry. The environment admin has no document and so is always
+  // active — this field is not read for it.
+  active: {
+    type: Boolean,
+    default: true,
+  },
   // scrypt, as "<saltHex>:<hashHex>" — the format app/lib/passwords.ts writes
   // and scripts/hash-password.mjs prints. A plaintext password is never stored,
   // here or in the environment.
