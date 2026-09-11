@@ -175,9 +175,6 @@ export default function UsersPage() {
                         {currentUser?.username === entry.username && (
                           <span className="ml-2 text-xs font-normal text-gray-500">(you)</span>
                         )}
-                        {entry.active === false && (
-                          <span className="ml-2 text-xs font-normal text-red-600">Inactive</span>
-                        )}
                       </p>
                       <p className="text-sm text-gray-500">
                         {ROLE_LABELS[entry.role]}
@@ -191,34 +188,56 @@ export default function UsersPage() {
                           : 'Never signed in'}
                       </p>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setAdding(false);
-                          setEditingId(entry._id);
-                        }}
-                        className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleToggleActive(entry)}
-                        disabled={currentUser?.username === entry.username}
+                    <div className="flex items-center gap-4">
+                      <label
+                        className="flex items-center gap-2 select-none"
                         title={
                           currentUser?.username === entry.username
                             ? 'You cannot deactivate your own account.'
                             : undefined
                         }
-                        className="px-3 py-1.5 text-sm bg-amber-50 text-amber-700 rounded-md hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {entry.active === false ? 'Activate' : 'Deactivate'}
-                      </button>
-                      <button
-                        onClick={() => handleDelete(entry)}
-                        className="px-3 py-1.5 text-sm bg-red-50 text-red-700 rounded-md hover:bg-red-100"
-                      >
-                        Delete
-                      </button>
+                        <span
+                          className={`text-sm ${
+                            entry.active === false ? 'text-gray-400' : 'text-gray-700'
+                          }`}
+                        >
+                          {entry.active === false ? 'Inactive' : 'Active'}
+                        </span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={entry.active !== false}
+                          onClick={() => handleToggleActive(entry)}
+                          disabled={currentUser?.username === entry.username}
+                          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                            entry.active === false ? 'bg-gray-300' : 'bg-green-600'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                              entry.active === false ? 'translate-x-1' : 'translate-x-6'
+                            }`}
+                          />
+                        </button>
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setAdding(false);
+                            setEditingId(entry._id);
+                          }}
+                          className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(entry)}
+                          className="px-3 py-1.5 text-sm bg-red-50 text-red-700 rounded-md hover:bg-red-100"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
