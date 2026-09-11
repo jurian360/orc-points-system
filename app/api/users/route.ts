@@ -5,16 +5,16 @@ import dbConnect from '../../lib/mongodb';
 import { User } from '../../models';
 import { readBody, requireUserAdmin } from '../../lib/api-guard';
 import { hashPassword } from '../../lib/passwords';
-import { isEnvAdminUsername } from '../../lib/users';
-import { parsePassword, parseRole, parseUsername } from '../../lib/validation';
-import { PASSWORD_RULE, USERNAME_RULE } from '../../lib/roles';
+import { duplicateAccountField, isEnvAdminUsername } from '../../lib/users';
+import { parseOptionalEmail, parsePassword, parseRole, parseUsername } from '../../lib/validation';
+import { EMAIL_RULE, PASSWORD_RULE, USERNAME_RULE } from '../../lib/roles';
 
 // The accounts of the officials. Admin only, all of it — a data-entry user
 // types cards and reads the standings, and that is the whole of it.
 //
 // A password hash never leaves this route: every response projects the same
-// four fields.
-const PUBLIC_FIELDS = 'username role passwordChangedAt createdAt';
+// fields.
+const PUBLIC_FIELDS = 'username email role lastLoginAt lastLoginIp passwordChangedAt createdAt';
 
 // GET /api/users — every account, oldest first.
 export async function GET() {
@@ -56,6 +56,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `Invalid password. ${PASSWORD_RULE}` }, { status: 400 });
   }
 
+  // Optional, like on the crew's own details: '' means "no email yet", not "an
+  // invalid one".
+  const email = parseOptionalEmail(parsed.body.email);
+  if (email === null) {
+    return NextResponse.json({ error: `Invalid email. ${EMAIL_RULE}` }, { status: 400 });
+  }
+
   // The break-glass account from the environment has no document, so a user
   // taking its name would not overwrite it — it would shadow it, and the
   // account that lost would be the one that exists to be un-loseable.
@@ -71,6 +78,7 @@ export async function POST(request: NextRequest) {
 
     const user = await User.create({
       username,
+      email: email || undefined,
       role,
       passwordHash: await hashPassword(password),
       passwordChangedAt: new Date(),
@@ -80,14 +88,20 @@ export async function POST(request: NextRequest) {
       {
         _id: user._id,
         username: user.username,
+        email: user.email ?? '',
         role: user.role,
         createdAt: user.createdAt,
       },
       { status: 201 }
     );
   } catch (error) {
-    // The unique index is the real guard against two accounts with one name.
-    if (typeof error === 'object' && error !== null && (error as { code?: number }).code === 11000) {
+    // The unique indexes are the real guard against two accounts answering to
+    // one username or one email.
+    const field = duplicateAccountField(error);
+    if (field === 'email') {
+      return NextResponse.json({ error: 'That email address is already in use' }, { status: 409 });
+    }
+    if (field === 'username') {
       return NextResponse.json({ error: 'That username is already taken' }, { status: 409 });
     }
 

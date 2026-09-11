@@ -2,10 +2,14 @@
 
 import React, { useState } from 'react';
 import {
+  EMAIL_RULE,
+  isValidEmail,
   isValidUsername,
+  MAX_EMAIL_LENGTH,
   MAX_PASSWORD_LENGTH,
   MAX_USERNAME_LENGTH,
   MIN_PASSWORD_LENGTH,
+  normalizeEmail,
   normalizeUsername,
   PASSWORD_RULE,
   ROLE_DESCRIPTIONS,
@@ -18,7 +22,10 @@ import {
 export interface UserValue {
   _id: string;
   username: string;
+  email?: string;
   role: Role;
+  lastLoginAt?: string | null;
+  lastLoginIp?: string | null;
   createdAt?: string;
 }
 
@@ -37,6 +44,7 @@ interface UserFormProps {
 const UserForm: React.FC<UserFormProps> = ({ user, onSaved, onCancel }) => {
   const isEditing = Boolean(user);
   const [username, setUsername] = useState(user?.username ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
   const [role, setRole] = useState<Role>(user?.role ?? 'data-entry');
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
@@ -52,6 +60,13 @@ const UserForm: React.FC<UserFormProps> = ({ user, onSaved, onCancel }) => {
       return;
     }
 
+    // Optional: '' is a valid value, meaning "no email on file yet".
+    const normalizedEmail = normalizeEmail(email);
+    if (normalizedEmail && !isValidEmail(normalizedEmail)) {
+      setError(EMAIL_RULE);
+      return;
+    }
+
     // On an edit an empty password means "leave it alone"; on a new account it
     // is the one thing that cannot be left out.
     if (!isEditing || password) {
@@ -64,7 +79,7 @@ const UserForm: React.FC<UserFormProps> = ({ user, onSaved, onCancel }) => {
     setSaving(true);
 
     try {
-      const body: Record<string, unknown> = { username: normalized, role };
+      const body: Record<string, unknown> = { username: normalized, email: normalizedEmail, role };
       if (password) body.password = password;
 
       const response = await fetch(isEditing ? `/api/users/${user!._id}` : '/api/users', {
@@ -112,6 +127,27 @@ const UserForm: React.FC<UserFormProps> = ({ user, onSaved, onCancel }) => {
           disabled={saving}
         />
         <p className="mt-1 text-xs text-gray-500">{USERNAME_RULE}</p>
+      </div>
+
+      <div>
+        <label htmlFor="user-email" className="block text-sm font-medium text-gray-700">
+          Email
+        </label>
+        <input
+          id="user-email"
+          type="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={MAX_EMAIL_LENGTH}
+          className={inputClass}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={saving}
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          Optional. Needed for this account to use &quot;Forgot your password?&quot;.
+        </p>
       </div>
 
       <div>

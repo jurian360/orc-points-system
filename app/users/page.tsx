@@ -141,7 +141,17 @@ export default function UsersPage() {
                           <span className="ml-2 text-xs font-normal text-gray-500">(you)</span>
                         )}
                       </p>
-                      <p className="text-sm text-gray-500">{ROLE_LABELS[entry.role]}</p>
+                      <p className="text-sm text-gray-500">
+                        {ROLE_LABELS[entry.role]}
+                        {entry.email ? ` · ${entry.email}` : ''}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {entry.lastLoginAt
+                          ? `Last login ${new Date(entry.lastLoginAt).toLocaleString()}${
+                              entry.lastLoginIp ? ` from ${entry.lastLoginIp}` : ''
+                            }`
+                          : 'Never signed in'}
+                      </p>
                     </div>
                     <div className="flex gap-2">
                       <button

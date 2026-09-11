@@ -806,7 +806,7 @@ roles and no plan for a third:
 | Rally, stages and answer keys | yes | no |
 | Entry list, time import, QR codes, re-score | yes | no |
 | Accounts | yes | no |
-| Own password | yes | yes |
+| Own password, own email | yes | yes |
 
 `app/lib/roles.ts` is the one table: it is pure and shared, so the buttons a
 view hides, the pages `middleware.ts` gates and the routes `api-guard.ts`
@@ -841,6 +841,71 @@ guard is; a hidden button only spares an official a 403.
   `scripts/hash-password.mjs`. A login for an unknown username spends the same
   scrypt time as a real one (`burnPasswordTime`), so the response time does not
   list which accounts exist, and every failure answers one message.
+- **A `User` carries an optional email**, `sparse`-unique so two accounts
+  cannot claim one address while an account added before this existed simply
+  has none until an official (or the account itself, on `/account`) fills one
+  in. It exists for exactly one thing: receiving a forgot-password link, below.
+  Set on `/users` (an admin, for any account) or on `/account` (an account,
+  for itself — `POST /api/auth/email`, which asks for the current password for
+  the same reason `/api/auth/password` does: a borrowed, unlocked browser must
+  not be able to redirect a reset link to an attacker's inbox). Stored already
+  normalised by `normalizeEmail`, the email counterpart of `normalizeUsername`.
+  A stored `''` would collide with every other `''` under the sparse index, so
+  both routes write `undefined` instead when the field is cleared.
+- **A `User` records its last login**: `lastLoginAt` and `lastLoginIp`,
+  written by `authenticate()` in `app/lib/users.ts` on a successful database
+  login and shown to admins on `/users`. The recovery admin has no document to
+  write them to, so it never shows a last login — it is not tracked by design,
+  the same reason nothing else about it lives in the database.
+
+## Forgot password (`app/lib/passwordReset.ts`, `app/lib/email.ts`)
+
+An official who forgets a password does not have to wait for an admin:
+`/forgot-password` emails a reset link through Postmark, and `/reset-password`
+spends it. Both pages and their two API routes are public — reachable with no
+session, listed in `middleware.ts`'s `PUBLIC_PATHS` / the `/api/auth/` prefix —
+the same reason `/login` is: a visitor asking for this has none yet.
+
+- **The token is never stored raw.** `generateResetToken` (32 random bytes,
+  `app/lib/passwordReset.ts`) is only ever held by the browser that requested
+  it and by the email Postmark sent; the database keeps `hashResetToken`'s
+  SHA-256 of it (`User.resetTokenHash`) plus `resetTokenExpiresAt`, one hour
+  out. A leaked database then holds nothing that can be replayed into a
+  reset — the same reasoning `app/lib/passwords.ts` applies to a password
+  itself, just with SHA-256 rather than scrypt: the token is already
+  high-entropy, so there is nothing to slow a guesser down that the hash search
+  space does not already provide.
+- **`POST /api/auth/forgot-password` answers `{ success: true }` for every
+  well-formed request**, whether or not the address belongs to an account —
+  the login route's "one message for every failure" rule extended to email
+  enumeration. A send failure, a missing Postmark or `APP_BASE_URL`
+  configuration, and a database error all land in the same generic response;
+  only `console.error` sees which. Rate limited per IP, like login.
+- **The reset link's domain comes from `APP_BASE_URL`, never from a request
+  header.** `middleware.ts`'s CSRF check trusts `x-forwarded-host` because
+  Coolify's proxy sets it and a browser cannot forge it cross-origin — but that
+  argument only holds for same-origin comparisons. A mail this app sends on its
+  own behalf is not one; deriving its link from a header an attacker's request
+  could still supply would let a forged Host put their own domain in a
+  password-reset email. `APP_BASE_URL` is a plain `requireEnv()` string for
+  exactly that reason.
+- **`POST /api/auth/reset-password` re-scores nothing and cascades nothing**:
+  it re-hashes the submitted token, matches it against `resetTokenHash`, checks
+  `resetTokenExpiresAt`, and — like a self-service or an admin-driven password
+  change — sets `passwordChangedAt` (signing the account's other sessions out)
+  and re-issues this browser's own cookie, landing the visitor back in the app
+  rather than at a second login screen. The token fields are cleared on success
+  either way, so a link is spent once.
+- **Every other way a password changes clears a pending token too**: an admin
+  resetting it on `/users`, and an account changing its own on `/account`. A
+  reset link still sitting unread in an inbox must not go on working once the
+  password it targeted has already changed through some other door.
+- **Email is sent through Postmark's plain HTTP API** (`app/lib/email.ts`), no
+  SDK dependency — the same trade-off `app/lib/qrcode.ts` and
+  `app/lib/spreadsheet.ts` make for their own formats, since the whole surface
+  needed is "send one transactional message." `POSTMARK_SERVER_TOKEN` and
+  `POSTMARK_FROM_EMAIL` are read lazily inside the function that sends, like
+  every other secret (`app/lib/env.ts`).
 
 ## Layout
 
@@ -848,7 +913,9 @@ guard is; a hidden button only spares an official a 403.
 app/
   api/            route handlers (rallies, stages, answersheets, auth, standings,
                   users + users/[id] to manage the officials' accounts,
-                  auth/login + auth/check + auth/password (own password),
+                  auth/login + auth/check + auth/password (own password) +
+                  auth/email (own email) + auth/forgot-password +
+                  auth/reset-password (public, see app/lib/email.ts),
                   rallies/[id]/routes to list/add the legs of a rally and to
                   reorder them, .../[routeId] to rename or remove one,
                   rallies/[id]/participants to list/add the crews of a rally,
@@ -871,10 +938,11 @@ app/
                   boundaries and a crew's totals per route, shared client +
                   server) + rallyOrder (that order read out of the database),
                   api-guard, roles (the two roles and their permissions, shared
-                  client + server), passwords (scrypt), users (accounts + the
-                  recovery admin), participants (class letters and the
-                  wedstrijdklasse the results group A and H into, shared
-                  client + server),
+                  client + server), passwords (scrypt), passwordReset (the
+                  forgot-password token) + email (sending it, through
+                  Postmark), users (accounts + the recovery admin),
+                  participants (class letters and the wedstrijdklasse the
+                  results group A and H into, shared client + server),
                   spreadsheet + columnMapping + participantImport + timeImport
                   (entry-list and time imports, browser side),
                   rallyCodes (a rally's public code and the name and code a
@@ -889,7 +957,9 @@ app/
                   per classification)
   time-import/    the time import wizard (rally -> stage -> control -> file)
   users/          the accounts page (admin only)
-  account/        your own account: role and password
+  account/        your own account: role, email and password
+  forgot-password/ request a reset link by email (public)
+  reset-password/  spend one, from the link the email carries (public)
   forbidden/      where middleware sends an official who lacks the role
   types/          shared TS interfaces
 middleware.ts     auth + rate limit + CSRF at the edge
@@ -912,6 +982,9 @@ framework unless asked.
 
 Environment (`.env.local`, see `.env.example` and `README.md`): `MONGODB_URI`,
 `SESSION_SECRET` (≥32 chars), `APP_PASSWORD_HASH` (`<saltHex>:<hashHex>`).
+Forgot password additionally needs `POSTMARK_SERVER_TOKEN`, `POSTMARK_FROM_EMAIL`
+and `APP_BASE_URL`; without them the feature simply fails closed (logged, never
+surfaced — see *Forgot password* above), so it is not required to run the app.
 Browse via `localhost` — the session cookie is always `Secure`.
 
 ## Conventions and invariants

@@ -6,7 +6,7 @@ import { clientIp, rateLimit } from './app/lib/rate-limit';
 
 // Paths reachable without a session. Everything else the matcher covers
 // requires a valid, signed, unexpired session cookie.
-const PUBLIC_PATHS = ['/login'];
+const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password'];
 const PUBLIC_API_PREFIX = '/api/auth/';
 
 // The two endpoints the participants' Android app calls. They are public

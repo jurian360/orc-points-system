@@ -124,6 +124,23 @@ ADMIN_PASSWORD_HASH=<saltHex>:<hashHex>
 `.env.local` is git-ignored (see `.gitignore`) — keep it that way; it holds a
 live database credential.
 
+### Optional: forgot password
+
+"Forgot your password?" on the login page sends a reset link by email through
+[Postmark](https://postmarkapp.com). It is optional — without it, every other
+feature works the same, the forgot-password request just fails silently (an
+official sees the same "check your inbox" message either way, and nothing is
+sent). To turn it on, add to `.env.local`:
+
+```bash
+POSTMARK_SERVER_TOKEN=<your Postmark server's API token>
+POSTMARK_FROM_EMAIL=<a Sender Signature or verified-domain address>
+APP_BASE_URL=http://localhost:3000
+```
+
+Each account also needs an email on file — set your own under **Account** in
+the navigation bar, or an admin sets anyone's under **Users**.
+
 ## 4. Run the dev server
 
 ```bash

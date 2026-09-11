@@ -80,3 +80,26 @@ export const USERNAME_RULE =
   'Use 3-32 characters: lower-case letters, digits, dot, dash or underscore.';
 
 export const PASSWORD_RULE = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
+
+// An account's email, used for exactly one thing: receiving a forgot-password
+// link (app/lib/passwordReset.ts). Optional — an account added before this
+// existed has none until somebody fills it in — but unique when set, so a
+// reset request resolves to one account.
+export const MAX_EMAIL_LENGTH = 254;
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Deliberately loose: this only has to catch typos before an email is stored,
+// not validate against the RFC. Postmark's own delivery is the real check.
+export function isValidEmail(value: string): boolean {
+  return value.length > 0 && value.length <= MAX_EMAIL_LENGTH && EMAIL_PATTERN.test(value);
+}
+
+// Stored and looked up already normalised, the same reason normalizeUsername
+// exists: two accounts must not be able to look distinct while answering to
+// the same mailbox.
+export function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+export const EMAIL_RULE = 'Enter a valid email address.';

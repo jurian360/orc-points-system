@@ -92,6 +92,10 @@ export async function POST(request: NextRequest) {
     // Signs this account's *other* sessions out: `requireSession()` refuses a
     // token issued before this moment.
     user.passwordChangedAt = new Date();
+    // Any forgot-password link still sitting in an inbox must not go on
+    // working once the password it targeted has already been changed here.
+    user.resetTokenHash = null;
+    user.resetTokenExpiresAt = null;
     await user.save();
 
     // Re-issue this browser's cookie so the official who just changed their own
