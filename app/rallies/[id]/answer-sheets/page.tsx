@@ -25,6 +25,9 @@ interface Stage {
   // The merk key: the entry form scores the merk column live against it.
   merkScoreKey?: { rowNumber: number; merk?: string; maxPenalty?: number }[];
   timeConfig?: Record<string, number>;
+  // Whether this stage's ORC rows run 1-60 and its merk rows 1-12 instead of
+  // 1-30/1-6 — AnswerSheetForm sizes its grids from this.
+  usesSecondCard?: boolean;
 }
 
 interface Participant {

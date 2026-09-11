@@ -57,6 +57,7 @@ export default function NewStagePage({ params }: { params: Promise<{ id: string 
           timeScoreKey: payload.timeScoreKey,
           merkScoreKey: payload.merkScoreKey,
           timeConfig: payload.timeConfig,
+          usesSecondCard: payload.usesSecondCard,
         }),
       });
 

@@ -58,6 +58,10 @@ export interface StageFormPayload {
   timeScoreKey: TimeScoreKeyRow[];
   merkScoreKey: MerkScoreKeyRow[];
   timeConfig: StageTimeConfig;
+  // Whether a crew running out of ORC rows switches to a second card on this
+  // stage — doubling the ORC rows (31-60) and the merk rows (7-12). The time
+  // module never doubles: see "Second answer card" in CLAUDE.md.
+  usesSecondCard: boolean;
 }
 
 // What the form is seeded with when an existing stage is edited. Exported so the
@@ -70,6 +74,7 @@ export interface StageFormInitialData {
   timeScoreKey?: TimeScoreKeyRow[];
   merkScoreKey?: MerkScoreKeyRow[];
   timeConfig?: Partial<StageTimeConfig>;
+  usesSecondCard?: boolean;
 }
 
 interface StageFormProps {
@@ -114,6 +119,11 @@ const StageForm: React.FC<StageFormProps> = ({
   const [routeId, setRouteId] = useState<string>(
     initialData?.routeId || (routes.length > 0 ? routes[routes.length - 1]._id : '')
   );
+
+  // A crew that runs out of ORC rows mid-stage switches to a second card,
+  // carrying its own merk section too — see "Second answer card" in
+  // CLAUDE.md. Toggling this appends/truncates both keys below.
+  const [usesSecondCard, setUsesSecondCard] = useState(Boolean(initialData?.usesSecondCard));
 
   const [scoreKey, setScoreKey] = useState<ScoreKeyRow[]>(() => {
     if (initialData?.scoreKey?.length) {
@@ -311,6 +321,82 @@ const StageForm: React.FC<StageFormProps> = ({
     });
   };
 
+  // A blank row of each key, for padding out to the second card's size.
+  const blankScoreKeyRow = (rowNumber: number): ScoreKeyRow => ({
+    rowNumber,
+    answers: Array(LETTER_COLUMNS).fill(''),
+    alternativeAnswers: [],
+    falseAnswers: [],
+    maxPenalty: 0,
+    orderMatters: false,
+  });
+  const blankMerkScoreKeyRow = (rowNumber: number): MerkScoreKeyRow => ({
+    rowNumber,
+    merk: '',
+    falseMerk: '',
+    maxPenalty: 0,
+  });
+
+  // Whether a row past the first card (index >= ANSWER_ROWS or >= MERK_ROWS)
+  // holds anything, so turning the second card off can warn before it is
+  // dropped rather than discarding it silently.
+  const hasScoreKeyData = (row: ScoreKeyRow) =>
+    row.answers.some((letter) => letter.trim() !== '') ||
+    (row.alternativeAnswers || []).some((variant) => variant.some((letter) => letter.trim() !== '')) ||
+    (row.falseAnswers || []).length > 0 ||
+    Boolean(row.orderMatters) ||
+    (row.maxPenalty || 0) > 0;
+  const hasMerkScoreKeyData = (row: MerkScoreKeyRow) =>
+    (row.merk || '').trim() !== '' || (row.falseMerk || '').trim() !== '' || (row.maxPenalty || 0) > 0;
+
+  // Turning the second card on pads both keys out to twice their first-card
+  // size; turning it off truncates them back, after confirming when any of
+  // the rows being dropped actually hold something — the same
+  // destructive-but-reversible confirm the QR page's "New code" uses.
+  const handleToggleSecondCard = (checked: boolean) => {
+    if (checked) {
+      setScoreKey((prev) =>
+        prev.length >= ANSWER_ROWS * 2
+          ? prev
+          : [
+              ...prev,
+              ...Array.from({ length: ANSWER_ROWS * 2 - prev.length }, (_, index) =>
+                blankScoreKeyRow(prev.length + index + 1)
+              ),
+            ]
+      );
+      setMerkScoreKey((prev) =>
+        prev.length >= MERK_ROWS * 2
+          ? prev
+          : [
+              ...prev,
+              ...Array.from({ length: MERK_ROWS * 2 - prev.length }, (_, index) =>
+                blankMerkScoreKeyRow(prev.length + index + 1)
+              ),
+            ]
+      );
+      setUsesSecondCard(true);
+      return;
+    }
+
+    const droppedHasData =
+      scoreKey.slice(ANSWER_ROWS).some(hasScoreKeyData) ||
+      merkScoreKey.slice(MERK_ROWS).some(hasMerkScoreKeyData);
+
+    if (
+      droppedHasData &&
+      !window.confirm(
+        'ORC rows 31-60 or merk rows 7-12 have data. Turning off the second card removes it. Continue?'
+      )
+    ) {
+      return;
+    }
+
+    setScoreKey((prev) => prev.slice(0, ANSWER_ROWS));
+    setMerkScoreKey((prev) => prev.slice(0, MERK_ROWS));
+    setUsesSecondCard(false);
+  };
+
   // Max penalty totals for the overview box
   const orcTotal = scoreKey.reduce((sum, row) => sum + (row.maxPenalty || 0), 0);
   // The break behind a finish is what the maximum turns on, so this reads
@@ -367,6 +453,7 @@ const StageForm: React.FC<StageFormProps> = ({
       timeScoreKey: processedTimeScoreKey,
       merkScoreKey: processedMerkScoreKey,
       timeConfig,
+      usesSecondCard,
     });
   };
 
@@ -494,10 +581,13 @@ const StageForm: React.FC<StageFormProps> = ({
     </thead>
   );
 
-  // ORC section split into two columns of 15 rows, like the paper card
-  const half = Math.ceil(ANSWER_ROWS / 2);
+  // ORC section split into two even columns, like the paper card — 15/15 on
+  // a normal stage, 30/30 once the second card doubles it to 60 rows.
+  const half = Math.ceil(scoreKey.length / 2);
   const leftRows = scoreKey.slice(0, half);
   const rightRows = scoreKey.slice(half);
+  const columnRange = (rows: ScoreKeyRow[]) =>
+    rows.length === 0 ? '' : `${rows[0].rowNumber}–${rows[rows.length - 1].rowNumber}`;
 
   return (
     <form onSubmit={handleSubmit} className="w-full mx-auto p-6">
@@ -546,6 +636,25 @@ const StageForm: React.FC<StageFormProps> = ({
         )}
       </div>
 
+      {/* Some stages run participants out of ORC rows mid-stage — the crew
+          switches to a second paper card, carrying its own merk section too.
+          The time module never doubles: it is fixed controls the crew passes
+          once, not rows that can run out. */}
+      <div className="mb-8">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            className="w-5 h-5 mt-0.5 accent-blue-600 cursor-pointer"
+            checked={usesSecondCard}
+            onChange={(e) => handleToggleSecondCard(e.target.checked)}
+          />
+          <span className="text-base text-gray-800">
+            <span className="font-medium">This stage needs a second answer card</span> — adds
+            ORC rows 31&ndash;60 and merk rows 7&ndash;12. The time module is unaffected.
+          </span>
+        </label>
+      </div>
+
       {/* Answer key laid out as 4 main columns, like the SARK controlekaart:
           ORC's 1-15 | ORC's 16-30 | For Official Use Only (time) | Merk + totals.
           The ORC columns are the wide ones — 4 letter pairs, the volgorde tick and
@@ -591,7 +700,9 @@ const StageForm: React.FC<StageFormProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(min-content,1.25fr)_minmax(min-content,1.25fr)_minmax(0,0.85fr)_minmax(0,0.65fr)] gap-4 mb-8 items-start">
         {/* Column 1 — ORC's rows 1-15 */}
         <div>
-          <h2 className="text-lg font-semibold mb-2 text-gray-800">ORC&apos;s (1&ndash;15)</h2>
+          <h2 className="text-lg font-semibold mb-2 text-gray-800">
+            ORC&apos;s ({columnRange(leftRows)})
+          </h2>
           <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto xl:overflow-x-visible">
             <table className="min-w-full border-collapse">
               {scoreKeyHeader}
@@ -604,7 +715,9 @@ const StageForm: React.FC<StageFormProps> = ({
 
         {/* Column 2 — ORC's rows 16-30 */}
         <div>
-          <h2 className="text-lg font-semibold mb-2 text-gray-800">ORC&apos;s (16&ndash;30)</h2>
+          <h2 className="text-lg font-semibold mb-2 text-gray-800">
+            ORC&apos;s ({columnRange(rightRows)})
+          </h2>
           <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto xl:overflow-x-visible">
             <table className="min-w-full border-collapse">
               {scoreKeyHeader}
@@ -811,7 +924,9 @@ const StageForm: React.FC<StageFormProps> = ({
 
         {/* Column 4 — Merk reference + Totaal overview */}
         <div>
-          <h2 className="text-lg font-semibold mb-2 text-gray-800">Merk</h2>
+          <h2 className="text-lg font-semibold mb-2 text-gray-800">
+            Merk{usesSecondCard ? ` (1–${merkScoreKey.length})` : ''}
+          </h2>
           <p className="text-sm text-gray-700 mb-2">
             One correct letter (green) and, under it, one false letter (red) per row. The merk
             column is scored <span className="font-semibold">vertically</span>: the
@@ -820,8 +935,8 @@ const StageForm: React.FC<StageFormProps> = ({
             for the row they are typed on. Every key letter given too few or too many times costs{' '}
             {PENALTY_PER_ERROR} points, once, and so does every false letter the participant wrote,
             however often they wrote it. A letter in neither list never costs anything. Leave a
-            field blank to use fewer than six. Max Penalty caps the column as a whole (their sum);
-            0 is no cap.
+            field blank to use fewer than {merkScoreKey.length}. Max Penalty caps the column as a
+            whole (their sum); 0 is no cap.
           </p>
           <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full border-collapse">

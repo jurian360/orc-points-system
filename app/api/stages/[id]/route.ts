@@ -4,7 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
 import { Route, Stage, AnswerSheet, CardAccess } from '../../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../../lib/api-guard';
-import { parseName, parseObjectId, processScoreKey } from '../../../lib/validation';
+import {
+  MERK_ROWS_PER_CARD,
+  ORC_ROWS_PER_CARD,
+  parseName,
+  parseObjectId,
+  processScoreKey,
+} from '../../../lib/validation';
 import { rescoreRally } from '../../../lib/rescore';
 import mongoose from 'mongoose';
 
@@ -71,13 +77,27 @@ export async function PUT(
       return NextResponse.json({ error: 'Stage not found' }, { status: 404 });
     }
 
-    const { scoreKey, timeScoreKey, merkScoreKey, timeConfig } = processScoreKey(body);
+    // A crew that runs out of ORC rows mid-stage switches to a second card,
+    // carrying its own merk section too; the time module never doubles (see
+    // "Second answer card" in CLAUDE.md). Resolved from the body, like the
+    // rest of the key: a PUT always resends the whole key, so there is no
+    // "leave it alone" case to preserve here.
+    const usesSecondCard = body.usesSecondCard === true;
+    const orcCap = usesSecondCard ? ORC_ROWS_PER_CARD * 2 : ORC_ROWS_PER_CARD;
+    const merkCap = usesSecondCard ? MERK_ROWS_PER_CARD * 2 : MERK_ROWS_PER_CARD;
+
+    const { scoreKey, timeScoreKey, merkScoreKey, timeConfig } = processScoreKey(
+      body,
+      orcCap,
+      merkCap
+    );
     const set: Record<string, unknown> = {
       name,
       scoreKey,
       timeScoreKey,
       merkScoreKey,
       timeConfig,
+      usesSecondCard,
     };
     let unset: Record<string, string> | null = null;
 

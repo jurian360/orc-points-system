@@ -42,6 +42,11 @@ interface Stage {
   // the official what the column costs while they type it — the same module the
   // server scores it with.
   merkScoreKey?: MerkKeyRow[];
+  // Whether this stage's ORC rows run 1-60 and its merk rows 1-12 instead of
+  // the usual 1-30/1-6 — a crew ran out of rows mid-stage and switched to a
+  // second paper card. The time module is unaffected either way. See "Second
+  // answer card" in CLAUDE.md.
+  usesSecondCard?: boolean;
 }
 
 // A sheet this participant already has for another stage of the same rally. The
@@ -129,26 +134,22 @@ interface AnswerSheetFormProps {
   onChangeSelection?: () => void;
 }
 
-// Layout constants matching the SARK controlekaart
+// Layout constants matching the SARK controlekaart. ANSWER_ROWS/MERK_ROWS are
+// one physical card's worth; a stage with `usesSecondCard` doubles both (see
+// `answerRowCount`/`merkRowCount` below) — the time module never doubles, so
+// TIME_ROWS stays a plain constant.
 const ANSWER_ROWS = 30; // ORC's letters (was 40)
 const LETTER_COLUMNS = 4;
 const TIME_ROWS = 10; // IPT / WPT / +/- / strafp
 const MERK_ROWS = 6; // Merk letters, scored vertically against the stage key
 
-const ORC_HALF = Math.ceil(ANSWER_ROWS / 2); // rows per ORC column
-
-// Grid identifiers + dimensions used for keyboard navigation between cells.
-// Each visible table is its own grid so arrow keys stay within the column the
-// user is looking at. Only the typed cells count: the strafpunten of a row are
-// computed, so the ORC grids end at the last letter column.
+// Grid identifiers used for keyboard navigation between cells. Each visible
+// table is its own grid so arrow keys stay within the column the user is
+// looking at. Only the typed cells count: the strafpunten of a row are
+// computed, so the ORC grids end at the last letter column. Their *sizes*
+// depend on the selected stage (`gridDims`, inside the component) rather than
+// being a module constant, because a `usesSecondCard` stage has more rows.
 type GridName = 'orc-left' | 'orc-right' | 'time' | 'merk';
-
-const GRID_DIMS: Record<GridName, { rows: number; cols: number }> = {
-  'orc-left': { rows: ORC_HALF, cols: LETTER_COLUMNS }, // letters only — the strafp. is scored
-  'orc-right': { rows: ANSWER_ROWS - ORC_HALF, cols: LETTER_COLUMNS },
-  time: { rows: TIME_ROWS, cols: 1 }, // wpt only — the rest is computed
-  merk: { rows: MERK_ROWS, cols: 1 }, // merk letter only — the rest is computed
-};
 
 // Fill a fixed-size grid of `rows` rows from whatever the stored sheet has, by
 // row number, leaving the rest blank.
@@ -217,6 +218,26 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
   const eqTaken = eq !== '' && takenEqs.has(Number(eq));
   const noEntryList = sortedParticipants.length === 0;
 
+  // The stage the card is being typed for, and how many ORC/merk rows it
+  // actually has — doubled from the base card size on a `usesSecondCard`
+  // stage. Falls back to the base size before a stage is selected, so the
+  // card starts at the normal 30/6 rather than an empty grid.
+  const selectedStage = stages.find((candidate) => candidate._id === stageId);
+  const answerRowCount = selectedStage?.usesSecondCard ? ANSWER_ROWS * 2 : ANSWER_ROWS;
+  const merkRowCount = selectedStage?.usesSecondCard ? MERK_ROWS * 2 : MERK_ROWS;
+  const orcHalf = Math.ceil(answerRowCount / 2); // rows per ORC column
+
+  // Dimensions of each keyboard-navigation grid, sized from the stage above —
+  // a plain object recomputed each render (cheap, and `focusCell`/
+  // `handleCellKeyDown` below only ever read it inside an event handler, well
+  // after this render has finished, so there is nothing to memoize against).
+  const gridDims: Record<GridName, { rows: number; cols: number }> = {
+    'orc-left': { rows: orcHalf, cols: LETTER_COLUMNS }, // letters only — the strafp. is scored
+    'orc-right': { rows: answerRowCount - orcHalf, cols: LETTER_COLUMNS },
+    time: { rows: TIME_ROWS, cols: 1 }, // wpt only — the rest is computed
+    merk: { rows: merkRowCount, cols: 1 }, // merk letter only — the rest is computed
+  };
+
   const formRef = useRef<HTMLFormElement>(null);
 
   // Move focus to a specific cell, identified by grid + row + column, and
@@ -224,7 +245,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
   // vertical movement going over cells that cannot take focus — the WPT of a
   // time row the stage does not use as a checkpoint is disabled.
   const focusCell = (grid: GridName, row: number, col: number, rowStep = 0) => {
-    const dims = GRID_DIMS[grid];
+    const dims = gridDims[grid];
     if (col < 0 || col >= dims.cols) return false;
 
     for (let r = row; r >= 0 && r < dims.rows; r += rowStep) {
@@ -248,7 +269,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     const grid = el.dataset.grid as GridName | undefined;
     const row = Number(el.dataset.row);
     const col = Number(el.dataset.col);
-    if (!grid || !GRID_DIMS[grid] || Number.isNaN(row) || Number.isNaN(col)) return;
+    if (!grid || !gridDims[grid] || Number.isNaN(row) || Number.isNaN(col)) return;
 
     // selectionStart is null for number inputs; treat those as always at an edge
     // so the arrow keys move between cells instead of nudging the number.
@@ -287,7 +308,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
         // as usual.
         const step = e.shiftKey ? -1 : 1;
         const nextRow = row + step;
-        if (nextRow >= 0 && nextRow < GRID_DIMS[grid].rows) {
+        if (nextRow >= 0 && nextRow < gridDims[grid].rows) {
           if (focusCell(grid, nextRow, 0, step)) e.preventDefault();
         }
         break;
@@ -307,7 +328,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
 
   const [answers, setAnswers] = useState<AnswerRow[]>(() =>
     fillRows<AnswerRow>(
-      ANSWER_ROWS,
+      answerRowCount,
       (rowNumber) => ({
         rowNumber,
         selectedAnswers: Array(LETTER_COLUMNS).fill(''),
@@ -334,12 +355,51 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
 
   const [merkScores, setMerkScores] = useState<MerkRow[]>(() =>
     fillRows<MerkRow>(
-      MERK_ROWS,
+      merkRowCount,
       (rowNumber) => ({ rowNumber, merk: '' }),
       initialData?.merkScores,
       (row, stored) => ({ ...row, merk: stored.merk || '' })
     )
   );
+
+  // `answers`/`merkScores` above are sized once, at mount. Picking a
+  // different stage after that (only possible while adding a new sheet — the
+  // select is disabled while editing one) has to resize them to match,
+  // because a `usesSecondCard` stage has more rows than a normal one. This
+  // also re-seeds them from `initialData` right after mount, which is a
+  // harmless repeat of what the initializers above already computed.
+  useEffect(() => {
+    setAnswers(
+      fillRows<AnswerRow>(
+        answerRowCount,
+        (rowNumber) => ({ rowNumber, selectedAnswers: Array(LETTER_COLUMNS).fill('') }),
+        initialData?.answers,
+        (row, stored) => ({
+          ...row,
+          selectedAnswers: Array.from(
+            { length: LETTER_COLUMNS },
+            (_, colIndex) => stored.selectedAnswers?.[colIndex] || ''
+          ),
+        })
+      )
+    );
+    setMerkScores(
+      fillRows<MerkRow>(
+        merkRowCount,
+        (rowNumber) => ({ rowNumber, merk: '' }),
+        initialData?.merkScores,
+        (row, stored) => ({ ...row, merk: stored.merk || '' })
+      )
+    );
+    // Deliberately `[stageId]` only. `answerRowCount`/`merkRowCount` and
+    // `initialData` are not stage-change signals of their own: `initialData`
+    // is stable for the life of an edit (the stage select is disabled then),
+    // and including the row counts would fire this effect — wiping out
+    // whatever the official has typed — on any render where the `stages`
+    // prop is a new array reference with the same content, not only on an
+    // actual stage change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageId]);
 
   // Select the first stage by default once stages are loaded.
   useEffect(() => {
@@ -645,10 +705,13 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     );
   };
 
-  // ORC section is split into two columns of 15 rows, like the paper card
-  const half = ORC_HALF;
+  // ORC section split into two even columns, like the paper card — 15/15 on
+  // a normal stage, 30/30 once the second card doubles it to 60 rows.
+  const half = orcHalf;
   const leftRows = answers.slice(0, half);
   const rightRows = answers.slice(half);
+  const columnRange = (rows: AnswerRow[]) =>
+    rows.length === 0 ? '' : `${rows[0].rowNumber}–${rows[rows.length - 1].rowNumber}`;
 
   const answerHeader = (
     <thead>
@@ -797,7 +860,9 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-4 items-start">
         {/* Column 1 — ORC's rows 1-15 */}
         <div>
-          <h2 className="text-sm font-bold mb-1 text-gray-800">ORC&apos;s (1&ndash;15)</h2>
+          <h2 className="text-sm font-bold mb-1 text-gray-800">
+            ORC&apos;s ({columnRange(leftRows)})
+          </h2>
           <div className="border-2 border-gray-300 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full border-collapse">
               {answerHeader}
@@ -810,7 +875,9 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
 
         {/* Column 2 — ORC's rows 16-30 */}
         <div>
-          <h2 className="text-sm font-bold mb-1 text-gray-800">ORC&apos;s (16&ndash;30)</h2>
+          <h2 className="text-sm font-bold mb-1 text-gray-800">
+            ORC&apos;s ({columnRange(rightRows)})
+          </h2>
           <div className="border-2 border-gray-300 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full border-collapse">
               {answerHeader}
@@ -941,7 +1008,9 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
 
         {/* Column 4 — Merk (officials) + Totaal Strafpunten */}
         <div>
-          <h2 className="text-sm font-bold mb-1 text-gray-800">Merk</h2>
+          <h2 className="text-sm font-bold mb-1 text-gray-800">
+            Merk{merkRowCount > MERK_ROWS ? ` (1–${merkRowCount})` : ''}
+          </h2>
           <div className="border-2 border-gray-300 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full border-collapse">
               <thead>

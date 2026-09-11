@@ -7,6 +7,8 @@ import { calculateMerkPenalty, calculateTotalPenalty } from '../../lib/scoring';
 import { readBody, requireSession } from '../../lib/api-guard';
 import { rescoreParticipants } from '../../lib/rescore';
 import {
+  MERK_ROWS_PER_CARD,
+  ORC_ROWS_PER_CARD,
   parseAnswerRows,
   parseEq,
   parseEqParam,
@@ -95,16 +97,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const answers = parseAnswerRows(body.answers);
-  const merkScores = parseMerkScores(body.merkScores);
-
   try {
     await dbConnect();
 
+    // Loaded before `answers`/`merkScores` are parsed — unlike the cheaper
+    // checks above, how many rows a sheet may hold depends on this stage's
+    // `usesSecondCard`, so there is no parsing them without it. See "Second
+    // answer card" in CLAUDE.md.
     const stage = await Stage.findById(stageId);
     if (!stage) {
       return NextResponse.json({ error: 'Stage not found' }, { status: 404 });
     }
+
+    const orcCap = stage.usesSecondCard ? ORC_ROWS_PER_CARD * 2 : ORC_ROWS_PER_CARD;
+    const merkCap = stage.usesSecondCard ? MERK_ROWS_PER_CARD * 2 : MERK_ROWS_PER_CARD;
+    const answers = parseAnswerRows(body.answers, orcCap);
+    const merkScores = parseMerkScores(body.merkScores, merkCap);
 
     // A sheet belongs to a crew, not to a bare number: the entry list is what
     // says who is riding, so an EQ with no `Participant` record is refused

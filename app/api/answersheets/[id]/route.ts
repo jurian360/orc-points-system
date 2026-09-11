@@ -7,6 +7,8 @@ import { calculateMerkPenalty, calculateTotalPenalty } from '../../../lib/scorin
 import { readBody, requireSession } from '../../../lib/api-guard';
 import { rescoreParticipants } from '../../../lib/rescore';
 import {
+  MERK_ROWS_PER_CARD,
+  ORC_ROWS_PER_CARD,
   parseAnswerRows,
   parseEq,
   parseMerkScores,
@@ -103,7 +105,14 @@ export async function PUT(
     }
 
     const stage = await Stage.findById(sheet.stageId);
-    const answers = body.answers !== undefined ? parseAnswerRows(body.answers) : sheet.answers;
+    // Resolved before parsing: how many rows a sheet may hold depends on the
+    // stage's `usesSecondCard` (see "Second answer card" in CLAUDE.md). A
+    // sheet whose stage was since deleted falls back to one card's worth,
+    // the same as a stage that never opted in.
+    const orcCap = stage?.usesSecondCard ? ORC_ROWS_PER_CARD * 2 : ORC_ROWS_PER_CARD;
+    const merkCap = stage?.usesSecondCard ? MERK_ROWS_PER_CARD * 2 : MERK_ROWS_PER_CARD;
+    const answers =
+      body.answers !== undefined ? parseAnswerRows(body.answers, orcCap) : sheet.answers;
 
     const previousEq = sheet.eq;
     if (eq !== null) sheet.eq = eq;
@@ -114,7 +123,7 @@ export async function PUT(
     }
     if (body.merkScores !== undefined) {
       // Only the letters survive the parse; the rescore below scores the column.
-      sheet.merkScores = parseMerkScores(body.merkScores);
+      sheet.merkScores = parseMerkScores(body.merkScores, merkCap);
     }
     const merkPenalty = calculateMerkPenalty(
       stage ? stage.merkScoreKey : [],
