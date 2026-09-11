@@ -381,7 +381,18 @@ the screen.
   for a finishing place — or, on an imported rally, the one that was typed in.
 - The season's class for a crew is the **highest** they rode in that year. A
   crew promoted in August rides the season out in their new class — you cannot
-  win B after being moved up to A.
+  win B after being moved up to A. **`A` and `H` are never split into two
+  season classes**, though — a crew can be promoted from `A` to `H`, or
+  demoted back, mid-season, and ranking them separately would put a crew's
+  whole year on whichever side of that line they happened to end up on rather
+  than on how they actually rode it. The overall standings page therefore
+  reads them together as one *Wedstrijdklasse* tab alongside its own *Class
+  B* — the same combination the printed single-rally result sheet already
+  runs `A` and `H` together in (`wedstrijdklasseStandings` in
+  `app/lib/overallStandings.ts`, over `WEDSTRIJDKLASSE_CLASSES` /
+  `inWedstrijdklasse` from `app/lib/participants.ts`). A crew's stored
+  `classification` still holds its real, highest-ridden letter — shown as
+  such in the Kl. column — only the standings *grouping* is combined.
 - An entry whose two riders are not both registered **is not a crew** and has
   no season. That is not a gap to paper over: an overall standing is awarded to
   two named people, and an entry nobody registered names none.

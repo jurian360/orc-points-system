@@ -29,7 +29,7 @@
 // Pure and shared, client + server.
 
 import { crewKey } from './crews';
-import { classificationRank, type ClassificationValue } from './participants';
+import { classificationRank, inWedstrijdklasse, type ClassificationValue } from './participants';
 import { personLabel, type PersonSummary } from './persons';
 import { ALL_RESULTS, resultPoints, type SeasonSettings } from './seasons';
 import type { StandingsStatus } from './standings';
@@ -297,6 +297,22 @@ export function classStandings(
   let place = 0;
   return entries
     .filter((entry) => entry.classification === classification)
+    .map((entry) => ({ ...entry, rank: entry.eligible ? ++place : 0 }));
+}
+
+// The same standings read for the **wedstrijdklasse** — `A` and `H` ranked
+// together as one competition, the way the printed single-rally result sheet
+// already runs them. A season is the one place this matters more than a rally
+// does: a crew can be promoted from `A` to `H` (or demoted back) mid-season,
+// and `classification` above already resolves that to whichever they ended up
+// in. Ranking `A` and `H` as two separate season classes would then put a
+// crew's whole year on which side of that line they happened to cross,
+// instead of on how they actually rode it — so the two are never split apart
+// here.
+export function wedstrijdklasseStandings(entries: CrewSeasonEntry[]): CrewSeasonEntry[] {
+  let place = 0;
+  return entries
+    .filter((entry) => inWedstrijdklasse(entry.classification))
     .map((entry) => ({ ...entry, rank: entry.eligible ? ++place : 0 }));
 }
 

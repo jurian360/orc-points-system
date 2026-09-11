@@ -5,8 +5,12 @@ import Link from 'next/link';
 import ClassificationBadge from '../../components/ClassificationBadge';
 import { useAuth } from '../../components/AuthContext';
 import { PAGE_CONTAINER } from '../../lib/layout';
-import { classStandings, type CrewSeasonEntry } from '../../lib/overallStandings';
-import { MAIN_CLASSIFICATIONS } from '../../lib/participants';
+import {
+  classStandings,
+  wedstrijdklasseStandings,
+  type CrewSeasonEntry,
+} from '../../lib/overallStandings';
+import { WEDSTRIJDKLASSE_LABEL } from '../../lib/participants';
 import {
   ALL_RESULTS,
   countingRuleLabel,
@@ -34,7 +38,18 @@ import type { OverallStandingsResponse } from '../../types';
 // `/api/standings/overall`, which reads each rally's own standings — the same
 // numbers on that rally's table and on its printed result sheet — or, for a
 // rally whose results were imported, the finishing order that was typed in.
-type View = 'all' | 'B' | 'A' | 'H';
+// `A` and `H` are never split apart here: a crew can be promoted or demoted
+// between them mid-season, so the season ranks them together as one
+// wedstrijdklasse instead of two classes — `B` stays its own.
+type View = 'all' | 'B' | 'wedstrijdklasse';
+
+const VIEWS: View[] = ['all', 'B', 'wedstrijdklasse'];
+
+function viewLabel(view: View): string {
+  if (view === 'all') return 'All classes';
+  if (view === 'wedstrijdklasse') return WEDSTRIJDKLASSE_LABEL;
+  return `Class ${view}`;
+}
 
 export default function OverallStandingsPage() {
   const { can } = useAuth();
@@ -80,10 +95,14 @@ export default function OverallStandingsPage() {
 
   // A class rides against its own class, so a class sheet re-ranks what it
   // filters rather than showing the overall places with gaps in them — the
-  // same rule the printed rally result sheet follows.
+  // same rule the printed rally result sheet follows. `A` and `H` are read
+  // together as the wedstrijdklasse rather than as two classes, since a crew
+  // can move between them mid-season.
   const entries: CrewSeasonEntry[] = useMemo(() => {
     if (!data) return [];
-    return view === 'all' ? data.entries : classStandings(data.entries, view);
+    if (view === 'all') return data.entries;
+    if (view === 'wedstrijdklasse') return wedstrijdklasseStandings(data.entries);
+    return classStandings(data.entries, view);
   }, [data, view]);
 
   const placed = entries.filter((entry) => entry.eligible).length;
@@ -409,7 +428,7 @@ export default function OverallStandingsPage() {
         )}
 
         <div className="flex flex-wrap gap-2 mb-4">
-          {(['all', ...MAIN_CLASSIFICATIONS] as View[]).map((option) => (
+          {VIEWS.map((option) => (
             <button
               key={option}
               onClick={() => setView(option)}
@@ -419,7 +438,7 @@ export default function OverallStandingsPage() {
                   : 'bg-white text-gray-700 hover:bg-gray-100'
               }`}
             >
-              {option === 'all' ? 'All classes' : `Class ${option}`}
+              {viewLabel(option)}
             </button>
           ))}
         </div>

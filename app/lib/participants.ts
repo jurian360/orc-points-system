@@ -95,12 +95,14 @@ export const CLASSIFICATION_LIST = CLASSIFICATIONS.join(', ').replace(
 
 // The **wedstrijdklasse**: the classes that are ranked together as one
 // competition. `A` and `H` ride the same rally against each other, so the
-// results carry a combined ranking of the two next to their own class sheets.
+// results carry a combined ranking of the two next to their own class sheets
+// — and the season's overall standings rank them together too, rather than as
+// two separate classes, because a crew can be promoted or demoted between
+// them mid-season (`wedstrijdklasseStandings` in `app/lib/overallStandings.ts`).
 //
 // It is not a class a crew can be entered in — nothing is ever recorded as a
 // wedstrijdklasse on the entry list, and `CLASSIFICATIONS` deliberately does
-// not hold it. It is a way of *reading* the standings, which is why it only
-// exists on the printed results.
+// not hold it. It is a way of *reading* the standings, never of storing one.
 export const WEDSTRIJDKLASSE_CLASSES: readonly Classification[] = ['A', 'H'];
 
 export const WEDSTRIJDKLASSE_LABEL = 'Wedstrijdklasse';
