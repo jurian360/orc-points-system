@@ -65,6 +65,9 @@ interface StoredUser {
   role: Role;
   passwordHash: string;
   passwordChangedAt?: Date | string | null;
+  // Absent on a `.lean()` read of a document written before this field
+  // existed; treated as active, the same default the schema gives it.
+  active?: boolean;
 }
 
 // Which unique field a duplicate-key error (Mongo code 11000) tripped over, so
@@ -121,6 +124,10 @@ export async function authenticate(
 
   if (!(await verifyPassword(password, user.passwordHash))) return null;
 
+  // Refused exactly like a wrong password: the caller must not be able to
+  // tell "deactivated" apart from "no such account" or "wrong password".
+  if (user.active === false) return null;
+
   user.lastLoginAt = new Date();
   user.lastLoginIp = ip ? ip.slice(0, 64) : null;
   await user.save();
@@ -155,6 +162,10 @@ export async function currentUser(session: SessionUser): Promise<AuthenticatedUs
   const user = (await User.findById(session.sub).lean()) as StoredUser | null;
   if (!user) return null;
 
+  // A deactivated account loses access on its very next request rather than
+  // whenever its token happens to expire — "reactivated" is what gives it back.
+  if (user.active === false) return null;
+
   const changedAt = user.passwordChangedAt ? new Date(user.passwordChangedAt).getTime() : 0;
   // One second of slack: the token's `iat` and the document's timestamp are
   // written milliseconds apart by the same request when a user changes their
@@ -169,10 +180,14 @@ export async function currentUser(session: SessionUser): Promise<AuthenticatedUs
   };
 }
 
-// How many admin accounts exist in the database. The user routes refuse the
-// edit that would take the last one away, so the app cannot be left with no
-// way in but the environment.
+// How many admin accounts can actually sign in right now. The user routes
+// refuse the edit that would take the last one away — demoting it, deleting
+// it, or deactivating it — so the app cannot be left with no working admin but
+// the environment's recovery account. An inactive admin cannot sign in, so it
+// is not counted as the safety net either: `{ $ne: false }` reads a document
+// with `active` unset (an account from before this field existed) as active,
+// the same default the schema gives it.
 export async function adminCount(): Promise<number> {
   await dbConnect();
-  return User.countDocuments({ role: 'admin' });
+  return User.countDocuments({ role: 'admin', active: { $ne: false } });
 }

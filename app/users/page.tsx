@@ -58,7 +58,42 @@ export default function UsersPage() {
     }
   };
 
-  const adminsInDatabase = users.filter((entry) => entry.role === 'admin').length;
+  const handleToggleActive = async (target: UserValue) => {
+    const nextActive = target.active === false;
+
+    if (
+      !nextActive &&
+      !confirm(`Deactivate "${target.username}"? They will not be able to sign in until reactivated.`)
+    ) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/users/${target._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: nextActive }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setError(data.error || 'Could not update this account.');
+        return;
+      }
+
+      setUsers((current) =>
+        current.map((entry) => (entry._id === target._id ? (data as UserValue) : entry))
+      );
+    } catch {
+      setError('Could not update this account.');
+    }
+  };
+
+  const adminsInDatabase = users.filter(
+    (entry) => entry.role === 'admin' && entry.active !== false
+  ).length;
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -140,6 +175,9 @@ export default function UsersPage() {
                         {currentUser?.username === entry.username && (
                           <span className="ml-2 text-xs font-normal text-gray-500">(you)</span>
                         )}
+                        {entry.active === false && (
+                          <span className="ml-2 text-xs font-normal text-red-600">Inactive</span>
+                        )}
                       </p>
                       <p className="text-sm text-gray-500">
                         {ROLE_LABELS[entry.role]}
@@ -162,6 +200,18 @@ export default function UsersPage() {
                         className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
                       >
                         Edit
+                      </button>
+                      <button
+                        onClick={() => handleToggleActive(entry)}
+                        disabled={currentUser?.username === entry.username}
+                        title={
+                          currentUser?.username === entry.username
+                            ? 'You cannot deactivate your own account.'
+                            : undefined
+                        }
+                        className="px-3 py-1.5 text-sm bg-amber-50 text-amber-700 rounded-md hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {entry.active === false ? 'Activate' : 'Deactivate'}
                       </button>
                       <button
                         onClick={() => handleDelete(entry)}
