@@ -25,10 +25,11 @@ import { computeRallyStandings } from '../../../../../lib/standingsQuery';
 // computation the authenticated dashboard route uses — a public reader and an
 // official must never see two different rankings of the same field.
 //
-// What is left out on purpose: `stagePenalties` (no per-stage breakdown on
-// this page, only the rally total — see "Public results page" in CLAUDE.md)
-// and anything that would point at one sheet (an answer sheet is never public,
-// only the totals it adds up into).
+// The four numbers per stage (ORC's, Tijd, Diversen, the stage's own total)
+// are public too, the same as they are on the printed result sheet — only an
+// answer sheet's own rows (the letters, the WPT's, the merk column) are not,
+// so `stagePenalties` comes back per entry but nothing that would point at
+// one sheet does.
 const RESULTS_RATE_LIMIT = 60;
 const RESULTS_WINDOW_MS = 60 * 1000;
 
@@ -66,6 +67,10 @@ export async function GET(
     return NextResponse.json({
       rally: result.rally,
       totalStages: result.totalStages,
+      // In running order, headed with a name — enough to label the per-stage
+      // columns. Not `routeId`: this page does not group by leg the way the
+      // print sheet can, so there is nothing here that would use it.
+      stages: result.stages.map((stage) => ({ _id: stage._id, name: stage.name })),
       standings: result.standings.map((entry) => ({
         eq: entry.eq,
         classification: entry.classification,
@@ -77,6 +82,21 @@ export async function GET(
         merkPenalty: entry.merkPenalty,
         status: entry.status,
         rank: entry.rank,
+        // Keyed by stage id, same shape `stages` above comes in: what a stage
+        // cost this crew, or what a blank card costs on it when they have no
+        // sheet for it (`missingSheet`) — never the sheet's own rows.
+        stagePenalties: Object.fromEntries(
+          Object.entries(entry.stagePenalties).map(([stageId, score]) => [
+            stageId,
+            {
+              totalPenalty: score.totalPenalty,
+              orcPenalty: score.orcPenalty,
+              timePenalty: score.timePenalty,
+              merkPenalty: score.merkPenalty,
+              missingSheet: score.missingSheet,
+            },
+          ])
+        ),
       })),
     });
   } catch (error) {

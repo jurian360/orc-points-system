@@ -11,13 +11,36 @@ import { CLASSIFICATIONS, type ClassificationValue } from '../../../lib/particip
 // printed from that page — can read the standings with no account. It is the
 // screen counterpart of the Algemeen klassement sheet on
 // /rallies/[id]/standings/print: the whole field, one table, ranked the same
-// way, filterable by classification. What it deliberately does not show is
-// any one crew's answer sheet — only the totals their sheets add up into,
-// which is all `GET /api/public/rallies/[id]/results` ever returns.
+// way, filterable by classification, with the same four numbers per stage a
+// printed result sheet shows (ORC's, Tijd, Diversen, that stage's own total)
+// on a rally of more than one. What it deliberately does not show is any one
+// crew's answer sheet — the letters, the WPT's, the merk column — only the
+// totals those sheets add up into, which is all
+// `GET /api/public/rallies/[id]/results` ever returns.
 //
 // No session, no app nav (ClientLayout skips it for every /public/ path) —
 // this is the one page in the app built to be opened by someone who has never
 // signed in and never will.
+//
+// Unlike the print page, this does not group the per-stage columns by route
+// on a rally ridden in legs — the stages are shown in running order either
+// way, which is what a phone screen has room for.
+
+interface PublicStage {
+  _id: string;
+  name: string;
+}
+
+// What a stage cost this crew — the same four numbers as the rally total,
+// scaled down to one stage — or what a blank card costs on it when they have
+// no sheet for it (`missingSheet`), never the sheet's own rows.
+interface PublicStageScore {
+  totalPenalty: number;
+  orcPenalty: number;
+  timePenalty: number;
+  merkPenalty: number;
+  missingSheet?: boolean;
+}
 
 interface PublicStandingsEntry {
   eq: number;
@@ -30,11 +53,13 @@ interface PublicStandingsEntry {
   merkPenalty: number;
   status: StandingsStatus;
   rank: number;
+  stagePenalties: Record<string, PublicStageScore>;
 }
 
 interface PublicResults {
   rally: { name: string; code?: string };
   totalStages: number;
+  stages: PublicStage[];
   standings: PublicStandingsEntry[];
 }
 
@@ -93,6 +118,13 @@ export default function PublicRallyResultsPage({
     return data.standings.filter((entry) => (entry.classification || '') === classFilter);
   }, [data, classFilter]);
 
+  // A rally of one stage scores the same numbers twice — the stage total *is*
+  // the rally total — so the per-stage columns only earn their room once
+  // there is more than one stage to tell apart, the same rule the print sheet
+  // follows.
+  const showStages = Boolean(data && data.totalStages > 1);
+  const stages = data?.stages ?? [];
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -140,6 +172,7 @@ export default function PublicRallyResultsPage({
           Total penalty points (ORC&apos;s + Tijd + Diversen) over every stage — lowest wins. A
           crew with no card for the last stage, or outside its finish window, is a DNF; a crew
           with no card at all is a DNS. Both are listed behind the field.
+          {showStages && ' Scroll the table sideways for the numbers per stage.'}
         </p>
 
         <div className="flex items-center gap-2 mb-4">
@@ -174,35 +207,117 @@ export default function PublicRallyResultsPage({
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-100">
-                  <tr>
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      #
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      EQ
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Class
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Navigator
-                    </th>
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Bestuurder
-                    </th>
-                    <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      ORC&apos;s
-                    </th>
-                    <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Tijd
-                    </th>
-                    <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Div.
-                    </th>
-                    <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Totaal
-                    </th>
-                  </tr>
+                  {showStages ? (
+                    <>
+                      <tr>
+                        <th
+                          rowSpan={2}
+                          className="px-3 py-2.5 text-left align-bottom text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                        >
+                          #
+                        </th>
+                        <th
+                          rowSpan={2}
+                          className="px-3 py-2.5 text-left align-bottom text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                        >
+                          EQ
+                        </th>
+                        <th
+                          rowSpan={2}
+                          className="px-3 py-2.5 text-left align-bottom text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                        >
+                          Class
+                        </th>
+                        <th
+                          rowSpan={2}
+                          className="px-3 py-2.5 text-left align-bottom text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                        >
+                          Navigator
+                        </th>
+                        <th
+                          rowSpan={2}
+                          className="px-3 py-2.5 text-left align-bottom text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                        >
+                          Bestuurder
+                        </th>
+                        {stages.map((stage) => (
+                          <th
+                            key={stage._id}
+                            colSpan={4}
+                            className="px-2 py-1.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-l border-gray-300 whitespace-nowrap"
+                          >
+                            {stage.name}
+                          </th>
+                        ))}
+                        <th
+                          colSpan={4}
+                          className="px-2 py-1.5 text-center text-xs font-bold text-gray-800 uppercase tracking-wider border-l-2 border-gray-400"
+                        >
+                          Rally Total
+                        </th>
+                      </tr>
+                      <tr>
+                        {stages.map((stage) => (
+                          <React.Fragment key={stage._id}>
+                            <th className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-gray-600 uppercase border-l border-gray-300">
+                              ORC
+                            </th>
+                            <th className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-gray-600 uppercase">
+                              Tijd
+                            </th>
+                            <th className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-gray-600 uppercase">
+                              Div.
+                            </th>
+                            <th className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-gray-600 uppercase">
+                              Sub
+                            </th>
+                          </React.Fragment>
+                        ))}
+                        <th className="px-1.5 py-1.5 text-right text-[10px] font-bold text-gray-700 uppercase border-l-2 border-gray-400">
+                          ORC&apos;s
+                        </th>
+                        <th className="px-1.5 py-1.5 text-right text-[10px] font-bold text-gray-700 uppercase">
+                          Tijd
+                        </th>
+                        <th className="px-1.5 py-1.5 text-right text-[10px] font-bold text-gray-700 uppercase">
+                          Div.
+                        </th>
+                        <th className="px-1.5 py-1.5 text-right text-[10px] font-bold text-gray-700 uppercase">
+                          Totaal
+                        </th>
+                      </tr>
+                    </>
+                  ) : (
+                    <tr>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        #
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        EQ
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Class
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Navigator
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Bestuurder
+                      </th>
+                      <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        ORC&apos;s
+                      </th>
+                      <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Tijd
+                      </th>
+                      <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Div.
+                      </th>
+                      <th className="px-3 py-2.5 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Totaal
+                      </th>
+                    </tr>
+                  )}
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {visibleStandings.map((entry) => (
@@ -247,13 +362,46 @@ export default function PublicRallyResultsPage({
                       <td className="px-3 py-2 whitespace-nowrap">
                         <ClassificationBadge classification={entry.classification} />
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-800">
+                      <td className="px-3 py-2 text-sm text-gray-800 whitespace-nowrap">
                         {entry.navigatorName || '—'}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-800">
+                      <td className="px-3 py-2 text-sm text-gray-800 whitespace-nowrap">
                         {entry.driverName || '—'}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-right tabular-nums text-gray-800">
+                      {showStages &&
+                        stages.map((stage) => {
+                          // No sheet for this stage is not a zero: the
+                          // standings score it as a blank card, so the * says
+                          // where the number came from — the same footnote the
+                          // print sheet carries.
+                          const score = entry.stagePenalties[stage._id];
+                          const cell = 'px-1.5 py-2 whitespace-nowrap text-xs text-right tabular-nums text-gray-700';
+
+                          return (
+                            <React.Fragment key={stage._id}>
+                              <td className={`${cell} border-l border-gray-200`}>
+                                {score ? score.orcPenalty : ''}
+                              </td>
+                              <td className={cell}>{score ? score.timePenalty : ''}</td>
+                              <td className={cell}>{score ? score.merkPenalty : ''}</td>
+                              <td className={`${cell} font-semibold text-gray-900`}>
+                                {score ? (
+                                  <>
+                                    {score.totalPenalty}
+                                    {score.missingSheet ? '*' : ''}
+                                  </>
+                                ) : (
+                                  <span className="text-gray-400">—</span>
+                                )}
+                              </td>
+                            </React.Fragment>
+                          );
+                        })}
+                      <td
+                        className={`px-3 py-2 whitespace-nowrap text-sm text-right tabular-nums text-gray-800${
+                          showStages ? ' border-l-2 border-gray-300' : ''
+                        }`}
+                      >
                         {entry.orcPenalty}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-sm text-right tabular-nums text-gray-800">
@@ -272,6 +420,15 @@ export default function PublicRallyResultsPage({
             </div>
           )}
         </div>
+
+        {showStages &&
+          visibleStandings.some((entry) =>
+            stages.some((stage) => entry.stagePenalties[stage._id]?.missingSheet)
+          ) && (
+            <p className="text-xs text-gray-500 mt-2">
+              * No card handed in for that stage — counted as a blank card.
+            </p>
+          )}
 
         <p className="text-center text-xs text-gray-400 mt-6 pb-6">SARK Points System</p>
       </div>

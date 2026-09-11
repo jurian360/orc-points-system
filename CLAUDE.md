@@ -732,11 +732,19 @@ opens the link, reads the current standings with **no account at all**.
   whole field, ranked exactly the way `/rallies/[id]/standings/print` ranks its
   combined sheet — finished crews first on points then EQ, then the DNF's, then
   the DNS's — with a classification filter (`CLASSIFICATIONS`) over the same
-  fetch, the way the dashboard's own standings tab filters. No per-stage
-  breakdown, no per-route or wedstrijdklasse sheets: those stay admin-only
-  detail on the print page. **It never shows an answer sheet** — only the ORC's
-  / Tijd / Diversen / Totaal a crew's sheets add up into, the same four numbers
-  the print sheet shows and nothing a sheet's own rows would reveal.
+  fetch, the way the dashboard's own standings tab filters. A rally of more
+  than one stage also gets the four numbers per stage (ORC's, Tijd, Diversen,
+  that stage's own total, a stage a crew has no card for marked with the same
+  `*` the print sheet uses) in running order ahead of the rally total, the
+  same rule `showStages` follows on the print page — one stage means the stage
+  total *is* the rally total, so there is nothing to break out. **What stays
+  off this page is the per-route grouping and the wedstrijdklasse sheet**: the
+  stages are shown in running order regardless of legs, which is what a phone
+  screen has room for; those stay admin-only detail on the print page. **It
+  never shows an answer sheet** — not the letters, not a WPT, not a merk
+  letter — only the ORC's / Tijd / Diversen / Totaal a crew's sheets add up
+  into, rally-wide and per stage, the same numbers the print sheet shows and
+  nothing a sheet's own rows would reveal.
 - **The computation is shared, not reimplemented.** `computeRallyStandings` in
   `app/lib/standingsQuery.ts` is what `GET /api/rallies/[id]/standings` (the
   dashboard, session-gated) and `GET /api/public/rallies/[id]/results` (this
