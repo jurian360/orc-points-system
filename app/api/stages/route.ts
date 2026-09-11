@@ -84,6 +84,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Rally not found' }, { status: 404 });
     }
 
+    // A rally is scored here or imported, never both. This one's finishing
+    // order was typed in from the club's paper records, and a stage would
+    // start a second source of truth for the same result.
+    if (rally.resultsImported) {
+      return NextResponse.json(
+        {
+          error:
+            "This rally's results were imported, so it cannot have stages. " +
+            'Create a new rally to score one in this system.',
+        },
+        { status: 409 }
+      );
+    }
+
     // A rally either has no routes — every stage is in the one implicit leg — or
     // it has them, and then every stage belongs to one. So the route is required
     // exactly when the rally has routes: a stage that silently landed in the

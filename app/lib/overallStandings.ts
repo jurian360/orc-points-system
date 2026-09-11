@@ -10,24 +10,28 @@
 //      not by the EQ number, which is handed out fresh each rally, and not by
 //      the seating, which a crew swaps (see app/lib/crews.ts).
 //   3. Drop the pairs who rode fewer than the season's minimum together. One
-//      person can be in several pairs and be placed in each of them — riding
-//      three rallies with Jan and three with Piet is two crews, and both of
-//      them are real.
-//   4. Add up each crew's counting results and rank on the total, lowest first,
-//      exactly as a rally is.
+//      person can be in several pairs and be placed in each — riding three
+//      rallies with Jan and three with Piet is two crews, and both of them are
+//      real.
+//   4. Award each result the points its **finish position** is worth, times
+//      that rally's time factor, and rank on the total. **Highest wins.**
 //
-// It **scores nothing**. Every number here is a rally total that
-// `app/lib/rescore.ts` already wrote and the rally standings already added up;
-// this only decides which of them count and how they are grouped. That is the
-// same rule the printed result sheet follows, and for the same reason: a second
-// place that computes a penalty is a second place for it to disagree.
+// **The currency changes here, and only here.** Inside a rally the lowest
+// strafpunten win and a point is a penalty. A season is a championship table
+// laid over the finishing order: a position earns points, and more is better
+// (see app/lib/seasons.ts for why the two cannot be one currency).
+//
+// It **scores nothing**. A finish position is either one the rally's own
+// standings produced — the same `computeRallyStandings` behind that rally's
+// table and its printed sheet — or one that was imported with a historical
+// result. This module only says what a position is worth.
 //
 // Pure and shared, client + server.
 
 import { crewKey } from './crews';
 import { classificationRank, type ClassificationValue } from './participants';
 import { personLabel, type PersonSummary } from './persons';
-import { ALL_RESULTS, type SeasonSettings } from './seasons';
+import { ALL_RESULTS, resultPoints, type SeasonSettings } from './seasons';
 import type { StandingsStatus } from './standings';
 
 // One rally of the season, as the overall standings need it.
@@ -38,10 +42,15 @@ export interface SeasonRally {
   // False for an unofficial rally. Those are filtered out here rather than by
   // the caller, so no view can accidentally count one.
   countsForSeason: boolean;
+  // How much this rally is worth relative to the others. 1 is unweighted.
+  timeFactor: number;
+  // True when the results were imported from a historical sheet rather than
+  // scored here. Such a rally has a finishing order and no strafpunten, which
+  // is exactly why the season is ranked on positions.
+  resultsImported: boolean;
 }
 
-// What one crew scored in one rally: their entry, plus the total the rally's
-// own standings gave them.
+// What one crew did in one rally: their entry, and where they came.
 export interface SeasonResult {
   rallyId: string;
   eq: number;
@@ -50,21 +59,31 @@ export interface SeasonResult {
   // The class the crew rode this rally in — the higher of its two members'
   // classes as they stood that day (app/lib/participants.ts).
   classification: ClassificationValue;
-  totalPenalty: number;
+  // Where they finished. **0 means no place at all** — a DNF or a DNS — and
+  // earns nothing.
+  position: number;
   status: StandingsStatus;
+  // The strafpunten the rally cost them, or null on an imported rally, which
+  // has a finishing order and no points. Carried for display only: the season
+  // is not ranked on it.
+  totalPenalty: number | null;
 }
 
-// A crew's result in one counted (or uncounted) rally of the season.
+// A crew's result in one rally of the season.
 export interface CrewSeasonResult {
   rallyId: string;
   rallyName: string;
   date: string;
   eq: number;
-  totalPenalty: number;
+  position: number;
+  timeFactor: number;
+  // What this result was worth: the position's points times the time factor.
+  points: number;
+  totalPenalty: number | null;
   status: StandingsStatus;
-  // False for a result the counting rule left out — a crew's fourth-best rally
-  // in a season that counts three. It is still shown: an official reading the
-  // sheet wants to see what was dropped, not a gap.
+  // False for a result the counting rule left out — a crew's worst rally in a
+  // season that counts three. It is still shown: an official reading the sheet
+  // wants to see what was dropped, not a gap.
   counted: boolean;
 }
 
@@ -84,8 +103,9 @@ export interface CrewSeasonEntry {
   // measured against, and it counts rallies they *started* — a DNS is an entry,
   // not a ride.
   ralliesRidden: number;
-  // The sum of the counted results. The number the ranking is on.
-  totalPenalty: number;
+  // The sum of the counted results' points. The number the ranking is on, and
+  // the one place in this app where a bigger number is a better one.
+  totalPoints: number;
   countedResults: number;
   // False for a crew short of the season's minimum. They are kept and listed
   // behind the ranked crews rather than dropped: a pair who rode two rallies
@@ -96,10 +116,9 @@ export interface CrewSeasonEntry {
   rank: number;
 }
 
-// A crew *started* a rally when they have a card in it. A DNS is an entry on
-// the list and nothing more, so it neither counts towards the three nor brings
-// a blank-card total into the season total — a crew who stayed home should not
-// be charged for a rally they could not have scored in.
+// A crew *started* a rally when they have a result in it that is not a DNS. A
+// DNS is an entry on the list and nothing more, so it neither counts towards
+// the three nor brings a score into the season.
 function started(status: StandingsStatus): boolean {
   return status !== 'dns';
 }
@@ -191,6 +210,11 @@ export function computeOverallStandings({
       rallyName: rally.name,
       date: rally.date,
       eq: result.eq,
+      position: result.position,
+      timeFactor: rally.timeFactor,
+      // A crew who did not finish has no position and earns nothing, which
+      // `resultPoints` gives for a position of 0.
+      points: resultPoints(result.position, rally.timeFactor, settings.pointsTable),
       totalPenalty: result.totalPenalty,
       status: result.status,
       // Decided below, once the crew's whole season is in hand: which results
@@ -209,10 +233,11 @@ export function computeOverallStandings({
     const eligible = ridden.length >= settings.minimumRallies;
 
     // The counting rule: every rally they started, or their best N of them.
-    // `slice` over a copy sorted on points, so the crew's own list keeps its
-    // riding order and only the flag moves.
+    // **Best is highest here** — the season is a reward table. Sorted over a
+    // copy, so the crew's own list keeps its riding order and only the flag
+    // moves.
     const byPoints = [...ridden].sort(
-      (a, b) => a.totalPenalty - b.totalPenalty || a.date.localeCompare(b.date)
+      (a, b) => b.points - a.points || a.date.localeCompare(b.date)
     );
     const counted =
       settings.countingResults === ALL_RESULTS
@@ -231,22 +256,25 @@ export function computeOverallStandings({
       classification: draft.classification,
       results: draft.results,
       ralliesRidden: ridden.length,
-      totalPenalty: counted.reduce((sum, result) => sum + result.totalPenalty, 0),
+      // Rounded again after the sum: each result is already 2dp, and adding
+      // fifteen of them can still leave a trailing 0.000000001.
+      totalPoints:
+        Math.round(counted.reduce((sum, result) => sum + result.points, 0) * 100) / 100,
       countedResults: counted.length,
       eligible,
       rank: 0,
     });
   }
 
-  // The placed crews first, lowest total wins. Behind them the crews who are
+  // The placed crews first, **most points wins**. Behind them the crews who are
   // short of the minimum, ordered so the ones closest to qualifying are on top
   // — that list is read as "who nearly made it".
   entries.sort(
     (a, b) =>
       Number(b.eligible) - Number(a.eligible) ||
       (a.eligible
-        ? a.totalPenalty - b.totalPenalty || b.ralliesRidden - a.ralliesRidden
-        : b.ralliesRidden - a.ralliesRidden || a.totalPenalty - b.totalPenalty) ||
+        ? b.totalPoints - a.totalPoints || b.ralliesRidden - a.ralliesRidden
+        : b.ralliesRidden - a.ralliesRidden || b.totalPoints - a.totalPoints) ||
       a.label.localeCompare(b.label)
   );
 

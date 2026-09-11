@@ -20,6 +20,11 @@ export interface Rally {
   // False for an unofficial rally — ridden and scored like any other, but not
   // counted towards the overall standings of its year.
   countsForSeason?: boolean;
+  // How much this rally is worth in the overall standings. 1 is unweighted.
+  timeFactor?: number;
+  // True for a rally whose results were imported from a historical sheet: it
+  // has a finishing order and no stages, cards or strafpunten.
+  resultsImported?: boolean;
   createdAt: string;
 }
 
@@ -424,13 +429,19 @@ export interface RiderEntry {
   partner: { _id: string; name: string; email: string } | null;
   classification: ClassificationValue;
   vehicle: Vehicle;
-  // What the rally's own standings gave this crew. Null while the rally has no
-  // stages, which is a rally still being set up rather than a result of zero.
+  // True when this rally's result was imported from a historical sheet rather
+  // than scored here, so a screen can say why there are no strafpunten.
+  resultsImported: boolean;
+  // What the rally gave this crew. Null while the rally has no result at all —
+  // one still being set up, rather than a result of zero.
   result: {
-    totalPenalty: number;
-    orcPenalty: number;
-    timePenalty: number;
-    merkPenalty: number;
+    // Null on an imported rally, which records a finishing order and no
+    // points. Not 0: a crew with no recorded strafpunten did not score a
+    // perfect card.
+    totalPenalty: number | null;
+    orcPenalty: number | null;
+    timePenalty: number | null;
+    merkPenalty: number | null;
     status: StandingsStatus;
     // The place among the crews who finished; 0 for a DNF or a DNS, which have
     // no place.

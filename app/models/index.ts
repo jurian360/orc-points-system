@@ -77,6 +77,29 @@ const RallySchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  // How much this rally is worth in the overall standings, relative to the
+  // others: the championship points its finish positions earn are multiplied
+  // by this. A long, hard event counts for more than a short one, and the club
+  // sets the number per rally. `1` is an ordinary rally, so a rally nobody has
+  // weighted is unweighted rather than worthless.
+  timeFactor: {
+    type: Number,
+    default: 1,
+    min: 0,
+  },
+  // True for a rally whose results were **imported** from a historical sheet
+  // rather than scored here: the club has years of results on paper, with a
+  // finishing order and no strafpunten behind it.
+  //
+  // Such a rally has no stages and no answer sheets, and the API refuses to
+  // give it any (see POST /api/stages and POST /api/answersheets). Two sources
+  // of truth for one rally's result is exactly the disagreement this codebase
+  // is organised to prevent — its standings are the imported finishing order,
+  // read off `Participant.finishPosition`.
+  resultsImported: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -388,6 +411,19 @@ const SeasonSchema = new mongoose.Schema({
     default: 3,
     min: 1,
   },
+  // What each **band** of finish positions is worth in championship points.
+  // The club's table is written in bands — the first five places score their
+  // own number, then twos, then threes — so that is the shape it is stored
+  // in; `from` and `to` are inclusive and equal on a band of one place.
+  //
+  // **Empty on a year nobody has configured**, which is read with
+  // `DEFAULT_POINTS_TABLE` and shown as such, so a reader knows whether the
+  // scale in front of them was chosen for this season or inherited.
+  pointsTable: [{
+    from: { type: Number, required: true, min: 1 },
+    to: { type: Number, required: true, min: 1 },
+    points: { type: Number, required: true, min: 0 },
+  }],
   updatedAt: {
     type: Date,
     default: Date.now,
@@ -438,6 +474,26 @@ const ParticipantSchema = new mongoose.Schema({
     ref: 'Person',
     default: null,
     index: true,
+  },
+  // Where this crew finished, on a rally whose results were **imported**
+  // (`Rally.resultsImported`). Null on a rally scored here, where the position
+  // is the rank the rally's own standings give and storing a second copy would
+  // be a second place for it to disagree.
+  //
+  // `0` is not a position: a crew who did not finish has none, and
+  // `resultStatus` says which of DNF and DNS they were.
+  finishPosition: {
+    type: Number,
+    default: null,
+    min: 1,
+  },
+  // How an imported result ended: `finished`, `dnf` or `dns`. Null on a rally
+  // scored here, where the status is worked out from the cards
+  // (app/lib/standings.ts).
+  resultStatus: {
+    type: String,
+    enum: ['finished', 'dnf', 'dns', null],
+    default: null,
   },
   // The class the **crew** rides in: the higher of the driver's and the
   // navigator's on B < A < H. Derived and stored at registration, because it is

@@ -91,6 +91,9 @@ export async function loadRiderResults(personId: string): Promise<RiderResults |
     navigatorId?: unknown;
     classification?: ClassificationValue;
     vehicle?: Vehicle;
+    // Only on a rally whose results were imported.
+    finishPosition?: number | null;
+    resultStatus?: 'finished' | 'dnf' | 'dns' | null;
   }[];
 
   const rallyIds = Array.from(new Set(entries.map((entry) => String(entry.rallyId))));
@@ -99,12 +102,13 @@ export async function loadRiderResults(personId: string): Promise<RiderResults |
   // `$eq` and fail to cast it. The ids came off this rider's own entries.
   const rallies = (await Rally.find(
     { _id: mongoose.trusted({ $in: rallyIds }) },
-    'name date countsForSeason createdAt'
+    'name date countsForSeason resultsImported createdAt'
   ).lean()) as unknown as {
     _id: unknown;
     name: string;
     date?: Date | string | null;
     countsForSeason?: boolean;
+    resultsImported?: boolean;
     createdAt?: Date | string | null;
   }[];
 
@@ -140,9 +144,22 @@ export async function loadRiderResults(personId: string): Promise<RiderResults |
   // total the rally itself gave this crew. `computeRallyStandings` is what the
   // rally's own table reads, so a rider's dashboard cannot show a different
   // number from the result sheet on the wall.
+  //
+  // A rally whose results were **imported** is skipped: it has no cards to
+  // score, and its finishing order is on the entry itself.
   const standingsByRally = new Map<string, Awaited<ReturnType<typeof computeRallyStandings>>>();
   for (const rallyId of rallyIds) {
+    if (ralliesById.get(rallyId)?.resultsImported) continue;
     standingsByRally.set(rallyId, await computeRallyStandings(rallyId));
+  }
+
+  // How big the field of an imported rally was, so a place there reads as
+  // "7 of 43" like any other. Counted from the entries the import wrote.
+  const importedFieldSize = new Map<string, number>();
+  for (const entry of entries) {
+    const rallyId = String(entry.rallyId);
+    if (!ralliesById.get(rallyId)?.resultsImported) continue;
+    importedFieldSize.set(rallyId, (importedFieldSize.get(rallyId) ?? 0) + 1);
   }
 
   const riderEntries: RiderEntry[] = [];
@@ -163,8 +180,44 @@ export async function loadRiderResults(personId: string): Promise<RiderResults |
 
     const partnerId = seat === 'driver' ? entry.navigatorId : entry.driverId;
 
-    const standings = standingsByRally.get(rallyId);
-    const row = standings?.standings.find((candidate) => candidate.eq === entry.eq) ?? null;
+    const resultsImported = rally.resultsImported === true;
+
+    // Two kinds of rally, one shape of answer. An imported one records where
+    // the crew came and nothing else; a scored one is read out of its own
+    // standings.
+    let result: RiderEntry['result'] = null;
+
+    if (resultsImported) {
+      const status = entry.resultStatus ?? 'finished';
+
+      result = {
+        totalPenalty: null,
+        orcPenalty: null,
+        timePenalty: null,
+        merkPenalty: null,
+        status,
+        rank: status === 'finished' ? entry.finishPosition ?? 0 : 0,
+        fieldSize: importedFieldSize.get(rallyId) ?? 0,
+      };
+    } else {
+      const standings = standingsByRally.get(rallyId);
+      const row = standings?.standings.find((candidate) => candidate.eq === entry.eq) ?? null;
+
+      if (row !== null) {
+        result = {
+          totalPenalty: row.totalPenalty,
+          orcPenalty: row.orcPenalty,
+          timePenalty: row.timePenalty,
+          merkPenalty: row.merkPenalty,
+          status: row.status,
+          // Only a crew who finished has a place. `rank` on a standings entry
+          // is its position in the whole list, DNF's and DNS's included, so it
+          // is only a place for the ones that are ranked.
+          rank: isRanked(row.status) ? row.rank : 0,
+          fieldSize: standings?.standings.length ?? 0,
+        };
+      }
+    }
 
     riderEntries.push({
       rallyId,
@@ -176,21 +229,8 @@ export async function loadRiderResults(personId: string): Promise<RiderResults |
       partner: partnerId ? partnersById.get(String(partnerId)) ?? null : null,
       classification: entry.classification || '',
       vehicle: entry.vehicle ?? { ...EMPTY_VEHICLE },
-      result:
-        row === null
-          ? null
-          : {
-              totalPenalty: row.totalPenalty,
-              orcPenalty: row.orcPenalty,
-              timePenalty: row.timePenalty,
-              merkPenalty: row.merkPenalty,
-              status: row.status,
-              // Only a crew who finished has a place. `rank` on a standings
-              // entry is its position in the whole list, DNF's and DNS's
-              // included, so it is only a place for the ones that are ranked.
-              rank: isRanked(row.status) ? row.rank : 0,
-              fieldSize: standings?.standings.length ?? 0,
-            },
+      resultsImported,
+      result,
     });
   }
 

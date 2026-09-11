@@ -32,7 +32,10 @@ in code and UI — do not "translate" them:
 | Term | Meaning |
 | --- | --- |
 | **Rally** | Top-level event. Has many routes and/or stages. Carries the **date** it is ridden, which puts it in a season, and whether it **counts** towards that season. |
-| **Season** | One rally year, and the two rules that decide how it is won (`app/lib/seasons.ts`). Not a document you create — a rally with a date in it is the season starting. |
+| **Season** | One rally year, and the rules that decide how it is won (`app/lib/seasons.ts`). Not a document you create — a rally with a date in it is the season starting. |
+| **Time factor** | How much one rally is worth in the overall standings: the championship points its finish positions earn are multiplied by it. `1` is an ordinary rally. |
+| **Points table** | What each **band** of finish positions is worth in championship points — "1 → 100, 2 → 90, 6-7 → 68, …, 85 → 1". Per season and editable; `DEFAULT_POINTS_TABLE` is the club's. |
+| **Imported rally** | A rally ridden before this system existed. Its finishing order was typed in from the club's paper results; it has no stages, cards or strafpunten, and it may never be given any. |
 | **Rider / Person** | One human being who rides rallies, across every event and every season (`Person`). **Identified by their e-mail address.** Carries their class, its whole history, their contact details and — optionally — a login. |
 | **Crew** | The two riders in one car: a driver and a navigator. **An unordered pair** — swapping seats between rallies is the same crew — and what an overall standing is awarded to (`app/lib/crews.ts`). |
 | **Route** | A sequential leg of a rally: every crew rides route 1, then route 2, and a route holds several stages. At a boundary the crews are re-started, so the time delta is neutralised. Two events a year use them; **a rally with no routes is one implicit leg** and behaves exactly as every rally did before routes existed. |
@@ -306,16 +309,53 @@ a **season**. This is the half of the app that answers "who won the year".
   answers. A rally that predates the field falls back to its `createdAt`
   (`effectiveRallyDate`) rather than dropping out of its own year.
 
-### The two rules of a season (`app/lib/seasons.ts`)
+### A season is a championship table, not a sum of strafpunten
+
+**This is the one place in the app where a point is a reward.** Inside a rally
+the lowest strafpunten win and nothing ever subtracts. A season is a table laid
+over the finishing *order*:
+
+```
+result score = pointsForPosition(finish position) × rally.timeFactor
+season total = the sum of a crew's counted results — HIGHEST wins
+```
+
+The currency had to be the position, not the penalty. The club has years of
+results on paper with a finishing order and **no points at all** (see *Importing
+a rally's results* below), and a table that summed strafpunten for some rallies
+and something else for others would be meaningless. A position is the one thing
+every rally has, whether it was scored here or ridden in 2019.
+
+A crew who did not finish has **no position**, which scores nothing — the table
+rewards finishing. So does a place past the end of the table: the club's scale
+stops at 85th.
+
+### The rules of a season (`app/lib/seasons.ts`)
 
 `minimumRallies` (3 by default) is how many official rallies the **same pair**
 has to have ridden together before they are placed at all. `countingResults`
 (0 = all, the club's usual) is how many of their results are added up — set it
-to 3 and a crew's best three count, so riding a fourth can only help.
+to 3 and a crew's best three count, so riding a fourth can only help. "Best" is
+now the **highest**, which is the one thing that silently inverted when the
+currency changed.
 
-They live on a `Season` document per year, and a year nobody has configured
-reads the defaults. Writing them is `requireRallyAdmin()`: two numbers that
-decide who is champion carry the same weight as an answer key.
+`pointsTable` is what each band of places is worth. It is stored as **bands**
+(`{from, to, points}`) rather than one row per place, because that is how the
+club's sheet is written — the first five places score their own number and the
+rest are grouped in twos and threes down to 85th. Bands may leave gaps (a gap
+scores nothing) but may **not overlap**: two bands covering third place would
+make third worth whichever happened to be stored first, so `isValidPointsTable`
+refuses it and the editor will not save it.
+
+All three live on a `Season` document per year. A year nobody has configured
+reads `DEFAULT_POINTS_TABLE` and says so on the standings page, so a reader
+always knows whether the scale in front of them was chosen for this season or
+inherited. Writing them is `requireRallyAdmin()`: numbers that decide who is
+champion carry the same weight as an answer key.
+
+`Rally.timeFactor` is the other half. It is on **every** rally, not only the
+imported ones, and defaults to `1` so a rally nobody has weighted is
+unweighted rather than worthless.
 
 ### What is ranked, and what is not
 
@@ -327,15 +367,18 @@ all: it used to be the body of the standings route, and a second aggregation
 over the same sheets would eventually answer something slightly different from
 the screen.
 
-- A crew **started** a rally when they have a card in it. A DNS is an entry and
-  nothing more: it counts towards neither the three rallies nor the total, so a
-  crew who stayed home is not charged for a rally they could not have scored
-  in. A **DNF** did ride — it counts, and its points stand.
+- A crew **started** a rally when they have a result in it that is not a DNS.
+  A DNS is an entry and nothing more: it counts towards neither the three
+  rallies nor the total. A **DNF** did ride — it counts towards the three, and
+  scores nothing, because there is no position behind it.
 - A crew **short of the minimum is listed, not dropped**, behind the placed
   crews and ordered by how close they came. A pair who rode two rallies
   together should be able to see that they were one short.
 - A result the counting rule left out is **shown struck through**, not hidden:
   an official reading the sheet wants to see what was dropped.
+- A **position** is either the rank the rally's own standings gave the crew —
+  only for a crew that `isRanked`, so a DNF's place in the list is not mistaken
+  for a finishing place — or, on an imported rally, the one that was typed in.
 - The season's class for a crew is the **highest** they rode in that year. A
   crew promoted in August rides the season out in their new class — you cannot
   win B after being moved up to A.
@@ -746,6 +789,55 @@ stage's time column.
   calls `rescoreParticipants`: it stores no `ipt`, `plusMinus` or `strafp` of its
   own, exactly like the answer-sheet routes.
 
+## Importing a rally's results
+
+The club rode rallies for years before this system existed, and the results of
+those exist as a finishing order on paper: a place, the two names in each car
+and their classes. There are **no answer sheets and no score keys** to
+re-score from, and none are needed — a season is ranked on positions, and a
+position is exactly what those sheets record.
+
+`/results-import` (`ResultImportWizard`) reads one such sheet into one rally.
+
+- **Two steps**: which rally, then the file and what its columns mean. The
+  columns are guessed from the header row and stay editable, sharing
+  `app/lib/spreadsheet.ts` and `app/lib/columnMapping.ts` with the other two
+  imports. `app/lib/resultImport.ts` is the browser-side half, the sibling of
+  `participantImport.ts`.
+- **A rally is scored here or imported, never both.** The route refuses a rally
+  that has any stage or any answer sheet (409, naming how many), and a
+  successful import sets `Rally.resultsImported`, after which
+  `POST /api/stages` refuses it. Answer sheets need no guard of their own: a
+  sheet hangs off a stage, and an imported rally has none. Two sources of truth
+  for one rally's result is the disagreement this codebase is organised to
+  prevent.
+- **It replaces the rally's entry list** rather than upserting onto it. A
+  result sheet is the whole field in finishing order, and merging it would
+  leave crews from an earlier import holding places this one does not give.
+  Re-importing a corrected sheet therefore just works. Safe because an imported
+  rally has no answer sheets to lose.
+- **Both riders are required**, unlike an entry-list import. An entry list may
+  be typed before anybody is registered; a *result* names two people who rode,
+  and a crew with a hole in it cannot be placed in a season. Riders the
+  register does not have are created from their address.
+- **A rider's missing class is filled in from the sheet**, recorded as a dated
+  history entry like any other change. A rider who **already** has a class
+  keeps it: importing 2023's results must not undo a promotion made in 2025.
+- **The crew-class column is a check, not a value.** A crew's class is derived
+  from its two riders, so the column is compared with what the file's own rider
+  classes come to and a disagreement is shown as a warning in the preview — the
+  sheet is usually right about the crew and wrong about one rider, and that is
+  worth seeing before importing 56 rows.
+- **The EQ number is assigned here**, in finishing order. A rally ridden on
+  paper has no card, so there is no number the crew wore for this app to know;
+  the EQ on an imported entry is a row number, and it is only what the rest of
+  the app addresses that entry by.
+- The finishing order lives on the entries themselves
+  (`Participant.finishPosition` / `resultStatus`) rather than in a collection of
+  its own: an imported result *is* a crew registration that happens to know
+  where it came, and everything that reads a crew — the rider dashboard, the
+  season — already reads those rows.
+
 ## The WPT overview
 
 The rally dashboard has four tabs — Stages, Standings, Participants and **Times**
@@ -1113,6 +1205,8 @@ app/
                   rallies/[id]/rescore to re-score a whole rally on demand,
                   rallies/[id]/times for the WPT overview of a whole rally,
                   rallies/[id]/duplicate to copy a rally's stages and keys,
+                  rallies/[id]/results/import for the result of a rally ridden
+                  before this system (a finishing order, no cards),
                   stages/[id]/times/import for the times of one control,
                   stages/[id]/access-codes for the QR codes of one stage,
                   app/card + app/submit, the two public endpoints of the
@@ -1143,7 +1237,8 @@ app/
                   wedstrijdklasse the results group A and H into, shared
                   client + server),
                   spreadsheet + columnMapping + participantImport + timeImport
-                  (entry-list and time imports, browser side),
+                  + resultImport (entry-list, time and historical-result
+                  imports, browser side),
                   rallyCodes (a rally's public code and the name and code a
                   duplicate gets, shared client + server),
                   appCards (codes and identifiers of the Android app) + qrcode
@@ -1160,6 +1255,8 @@ app/
                   rallies/[id]/standings/print: the results on A4, one sheet
                   per classification)
   time-import/    the time import wizard (rally -> stage -> control -> file)
+  results-import/ the historical-result import wizard (rally -> file): the
+                  finishing order of a rally ridden before this system
   users/          the accounts page (admin only)
   account/        your own account: role and password
   forbidden/      where middleware sends an official who lacks the role
@@ -1181,10 +1278,14 @@ npm run lint      # ESLint — run before committing
 There is **no test suite**. Verify changes by running the app and, for scoring
 work, by checking a sheet against the stage key by hand. Do not add a test
 framework unless asked. The pure modules (`scoring`, `timeScoring`, `routes`,
-`standings`, `overallStandings`, `crews`, `participants`) are free of
-`server-only` precisely so they can be compiled and run on their own with
-`npx tsc <file> --outDir <tmp> --module commonjs` when a rule needs checking by
-hand.
+`standings`, `overallStandings`, `crews`, `seasons`, `participants`) are free
+of `server-only` precisely so they can be compiled and run on their own with
+`npx tsc <file> --outDir <tmp> --module commonjs --target es2022
+--moduleResolution node --esModuleInterop` when a rule needs checking by hand.
+The season arithmetic in particular — the points table, the time factor,
+best-N, and who wins — is worth re-checking that way after any change, because
+every number it produces is plausible-looking and none of them is obviously
+wrong on screen.
 
 Environment (`.env.local`, see `.env.example` and `README.md`): `MONGODB_URI`,
 `SESSION_SECRET` (≥32 chars), `APP_PASSWORD_HASH` (`<saltHex>:<hashHex>`).
@@ -1343,10 +1444,30 @@ Do not regress them.**
   hazard.
 
 - **Changing a rally's date can move it into another season**, and changing
-  `countsForSeason` takes it out of one. Neither re-scores anything — the
-  rally's own standings are untouched — but both change who is champion, which
-  is why they are `requireRallyAdmin()` and why a `PUT` that omits them leaves
-  the stored values alone rather than clearing them.
+  `countsForSeason` takes it out of one; changing `timeFactor` reweights every
+  result in it. None of the three re-scores anything — the rally's own
+  standings are untouched — but all of them change who is champion, which is
+  why they are `requireRallyAdmin()` and why a `PUT` that omits them leaves the
+  stored values alone rather than clearing them.
+
+- **"Best N" means the highest N now.** The season used to sum strafpunten and
+  rank lowest-first; it awards championship points and ranks highest-first. The
+  comparator, the `slice` in `computeOverallStandings` and the tie-breaks all
+  turned over together, and a half-converted one of them would be invisible on
+  a screen full of plausible numbers. If you touch that function, re-run the
+  hand-check described under *Commands*.
+
+- **A points table may not overlap.** Two bands covering third place would make
+  third worth whichever was stored first. `isValidPointsTable` refuses it, the
+  editor disables Save on it, and `parsePointsTable` refuses it on the wire —
+  three places, because the failure is silent and permanent once it is in the
+  database.
+
+- **An imported rally has no `AnswerSheet`s, so nothing re-scores it.** Every
+  rule in this file about calling `rescoreRally` / `rescoreParticipants` is
+  about rallies scored here; an imported one has a stored finishing order and
+  nothing derived from cards. The way to correct one is to import the sheet
+  again, which replaces the entry list.
 
 - A card handed in from the app is a sheet write like any other, so it
   re-scores that participant's rally. If you add another way for a card to

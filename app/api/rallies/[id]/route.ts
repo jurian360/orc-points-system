@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
 import { Rally, Route, Stage, AnswerSheet, Participant, CardAccess } from '../../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../../lib/api-guard';
-import { parseName, parseRallyDate } from '../../../lib/validation';
+import { parseName, parseRallyDate, parseTimeFactor } from '../../../lib/validation';
 import { parseRallyCode } from '../../../lib/rallyCodes';
 import mongoose from 'mongoose';
 
@@ -91,6 +91,18 @@ export async function PUT(
     );
   }
 
+  // Optional like the rest: a caller that only renames the rally must not be
+  // able to reweight the whole season by omission.
+  const changesTimeFactor = parsed.body.timeFactor !== undefined;
+  const timeFactor = changesTimeFactor ? parseTimeFactor(parsed.body.timeFactor) : null;
+
+  if (changesTimeFactor && timeFactor === null) {
+    return NextResponse.json(
+      { error: 'The time factor must be a number greater than 0 (1 is an ordinary rally)' },
+      { status: 400 }
+    );
+  }
+
   try {
     await dbConnect();
 
@@ -104,6 +116,7 @@ export async function PUT(
     if (code) update.code = code;
     if (date) update.date = date;
     if (changesSeasonFlag) update.countsForSeason = parsed.body.countsForSeason;
+    if (timeFactor !== null) update.timeFactor = timeFactor;
 
     const updatedRally = await Rally.findByIdAndUpdate(id, update, {
       new: true,

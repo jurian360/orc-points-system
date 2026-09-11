@@ -17,6 +17,10 @@ export interface RallyDetailsValue {
   // False for an unofficial rally: ridden and scored like any other, but not
   // counted towards the overall standings of its year.
   countsForSeason: boolean;
+  // How much this rally is worth in the overall standings: the championship
+  // points its finish positions earn are multiplied by this. 1 is an ordinary
+  // rally.
+  timeFactor: number;
 }
 
 // Today, as the date input wants it. The default for a new rally, because most
@@ -65,6 +69,7 @@ const RallyDetailsForm: React.FC<RallyDetailsFormProps> = ({
   const [countsForSeason, setCountsForSeason] = useState<boolean>(
     initial?.countsForSeason !== false
   );
+  const [timeFactor, setTimeFactor] = useState<string>(String(initial?.timeFactor ?? 1));
   // Once the code has been typed in it stops following the name. An existing
   // rally's code is always its own — renaming a rally must not silently change
   // what the printed sheets say.
@@ -103,12 +108,24 @@ const RallyDetailsForm: React.FC<RallyDetailsFormProps> = ({
       return;
     }
 
+    const factor = Number(timeFactor);
+    if (!Number.isFinite(factor) || factor <= 0) {
+      setError('The time factor has to be a number greater than 0. Use 1 for an ordinary rally.');
+      return;
+    }
+
     setSaving(true);
     try {
       const response = await fetch(isEditing ? `/api/rallies/${rallyId}` : '/api/rallies', {
         method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), code, date, countsForSeason }),
+        body: JSON.stringify({
+          name: name.trim(),
+          code,
+          date,
+          countsForSeason,
+          timeFactor: factor,
+        }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -167,7 +184,7 @@ const RallyDetailsForm: React.FC<RallyDetailsFormProps> = ({
         {!isEditing && ' Suggested from the rally name until you change it.'}
       </p>
 
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6">
         <div>
           <label htmlFor="rallyDate" className="block text-lg font-medium mb-2 text-gray-800">
             Date
@@ -182,6 +199,30 @@ const RallyDetailsForm: React.FC<RallyDetailsFormProps> = ({
           />
           <p className="text-gray-600 text-base mt-2">
             The day this rally is ridden. Its year is the season it counts in.
+          </p>
+        </div>
+
+        <div>
+          <label
+            htmlFor="rallyTimeFactor"
+            className="block text-lg font-medium mb-2 text-gray-800"
+          >
+            Time factor
+          </label>
+          <input
+            type="number"
+            id="rallyTimeFactor"
+            min="0.01"
+            step="0.01"
+            className="w-full p-3 border border-gray-300 rounded-md shadow-sm text-lg text-gray-800"
+            value={timeFactor}
+            onChange={(e) => setTimeFactor(e.target.value)}
+            required
+          />
+          <p className="text-gray-600 text-base mt-2">
+            How much this rally is worth in the overall standings: the points each finish
+            position earns are multiplied by it. Use <span className="font-mono">1</span> for
+            an ordinary rally.
           </p>
         </div>
 

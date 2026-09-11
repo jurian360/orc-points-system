@@ -28,6 +28,7 @@ const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const RESTRICTED_PAGES: { pattern: RegExp; permission: Permission }[] = [
   { pattern: /^\/users(\/|$)/, permission: 'manage:users' },
   { pattern: /^\/time-import(\/|$)/, permission: 'manage:rally' },
+  { pattern: /^\/results-import(\/|$)/, permission: 'manage:rally' },
   { pattern: /^\/rallies\/new$/, permission: 'manage:rally' },
   { pattern: /^\/rallies\/[^/]+\/edit$/, permission: 'manage:rally' },
   { pattern: /^\/rallies\/[^/]+\/stages\/new$/, permission: 'manage:rally' },

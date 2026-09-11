@@ -128,8 +128,8 @@ const RiderResultsView: React.FC<RiderResultsViewProps> = ({
                         {crew.eligible ? (
                           <span className="text-gray-800">
                             <span className="font-bold">#{crew.rank}</span> overall ·{' '}
-                            <span className="font-bold">{crew.totalPenalty}</span> strafpunten
-                            from {crew.countedResults} result
+                            <span className="font-bold">{crew.totalPoints}</span> points from{' '}
+                            {crew.countedResults} result
                             {crew.countedResults === 1 ? '' : 's'}
                           </span>
                         ) : (
@@ -203,6 +203,13 @@ const RiderResultsView: React.FC<RiderResultsViewProps> = ({
                           unofficial — not in the season
                         </span>
                       )}
+                      {/* A historical result: a finishing order typed in from
+                          the club's paper records, with no card behind it. */}
+                      {entry.resultsImported && (
+                        <span className="block text-sm text-gray-500">
+                          imported result — no card
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-base text-gray-700 whitespace-nowrap">
                       {formatDate(entry.date)}
@@ -242,7 +249,12 @@ const RiderResultsView: React.FC<RiderResultsViewProps> = ({
                       )}
                     </td>
                     <td className="px-4 py-2 text-base text-gray-900 font-semibold">
-                      {entry.result === null ? '—' : entry.result.totalPenalty}
+                      {/* Null, not zero, on an imported rally: the club's
+                          paper records a finishing order and no points, and a
+                          0 there would read as a perfect card. */}
+                      {entry.result?.totalPenalty ?? (
+                        <span className="font-normal text-gray-400">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

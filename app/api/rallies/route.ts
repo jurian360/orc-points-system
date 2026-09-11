@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../lib/mongodb';
 import { Rally } from '../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../lib/api-guard';
-import { parseName, parseRallyDate } from '../../lib/validation';
+import { parseName, parseRallyDate, parseTimeFactor } from '../../lib/validation';
 import { parseRallyCode, slugFromName } from '../../lib/rallyCodes';
 
 export async function GET() {
@@ -74,10 +74,23 @@ export async function POST(request: NextRequest) {
   // it takes one tick to prevent.
   const countsForSeason = parsed.body.countsForSeason !== false;
 
+  // How much this rally is worth in the overall standings. Absent reads as 1
+  // — an ordinary, unweighted rally — rather than as 0, which would silently
+  // make it count for nothing while still showing on the sheet.
+  const timeFactor =
+    parsed.body.timeFactor === undefined ? 1 : parseTimeFactor(parsed.body.timeFactor);
+
+  if (timeFactor === null) {
+    return NextResponse.json(
+      { error: 'The time factor must be a number greater than 0 (1 is an ordinary rally)' },
+      { status: 400 }
+    );
+  }
+
   try {
     await dbConnect();
 
-    const rally = new Rally({ name, code, date, countsForSeason });
+    const rally = new Rally({ name, code, date, countsForSeason, timeFactor });
     const savedRally = await rally.save();
 
     return NextResponse.json(savedRally, { status: 201 });

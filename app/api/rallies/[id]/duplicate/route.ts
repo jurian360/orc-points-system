@@ -98,8 +98,14 @@ export async function POST(
           // the current season, which is where a rally being prepared belongs.
           date: new Date(),
           // Whether an event counts is part of its setup, not of its running:
-          // an unofficial rit duplicated for next year is still unofficial.
+          // an unofficial rit duplicated for next year is still unofficial,
+          // and it is worth the same in the standings.
           countsForSeason: source.countsForSeason !== false,
+          timeFactor: source.timeFactor ?? 1,
+          // Deliberately **not** copied. A duplicate is a rally waiting for
+          // its crews; it has no results, imported or otherwise, so it is a
+          // rally that can still be given stages.
+          resultsImported: false,
         }).save();
       } catch (error) {
         // Another rally already answers to this code: try the next marker

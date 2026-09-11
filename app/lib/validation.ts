@@ -30,7 +30,15 @@ import {
   normalizeUsername,
   type OfficialRole,
 } from './roles';
-import { isValidSeasonSettings, type SeasonSettings } from './seasons';
+import {
+  isValidPointsTable,
+  isValidSeasonSettings,
+  isValidTimeFactor,
+  MAX_TABLE_BANDS,
+  sortPointsTable,
+  type PointsBand,
+  type SeasonSettings,
+} from './seasons';
 
 // Input validation and normalization for the API routes.
 //
@@ -270,8 +278,67 @@ export function parseYearParam(value: string | null): number | null {
   return year >= 2000 && year <= 2200 ? year : null;
 }
 
-// The two numbers that decide how a season is won. Both have to be whole and
-// in range, because between them they decide who is champion.
+// How much one rally is worth in the overall standings. A positive number,
+// because multiplying a season by zero would silently make a rally count for
+// nothing while still showing on the sheet — `countsForSeason` is how a rally
+// is taken out of a year, and it says so.
+export function parseTimeFactor(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  // Two decimals: a time factor is written 1.25, not 1.2499999.
+  const rounded = Math.round(value * 100) / 100;
+  return isValidTimeFactor(rounded) ? rounded : null;
+}
+
+// What each band of finish positions is worth. The table that decides a
+// championship, so it is checked rather than coerced: two bands covering
+// third place would make third worth whichever happened to be stored first.
+export function parsePointsTable(value: unknown): PointsBand[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const table: PointsBand[] = [];
+
+  for (const row of value.slice(0, MAX_TABLE_BANDS)) {
+    if (row === null || typeof row !== 'object' || Array.isArray(row)) return null;
+    const band = row as Record<string, unknown>;
+
+    if (
+      typeof band.from !== 'number' ||
+      typeof band.to !== 'number' ||
+      typeof band.points !== 'number'
+    ) {
+      return null;
+    }
+
+    table.push({
+      from: band.from,
+      to: band.to,
+      // Two decimals, the same rounding a weighted result gets.
+      points: Math.round(band.points * 100) / 100,
+    });
+  }
+
+  // `isValidPointsTable` is what rejects an overlap, which is the failure that
+  // would otherwise silently decide a championship.
+  return isValidPointsTable(table) ? sortPointsTable(table) : null;
+}
+
+// Just the two counting numbers of a season. Split out so the route can tell
+// a bad counting rule from a bad points table: they are fixed in different
+// halves of the form, and one message for both sends an official to the wrong
+// one.
+export function parseCountingRules(body: Record<string, unknown>): boolean {
+  const whole = (value: unknown): number =>
+    typeof value === 'number' && Number.isInteger(value) ? value : -1;
+
+  return isValidSeasonSettings({
+    countingResults: whole(body.countingResults),
+    minimumRallies: whole(body.minimumRallies),
+  });
+}
+
+// The rules that decide how a season is won: the two counting numbers and the
+// points table. Checked rather than coerced, because between them they decide
+// who is champion.
 export function parseSeasonSettings(
   year: number,
   body: Record<string, unknown>
@@ -279,13 +346,33 @@ export function parseSeasonSettings(
   const whole = (value: unknown, fallback: number): number =>
     typeof value === 'number' && Number.isInteger(value) ? value : fallback;
 
-  const settings: SeasonSettings = {
-    year,
+  const counting = {
     countingResults: whole(body.countingResults, -1),
     minimumRallies: whole(body.minimumRallies, -1),
   };
 
-  return isValidSeasonSettings(settings) ? settings : null;
+  if (!isValidSeasonSettings(counting)) return null;
+
+  const pointsTable = parsePointsTable(body.pointsTable);
+  if (!pointsTable) return null;
+
+  return {
+    year,
+    ...counting,
+    pointsTable,
+    // A table that arrives here was typed by an official, so by definition the
+    // year is no longer running on the placeholder.
+    usingDefaultPointsTable: false,
+  };
+}
+
+// Where a crew finished in an imported historical result. A place, so 1 and
+// up; a crew who did not finish has none and is recorded by `resultStatus`
+// instead.
+export function parseFinishPosition(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
+  if (value < 1 || value > 500) return null;
+  return value;
 }
 
 // Row of the time column an import writes into: 1 (the start), 2-9 (the GTC's)

@@ -86,6 +86,13 @@ const Navigation: React.FC = () => {
                     Import Times
                   </Link>
                   <Link
+                    href="/results-import"
+                    className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                    title="Import the results of a rally ridden before this system"
+                  >
+                    Import Results
+                  </Link>
+                  <Link
                     href="/users"
                     className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
                   >

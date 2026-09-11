@@ -7,8 +7,15 @@ import { useAuth } from '../../components/AuthContext';
 import { PAGE_CONTAINER } from '../../lib/layout';
 import { classStandings, type CrewSeasonEntry } from '../../lib/overallStandings';
 import { MAIN_CLASSIFICATIONS } from '../../lib/participants';
-import { ALL_RESULTS, countingRuleLabel, type SeasonSettings } from '../../lib/seasons';
-import { STATUS_LABEL } from '../../lib/standings';
+import {
+  ALL_RESULTS,
+  countingRuleLabel,
+  isValidPointsTable,
+  lastScoringPosition,
+  MAX_TABLE_BANDS,
+  type SeasonSettings,
+} from '../../lib/seasons';
+import { STATUS_LABEL, STATUS_TITLE } from '../../lib/standings';
 import type { OverallStandingsResponse } from '../../types';
 
 // The overall standings of one rally year: who won the season.
@@ -18,9 +25,15 @@ import type { OverallStandingsResponse } from '../../types';
 // EQ number: the numbers are handed out fresh each rally, and one rider can be
 // in two crews in a year and be placed in both.
 //
+// **The currency here is not strafpunten.** Inside a rally the lowest points
+// win; a season is a championship table laid over the finishing order, where a
+// position earns points, a rally's time factor weights them, and the highest
+// total wins. See `app/lib/seasons.ts` for why the two cannot be one number.
+//
 // The page scores nothing and adds nothing up. Every total comes from
 // `/api/standings/overall`, which reads each rally's own standings — the same
-// numbers on that rally's table and on its printed result sheet.
+// numbers on that rally's table and on its printed result sheet — or, for a
+// rally whose results were imported, the finishing order that was typed in.
 type View = 'all' | 'B' | 'A' | 'H';
 
 export default function OverallStandingsPage() {
@@ -88,6 +101,7 @@ export default function OverallStandingsPage() {
         body: JSON.stringify({
           countingResults: draft.countingResults,
           minimumRallies: draft.minimumRallies,
+          pointsTable: draft.pointsTable,
         }),
       });
 
@@ -159,9 +173,8 @@ export default function OverallStandingsPage() {
           <section className="bg-white rounded-xl shadow p-6 mb-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-1">Rules for {year}</h2>
             <p className="text-gray-600 text-base mb-4 max-w-3xl">
-              These two numbers decide who is champion, so they are an admin&apos;s. They apply
-              to this year only — a season nobody has configured uses the club&apos;s standard
-              rules.
+              These rules decide who is champion, so they are an admin&apos;s. They apply to
+              this year only — a season nobody has configured uses the standard ones.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
               <div>
@@ -211,14 +224,159 @@ export default function OverallStandingsPage() {
                 </p>
               </div>
             </div>
+            {/* The points table. What a finish position is worth, before
+                the rally's time factor multiplies it — the numbers that
+                actually decide the championship, which is why they are typed
+                in here rather than hidden in code.
+
+                Written in **bands**, the way the club's own sheet is: the
+                first places score their own number and the rest are grouped.
+                A place past the last band scores nothing. */}
+            <div className="mt-6">
+              <h3 className="text-base font-semibold text-gray-900 mb-1">Points per place</h3>
+              <p className="text-gray-600 text-base mb-3 max-w-3xl">
+                What each finishing place earns, before the rally&apos;s time factor multiplies
+                it. Places are given in bands — &ldquo;6 - 7&rdquo; means sixth and seventh both
+                score that. Anything past {lastScoringPosition(draft.pointsTable) || 0}th scores
+                nothing.
+              </p>
+
+              <div className="overflow-x-auto max-h-80 overflow-y-auto border border-gray-200 rounded-lg">
+                <table className="min-w-full">
+                  <thead className="bg-gray-100 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">
+                        From
+                      </th>
+                      <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">
+                        To
+                      </th>
+                      <th className="px-3 py-2 text-left text-sm font-semibold text-gray-700">
+                        Points
+                      </th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {draft.pointsTable.map((band, index) => {
+                      const setBand = (patch: Partial<typeof band>) =>
+                        setDraft({
+                          ...draft,
+                          pointsTable: draft.pointsTable.map((entry, i) =>
+                            i === index ? { ...entry, ...patch } : entry
+                          ),
+                        });
+
+                      return (
+                        <tr key={index} className="border-t border-gray-100">
+                          <td className="px-3 py-1">
+                            <input
+                              type="number"
+                              min={1}
+                              aria-label={`Band ${index + 1} first place`}
+                              className="w-20 p-1 border-2 border-gray-300 rounded text-base text-gray-700"
+                              value={band.from}
+                              onChange={(e) => setBand({ from: Number(e.target.value) })}
+                            />
+                          </td>
+                          <td className="px-3 py-1">
+                            <input
+                              type="number"
+                              min={1}
+                              aria-label={`Band ${index + 1} last place`}
+                              className="w-20 p-1 border-2 border-gray-300 rounded text-base text-gray-700"
+                              value={band.to}
+                              onChange={(e) => setBand({ to: Number(e.target.value) })}
+                            />
+                          </td>
+                          <td className="px-3 py-1">
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              aria-label={`Band ${index + 1} points`}
+                              className="w-24 p-1 border-2 border-gray-300 rounded text-base text-gray-700"
+                              value={band.points}
+                              onChange={(e) => setBand({ points: Number(e.target.value) })}
+                            />
+                          </td>
+                          <td className="px-3 py-1 text-right">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDraft({
+                                  ...draft,
+                                  pointsTable: draft.pointsTable.filter((_, i) => i !== index),
+                                })
+                              }
+                              className="text-red-600 hover:text-red-800 text-sm font-medium"
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-wrap gap-3 mt-3 items-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = lastScoringPosition(draft.pointsTable) + 1;
+                    setDraft({
+                      ...draft,
+                      pointsTable: [...draft.pointsTable, { from: next, to: next, points: 0 }],
+                    });
+                  }}
+                  disabled={draft.pointsTable.length >= MAX_TABLE_BANDS}
+                  className="px-4 py-2 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 font-medium text-base disabled:opacity-60"
+                >
+                  Add a band
+                </button>
+                {/* Saving an overlapping or back-to-front table would decide a
+                    championship on whichever band happened to be stored
+                    first, so the button waits until it is sound. */}
+                {!isValidPointsTable(draft.pointsTable) && (
+                  <span className="text-base text-red-700">
+                    Bands must run forwards and must not overlap.
+                  </span>
+                )}
+              </div>
+            </div>
+
             <button
               onClick={handleSaveSettings}
-              disabled={saving}
+              disabled={saving || !isValidPointsTable(draft.pointsTable)}
               className="mt-4 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-base disabled:opacity-60"
             >
               {saving ? 'Saving…' : 'Save rules'}
             </button>
           </section>
+        )}
+
+        {/* A championship ranked on numbers nobody chose is worse than one
+            that says where its numbers came from. Shown until a table is
+            saved for this year. */}
+        {data?.settings.usingDefaultPointsTable && (
+          <div className="mb-4 rounded-md bg-amber-50 border border-amber-300 px-4 py-3 text-base text-amber-900">
+            <span className="font-semibold">
+              {data.year} is using a placeholder points table.
+            </span>{' '}
+            Nobody has set what each finish position is worth for this year, so the standings
+            below are ranked on a standard table rather than the club&apos;s own.
+            {mayConfigure ? (
+              <>
+                {' '}
+                Open <span className="font-semibold">Season rules</span> and type the real
+                values in.
+              </>
+            ) : (
+              ' Ask an admin to set it under Season rules.'
+            )}
+          </div>
         )}
 
         {/* The rallies the season is read off. Shown because a reader who
@@ -231,7 +389,13 @@ export default function OverallStandingsPage() {
             {data.rallies.length > 0 && (
               <span className="text-gray-500">
                 {' '}
-                — {data.rallies.map((rally) => rally.name).join(', ')}
+                —{' '}
+                {data.rallies
+                  .map(
+                    (rally) =>
+                      rally.name + (rally.timeFactor !== 1 ? ` (×${rally.timeFactor})` : '')
+                  )
+                  .join(', ')}
               </span>
             )}
             {data.unofficialRallies > 0 && (
@@ -290,7 +454,7 @@ export default function OverallStandingsPage() {
                       Counted
                     </th>
                     <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                      Strafpunten
+                      Points
                     </th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                       Season
@@ -338,7 +502,7 @@ export default function OverallStandingsPage() {
                         {entry.countedResults}
                       </td>
                       <td className="px-4 py-2 text-base text-right font-bold text-gray-900">
-                        {entry.eligible ? entry.totalPenalty : '—'}
+                        {entry.eligible ? entry.totalPoints : '—'}
                       </td>
                       {/* Every rally this crew rode, counted or not. A result
                           the counting rule dropped is shown greyed rather
@@ -349,16 +513,24 @@ export default function OverallStandingsPage() {
                           {entry.results.map((result) => (
                             <span
                               key={result.rallyId}
-                              title={`${result.rallyName} — EQ ${result.eq}${
-                                result.counted ? '' : ' (not counted)'
-                              }`}
+                              title={
+                                `${result.rallyName} — ` +
+                                (result.position > 0
+                                  ? `P${result.position}`
+                                  : STATUS_TITLE[result.status] || 'no place') +
+                                (result.timeFactor !== 1
+                                  ? ` × ${result.timeFactor} time factor`
+                                  : '') +
+                                ` = ${result.points} points` +
+                                (result.counted ? '' : ' (not counted)')
+                              }
                               className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-medium ${
                                 result.counted
                                   ? 'bg-blue-100 text-blue-800'
                                   : 'bg-gray-100 text-gray-400 line-through'
                               }`}
                             >
-                              {STATUS_LABEL[result.status] || result.totalPenalty}
+                              {STATUS_LABEL[result.status] || result.points}
                             </span>
                           ))}
                         </div>

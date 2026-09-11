@@ -5,7 +5,11 @@ import dbConnect from '../../../lib/mongodb';
 import { Season } from '../../../models';
 import { readBody, requireRallyAdmin, requireSession } from '../../../lib/api-guard';
 import { loadSeasonSettings } from '../../../lib/seasonStandings';
-import { parseSeasonSettings, parseYearParam } from '../../../lib/validation';
+import {
+  parseCountingRules,
+  parseSeasonSettings,
+  parseYearParam,
+} from '../../../lib/validation';
 
 // The settings of one rally year: how many of a crew's results count, and how
 // many rallies a pair has to have ridden together to be placed at all.
@@ -55,13 +59,27 @@ export async function PUT(
     const year = parseYearParam(yearParam);
     if (year === null) return invalidYear();
 
-    const settings = parseSeasonSettings(year, parsed.body);
-    if (!settings) {
+    // Two things can be wrong here and they are fixed in different places, so
+    // they get different messages: a misleading one about the counting rules
+    // would send an official looking at the wrong half of the form.
+    if (!parseCountingRules(parsed.body)) {
       return NextResponse.json(
         {
           error:
             'Counting results must be a whole number (0 counts every rally) and a crew must ' +
             'need at least one rally.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const settings = parseSeasonSettings(year, parsed.body);
+    if (!settings) {
+      return NextResponse.json(
+        {
+          error:
+            'The points table is not usable: every band must run forwards, start at 1 or ' +
+            'more, and none may overlap another.',
         },
         { status: 400 }
       );
@@ -77,6 +95,7 @@ export async function PUT(
         $set: {
           countingResults: settings.countingResults,
           minimumRallies: settings.minimumRallies,
+          pointsTable: settings.pointsTable,
           updatedAt: new Date(),
         },
       },
