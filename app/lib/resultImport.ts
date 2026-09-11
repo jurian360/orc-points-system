@@ -25,6 +25,15 @@
 //     file's own rider classes come to and a disagreement is shown as a
 //     warning — the sheet is usually right about the crew and wrong about a
 //     rider, and that is worth seeing before importing 56 rows.
+//   * **The EQ number is optional, unlike the entry-list import's.** A sheet
+//     that has no such column still imports — the EQ is assigned as a row
+//     number in finish order, exactly as before. A sheet that *does* carry the
+//     crew's actual equipe number should map it: the finishing order in the
+//     file does not always match the order the numbers were handed out in, and
+//     assigning a fresh row number in that case would give a crew an EQ they
+//     never carried. When the column is mapped, every row needs a value —
+//     mixing "some rows know their EQ, some don't" is not a state the import
+//     leaves the API to sort out.
 //
 // Every row is validated here before it is shown, with the same rules the API
 // applies. That is a preview, not a guard: the import route re-validates
@@ -52,6 +61,7 @@ export const MAX_NAME_LENGTH = 200;
 // older sheet may not carry them.
 export type ResultField =
   | 'position'
+  | 'eq'
   | 'crewClassification'
   | 'driverName'
   | 'driverEmail'
@@ -62,6 +72,7 @@ export type ResultField =
 
 export const RESULT_FIELDS: { field: ResultField; label: string; required: boolean }[] = [
   { field: 'position', label: 'Finish position', required: true },
+  { field: 'eq', label: 'EQ. No.', required: false },
   { field: 'driverName', label: 'Driver', required: true },
   { field: 'driverEmail', label: 'Driver e-mail', required: true },
   { field: 'driverClassification', label: 'Driver class', required: false },
@@ -85,6 +96,7 @@ const HEADER_CANDIDATES: Record<ResultField, string[]> = {
     'positie', 'plaats', 'plts', 'pos', 'position', 'place', 'finish', 'finishposition',
     'uitslag', 'rang', 'rank',
   ],
+  eq: ['equipe', 'eq', 'eqno', 'eqnr', 'eqnumber', 'nummer', 'number', 'startnummer', 'startno'],
   crewClassification: ['eqklasse', 'equipeklasse', 'crewklasse', 'klasse', 'class', 'crewclass'],
   driverName: ['bnaam', 'bestuurder', 'driver', 'drivername', 'chauffeur', 'rijder'],
   driverEmail: ['bemail', 'bmail', 'driveremail', 'emailbestuurder', 'emaildriver'],
@@ -114,6 +126,10 @@ export interface ResultRow {
   // says which of DNF and DNS they were.
   position: number;
   status: StandingsStatus;
+  // The crew's own equipe number, when the sheet carries one — `null` when the
+  // column is not mapped, in which case the import falls back to a row number
+  // in finish order. Never a mix of the two within one import.
+  eq: number | null;
   driverName: string;
   driverEmail: string;
   driverClassification: ClassificationValue;
@@ -172,6 +188,12 @@ export function buildResultRows(
   // unique indexes to fail the write halfway through.
   const seenPosition = new Map<number, number>();
   const seenEmail = new Map<string, number>();
+  const seenEq = new Map<number, number>();
+
+  // Whether this sheet carries the crew's own equipe number at all — a
+  // property of the mapping, not of one row, so a value missing from a single
+  // row is that row's error rather than silently falling back to a row number.
+  const eqMapped = map.eq >= 0;
 
   const imported: ResultRow[] = [];
 
@@ -180,6 +202,7 @@ export function buildResultRows(
     const lineNumber = index + 1;
 
     const rawPosition = cellAt(row, map.position);
+    const rawEq = cellAt(row, map.eq);
     const driverName = cellAt(row, map.driverName);
     const navigatorName = cellAt(row, map.navigatorName);
     const driverEmail = normalizeEmail(cellAt(row, map.driverEmail));
@@ -196,6 +219,10 @@ export function buildResultRows(
 
     const place = readPosition(rawPosition);
 
+    // Numbers can arrive as "12", "12.0" (a spreadsheet number) or "EQ 12".
+    const eqMatch = eqMapped ? rawEq.match(/\d+/) : null;
+    const eq = eqMatch ? Number(eqMatch[0]) : null;
+
     const driverClassification = isClassification(driverClass) ? driverClass : '';
     const navigatorClassification = isClassification(navigatorClass) ? navigatorClass : '';
     const statedCrewClassification = isClassification(crewClass) ? crewClass : '';
@@ -209,6 +236,12 @@ export function buildResultRows(
 
     if (place === null) {
       error = `"${rawPosition}" is not a finish position, DNF or DNS`;
+    } else if (eqMapped && eq === null) {
+      error = 'No EQ number in this row';
+    } else if (eqMapped && eq !== null && (!Number.isInteger(eq) || eq < 1 || eq > 100)) {
+      error = `EQ ${rawEq} is outside 1-100`;
+    } else if (eqMapped && eq !== null && seenEq.has(eq)) {
+      error = `EQ ${eq} is already in this import (line ${seenEq.get(eq)})`;
     } else if (!driverName || !navigatorName) {
       error = 'A result needs both names';
     } else if (driverName.length > MAX_NAME_LENGTH || navigatorName.length > MAX_NAME_LENGTH) {
@@ -243,6 +276,7 @@ export function buildResultRows(
       seenEmail.set(driverEmail, lineNumber);
       seenEmail.set(navigatorEmail, lineNumber);
       if (place.status === 'finished') seenPosition.set(place.position, lineNumber);
+      if (eq !== null) seenEq.set(eq, lineNumber);
 
       // Not an error: the sheet is usually right about the crew and wrong
       // about one of the riders, and the fix is in the register rather than
@@ -258,6 +292,7 @@ export function buildResultRows(
       lineNumber,
       position: place?.position ?? 0,
       status: place?.status ?? 'dnf',
+      eq,
       driverName,
       driverEmail,
       driverClassification,
@@ -284,6 +319,7 @@ export function toResultPayload(rows: ResultRow[]) {
     .map((row) => ({
       position: row.position,
       status: row.status,
+      eq: row.eq,
       driverName: row.driverName,
       driverEmail: row.driverEmail,
       driverClassification: row.driverClassification,

@@ -14,6 +14,7 @@ import {
   MAX_IMPORT_PARTICIPANTS,
   parseClassification,
   parseEmail,
+  parseEq,
   parseFinishPosition,
   parseName,
   parseObjectId,
@@ -63,8 +64,9 @@ export async function POST(
     );
   }
 
-  // An EQ number is 1..100 on the model, and this route hands them out itself
-  // (see below), so a bigger field than that has nowhere to put its crews.
+  // An EQ number is 1..100 on the model, and a row without one gets a fresh
+  // one handed out below, so a bigger field than that has nowhere to put its
+  // crews.
   if (rows.length > MAX_IMPORT_PARTICIPANTS) {
     return NextResponse.json(
       { error: `An import holds at most ${MAX_IMPORT_PARTICIPANTS} crews` },
@@ -75,6 +77,9 @@ export async function POST(
   interface ImportedResult {
     position: number;
     status: StandingsStatus;
+    // The crew's own equipe number, when the sheet carried one. `null` means
+    // this import assigns a row number instead — see the entries below.
+    eq: number | null;
     driverName: string;
     driverEmail: string;
     driverClassification: ClassificationValue;
@@ -89,6 +94,7 @@ export async function POST(
   // arriving as a half-finished import.
   const seenEmail = new Map<string, number>();
   const seenPosition = new Map<number, number>();
+  const seenEq = new Map<number, number>();
 
   for (const [index, row] of rows.entries()) {
     const raw = (row ?? {}) as Record<string, unknown>;
@@ -123,6 +129,30 @@ export async function POST(
       }
       seenPosition.set(place, position);
       finishPosition = place;
+    }
+
+    // The crew's own equipe number, when the sheet carried one. Present or
+    // absent for every row alike — the browser wizard only ever sends one or
+    // the other for a whole import — so a mix here means the request did not
+    // come from it, and is refused rather than guessed at.
+    let eq: number | null = null;
+    if (raw.eq !== undefined && raw.eq !== null) {
+      eq = parseEq(raw.eq);
+      if (eq === null) {
+        return NextResponse.json(
+          { error: `Row ${position}: the EQ number must be a whole number from 1 to 100` },
+          { status: 400 }
+        );
+      }
+
+      const clash = seenEq.get(eq);
+      if (clash !== undefined) {
+        return NextResponse.json(
+          { error: `Row ${position}: EQ ${eq} is already used by row ${clash}` },
+          { status: 400 }
+        );
+      }
+      seenEq.set(eq, position);
     }
 
     const driverName = parseName(raw.driverName);
@@ -177,6 +207,7 @@ export async function POST(
     results.push({
       position: finishPosition,
       status,
+      eq,
       driverName,
       driverEmail,
       driverClassification,
@@ -184,6 +215,17 @@ export async function POST(
       navigatorEmail,
       navigatorClassification,
     });
+  }
+
+  // Either every row named its own EQ or none of them did — the wizard never
+  // sends a mix, and half-numbered import would leave the other half's EQ
+  // ambiguous between "assign one" and "this crew has none".
+  const withEq = results.filter((result) => result.eq !== null).length;
+  if (withEq > 0 && withEq < results.length) {
+    return NextResponse.json(
+      { error: 'Either every row needs an EQ number, or none of them do' },
+      { status: 400 }
+    );
   }
 
   try {
@@ -342,11 +384,11 @@ export async function POST(
 
     // --- The entries ------------------------------------------------------
     //
-    // In finishing order, the crews who did not finish behind them. The EQ
-    // number is **assigned here**: a rally ridden on paper has no card, so
-    // there is no number the crew wore for this app to know. It is a row
-    // number in finishing order, and it is what the rest of the app addresses
-    // this entry by.
+    // In finishing order, the crews who did not finish behind them. When the
+    // sheet carried the crew's own equipe number, that is the EQ — checked
+    // above for range and duplicates like any other EQ in this app. Otherwise
+    // there is no number the crew wore for this app to know, so one is
+    // **assigned here**: a row number in finishing order.
     const ordered = [...results].sort((a, b) => {
       if (a.status !== b.status) {
         const rank = { finished: 0, dnf: 1, dns: 2 } as const;
@@ -364,7 +406,7 @@ export async function POST(
 
       return {
         rallyId,
-        eq: index + 1,
+        eq: result.eq ?? index + 1,
         driverId: driver?._id ?? null,
         navigatorId: navigator?._id ?? null,
         driverName: result.driverName,

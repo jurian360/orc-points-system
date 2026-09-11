@@ -839,10 +839,19 @@ position is exactly what those sheets record.
   classes come to and a disagreement is shown as a warning in the preview — the
   sheet is usually right about the crew and wrong about one rider, and that is
   worth seeing before importing 56 rows.
-- **The EQ number is assigned here**, in finishing order. A rally ridden on
-  paper has no card, so there is no number the crew wore for this app to know;
-  the EQ on an imported entry is a row number, and it is only what the rest of
-  the app addresses that entry by.
+- **The EQ number is read from the sheet when it has one, and assigned in
+  finishing order when it does not.** A rally ridden on paper often still had
+  a printed equipe number on the entry list, and the finishing order in a
+  results sheet does not always match the order those numbers were handed out
+  in — assigning a fresh row number in that case would give a crew an EQ they
+  never carried, which is what breaks a later lookup against the rally's own
+  entry list. So the wizard's EQ column is optional but, when it is mapped,
+  every row must carry a value: `POST /api/rallies/[id]/results/import`
+  refuses a request where only some rows named one (the API's own escape
+  hatch, since the wizard itself never sends a mix), validates each with the
+  same `parseEq` (1-100) and duplicate check as everywhere else in the app,
+  and only falls back to a row number when the sheet named none at all. Either
+  way the EQ is what the rest of the app addresses that entry by.
 - The finishing order lives on the entries themselves
   (`Participant.finishPosition` / `resultStatus`) rather than in a collection of
   its own: an imported result *is* a crew registration that happens to know

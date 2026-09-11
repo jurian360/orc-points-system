@@ -275,7 +275,9 @@ const ResultImportWizard: React.FC<ResultImportWizardProps> = ({ initialRallyId 
         <p className="text-gray-600 text-base mb-3 max-w-3xl">
           An .xlsx or .csv with one line per crew: the finish position, and the name, e-mail
           address and class of the driver and the navigator. The file is read here in the
-          browser — only the mapped values are sent.
+          browser — only the mapped values are sent. If the sheet also carries the crew&apos;s
+          own EQ (equipe) number, map that column too — otherwise the EQ is assigned as a row
+          number in finish order, which can disagree with the number the crew actually carried.
         </p>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -383,7 +385,7 @@ const ResultImportWizard: React.FC<ResultImportWizardProps> = ({ initialRallyId 
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-100 sticky top-0">
                   <tr>
-                    {['Line', 'Pos', 'Driver', 'Navigator', 'Crew class', 'Status'].map(
+                    {['Line', 'EQ', 'Pos', 'Driver', 'Navigator', 'Crew class', 'Status'].map(
                       (heading) => (
                         <th
                           key={heading}
@@ -402,6 +404,9 @@ const ResultImportWizard: React.FC<ResultImportWizardProps> = ({ initialRallyId 
                       className={row.error ? 'bg-red-50' : row.warning ? 'bg-amber-50' : ''}
                     >
                       <td className="px-4 py-2 text-base text-gray-500">{row.lineNumber}</td>
+                      <td className="px-4 py-2 text-base text-gray-700">
+                        {row.eq ?? <span className="text-gray-400">—</span>}
+                      </td>
                       <td className="px-4 py-2 text-base font-bold text-gray-900">
                         {row.status === 'finished' ? (
                           row.position
