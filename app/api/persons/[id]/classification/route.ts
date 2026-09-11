@@ -49,12 +49,12 @@ export async function PUT(
   try {
     const { id } = await params;
     const personId = parseObjectId(id);
-    if (!personId) return NextResponse.json({ error: 'Invalid rider id' }, { status: 400 });
+    if (!personId) return NextResponse.json({ error: 'Invalid member id' }, { status: 400 });
 
     await dbConnect();
 
     const person = await Person.findById(personId);
-    if (!person) return NextResponse.json({ error: 'Rider not found' }, { status: 404 });
+    if (!person) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
 
     const previous = person.classification || '';
 

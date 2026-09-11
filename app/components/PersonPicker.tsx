@@ -123,7 +123,7 @@ const PersonPicker: React.FC<PersonPickerProps> = ({
         <ul className="absolute z-20 mt-1 w-full max-h-64 overflow-auto bg-white border-2 border-gray-200 rounded-lg shadow-lg">
           {matches.length === 0 ? (
             <li className="px-3 py-2 text-base text-gray-500">
-              No rider matches. Add them in the rider register first.
+              No member matches. Add them in the register first.
             </li>
           ) : (
             matches.map((person) => {

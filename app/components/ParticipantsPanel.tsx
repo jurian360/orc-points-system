@@ -175,7 +175,7 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
       `Imported ${summary.total} participant${summary.total === 1 ? '' : 's'} — ` +
         `${summary.created} added, ${summary.updated} updated` +
         (summary.ridersCreated > 0
-          ? `, ${summary.ridersCreated} new rider${
+          ? `, ${summary.ridersCreated} new member${
               summary.ridersCreated === 1 ? '' : 's'
             } added to the register.`
           : '.')
@@ -223,7 +223,7 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
           <h2 className="text-xl font-semibold text-gray-800">Participants</h2>
           <p className="text-gray-600 text-sm mt-1">
             Which crew rides under which EQ number: the driver, the navigator and the car.
-            The crew&apos;s class is the higher of its two riders&apos; (B &lt; A &lt; H) and is
+            The crew&apos;s class is the higher of its two members&apos; (B &lt; A &lt; H) and is
             worked out from the register, not typed here.
           </p>
         </div>

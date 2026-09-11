@@ -162,7 +162,7 @@ const RiderResultsView: React.FC<RiderResultsViewProps> = ({
           <p className="px-6 py-8 text-center text-lg text-gray-600">
             {isSelf
               ? 'You have not been entered in a rally yet.'
-              : 'This rider has not been entered in a rally yet.'}
+              : 'This member has not been entered in a rally yet.'}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -270,7 +270,7 @@ const RiderResultsView: React.FC<RiderResultsViewProps> = ({
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-xl font-semibold text-gray-800">Classification history</h3>
             <p className="text-gray-600 text-sm mt-1">
-              Every change of {isSelf ? 'your' : 'this rider’s'} class, with the day it was
+              Every change of {isSelf ? 'your' : 'this member’s'} class, with the day it was
               made.
             </p>
           </div>

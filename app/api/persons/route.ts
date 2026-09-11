@@ -61,7 +61,7 @@ export async function GET() {
     );
   } catch (error) {
     console.error('Failed to fetch riders:', error);
-    return NextResponse.json({ error: 'Failed to fetch riders' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch members' }, { status: 500 });
   }
 }
 
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
   const name = parseName(body.name);
   if (!name) {
     return NextResponse.json(
-      { error: 'A rider needs a name (1-200 characters)' },
+      { error: 'A member needs a name (1-200 characters)' },
       { status: 400 }
     );
   }
@@ -155,12 +155,12 @@ export async function POST(request: NextRequest) {
     // identity, and two riders answering to one would make a login ambiguous.
     if (typeof error === 'object' && error !== null && (error as { code?: number }).code === 11000) {
       return NextResponse.json(
-        { error: 'A rider with that e-mail address is already registered' },
+        { error: 'A member with that e-mail address is already registered' },
         { status: 409 }
       );
     }
 
     console.error('Failed to create rider:', error);
-    return NextResponse.json({ error: 'Failed to create rider' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to create member' }, { status: 500 });
   }
 }

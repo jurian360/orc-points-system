@@ -59,7 +59,7 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSaved, onCancel }) =>
     }
 
     if (!name.trim()) {
-      setError('Enter the rider’s name.');
+      setError('Enter the member’s name.');
       return;
     }
 
@@ -95,11 +95,11 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSaved, onCancel }) =>
       });
 
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Could not save this rider');
+      if (!response.ok) throw new Error(data.error || 'Could not save this member');
 
       onSaved(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save this rider.');
+      setError(err instanceof Error ? err.message : 'Could not save this member.');
       console.error(err);
     } finally {
       setSaving(false);
@@ -130,7 +130,7 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSaved, onCancel }) =>
             required
           />
           <p className="text-gray-600 text-sm mt-1">
-            How this rider is identified, and what they sign in with.
+            How this member is identified, and what they sign in with.
           </p>
         </div>
 
@@ -186,7 +186,7 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSaved, onCancel }) =>
             placeholder={person?.hasLogin ? 'Leave empty to keep it' : 'Optional'}
           />
           <p className="text-gray-600 text-sm mt-1">
-            A rider without one is still entered, scored and placed — they just cannot look at
+            A member without one is still entered, scored and placed — they just cannot look at
             it themselves. {PASSWORD_RULE}
           </p>
           {person?.hasLogin && (
@@ -200,7 +200,7 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSaved, onCancel }) =>
                   if (e.target.checked) setPassword('');
                 }}
               />
-              Remove this rider’s login
+              Remove this member’s login
             </label>
           )}
         </div>
@@ -224,7 +224,7 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSaved, onCancel }) =>
       {emailChanged && (
         <div className="bg-blue-50 border border-blue-300 text-blue-900 px-4 py-3 rounded text-base">
           <span className="font-semibold">Changing the address moves the whole record.</span>{' '}
-          The address is what identifies this rider, and it is stored here only — every entry,
+          The address is what identifies this member, and it is stored here only — every entry,
           crew and result they have follows it automatically. They sign in with the new address
           from now on.
         </div>
@@ -236,7 +236,7 @@ const PersonForm: React.FC<PersonFormProps> = ({ person, onSaved, onCancel }) =>
           disabled={saving}
           className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-base shadow-sm disabled:opacity-60"
         >
-          {saving ? 'Saving…' : isEditing ? 'Save rider' : 'Add rider'}
+          {saving ? 'Saving…' : isEditing ? 'Save member' : 'Add member'}
         </button>
         <button
           type="button"

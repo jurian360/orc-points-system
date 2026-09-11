@@ -229,7 +229,7 @@ const ParticipantDetailsForm: React.FC<ParticipantDetailsFormProps> = ({
           <div className="flex items-center gap-2 p-2 h-[2.75rem]">
             <ClassificationBadge classification={crewClass} />
             <span className="text-sm text-gray-500">
-              {driver && navigator ? 'highest of the two' : 'pick both riders'}
+              {driver && navigator ? 'highest of the two' : 'pick both members'}
             </span>
           </div>
         </div>

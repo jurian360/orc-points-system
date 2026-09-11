@@ -136,13 +136,13 @@ export async function POST(
       }
       if (driver === navigator) {
         return NextResponse.json(
-          { error: `Row ${position}: the driver and the navigator are the same rider` },
+          { error: `Row ${position}: the driver and the navigator are the same member` },
           { status: 400 }
         );
       }
       if (!driverName || !navigatorName) {
         return NextResponse.json(
-          { error: `Row ${position}: a rider with an e-mail address also needs a name` },
+          { error: `Row ${position}: a member with an e-mail address also needs a name` },
           { status: 400 }
         );
       }

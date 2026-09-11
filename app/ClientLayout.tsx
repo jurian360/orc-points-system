@@ -62,7 +62,7 @@ const Navigation: React.FC = () => {
                     href="/persons"
                     className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
                   >
-                    Riders
+                    Members
                   </Link>
                   <Link
                     href="/standings/overall"

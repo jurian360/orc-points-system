@@ -175,7 +175,7 @@ export async function POST(
 
     if (driverEmail === navigatorEmail) {
       return NextResponse.json(
-        { error: `Row ${position}: the driver and the navigator are the same rider` },
+        { error: `Row ${position}: the driver and the navigator are the same member` },
         { status: 400 }
       );
     }

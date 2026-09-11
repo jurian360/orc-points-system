@@ -255,7 +255,7 @@ export function buildResultRows(
     } else if (!isValidEmail(navigatorEmail)) {
       error = `"${navigatorEmail}" is not an e-mail address`;
     } else if (driverEmail === navigatorEmail) {
-      error = 'The driver and the navigator are the same rider';
+      error = 'The driver and the navigator are the same member';
     } else if (driverClass && !isClassification(driverClass)) {
       error = `Driver class "${driverClass}" is not ${CLASSIFICATION_LIST}`;
     } else if (navigatorClass && !isClassification(navigatorClass)) {

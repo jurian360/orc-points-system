@@ -27,12 +27,12 @@ export async function GET(
 
     const personId = parseObjectId(id);
     if (!personId) {
-      return NextResponse.json({ error: 'Invalid rider id' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid member id' }, { status: 400 });
     }
 
     const results = await loadRiderResults(personId);
     if (!results) {
-      return NextResponse.json({ error: 'Rider not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
 
     return NextResponse.json(results);

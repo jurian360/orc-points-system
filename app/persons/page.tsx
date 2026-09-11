@@ -43,13 +43,13 @@ export default function PersonsPage() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        setError(data.error || 'Could not load the riders.');
+        setError(data.error || 'Could not load the members.');
         return;
       }
 
       setPeople(Array.isArray(data) ? data : []);
     } catch {
-      setError('Could not load the riders.');
+      setError('Could not load the members.');
     } finally {
       setLoading(false);
     }
@@ -121,11 +121,11 @@ export default function PersonsPage() {
 
       // A rider who has ridden cannot be deleted — the 409 explains why, and
       // it is worth showing rather than swallowing.
-      if (!response.ok) throw new Error(data.error || 'Could not delete this rider');
+      if (!response.ok) throw new Error(data.error || 'Could not delete this member');
 
       setPeople((current) => current.filter((entry) => entry._id !== person._id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete this rider.');
+      setError(err instanceof Error ? err.message : 'Could not delete this member.');
     }
   };
 
@@ -134,11 +134,11 @@ export default function PersonsPage() {
       <div className={PAGE_CONTAINER}>
         <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Riders</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Members</h1>
             <p className="text-gray-600 text-base mt-1 max-w-3xl">
-              Everybody who rides these rallies. A rider is identified by their e-mail address,
+              Everybody who rides these rallies. A member is identified by their e-mail address,
               and the class here is <em>theirs</em> — a crew&apos;s class is the higher of its
-              two riders&apos; (B &lt; A &lt; H) and is worked out per entry.
+              two members&apos; (B &lt; A &lt; H) and is worked out per entry.
             </p>
           </div>
           {mayManage && !adding && editingId === null && (
@@ -146,7 +146,7 @@ export default function PersonsPage() {
               onClick={() => setAdding(true)}
               className="px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700"
             >
-              Add rider
+              Add member
             </button>
           )}
         </div>
@@ -165,7 +165,7 @@ export default function PersonsPage() {
 
         {adding && (
           <div className="bg-white rounded-xl shadow border border-gray-100 p-6 mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Add a rider</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Add a member</h2>
             <PersonForm
               onSaved={(saved) => {
                 setPeople((current) =>
@@ -184,7 +184,7 @@ export default function PersonsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or e-mail"
-            aria-label="Search the riders"
+            aria-label="Search the members"
             className="px-3 py-2 border border-gray-300 rounded-md text-base w-72 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <select
@@ -202,27 +202,27 @@ export default function PersonsPage() {
             <option value="_none">No class yet</option>
           </select>
           <span className="self-center text-base text-gray-600">
-            {visible.length} of {people.length} riders
+            {visible.length} of {people.length} members
           </span>
         </div>
 
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
           {loading ? (
-            <p className="p-8 text-center text-lg text-gray-600">Loading riders…</p>
+            <p className="p-8 text-center text-lg text-gray-600">Loading members…</p>
           ) : people.length === 0 ? (
             <p className="p-8 text-center text-lg text-gray-600">
-              No riders yet. Add them here, or import an entry list that carries an e-mail
+              No members yet. Add them here, or import an entry list that carries an e-mail
               address per seat — that registers the crews as it goes.
             </p>
           ) : visible.length === 0 ? (
-            <p className="p-8 text-center text-lg text-gray-600">No rider matches.</p>
+            <p className="p-8 text-center text-lg text-gray-600">No member matches.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-100">
                   <tr>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                      Rider
+                      Member
                     </th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                       Class

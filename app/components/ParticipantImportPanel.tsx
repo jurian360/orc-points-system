@@ -155,7 +155,7 @@ const ParticipantImportPanel: React.FC<ParticipantImportPanelProps> = ({
           <p className="text-gray-600 text-base mt-1">
             Pick the .xlsx (or .csv) entry list of this rally. The file is read here in the
             browser — only the EQ number, the two names and, if the sheet has them, the two
-            e-mail addresses are saved. An address is what registers a rider, so a sheet that
+            e-mail addresses are saved. An address is what registers a member, so a sheet that
             carries them imports finished crews. An EQ that already exists is updated.
           </p>
         </div>
@@ -319,7 +319,7 @@ const ParticipantImportPanel: React.FC<ParticipantImportPanelProps> = ({
                           {importsAsCrew(row) ? (
                             <span className="text-green-700">Registered</span>
                           ) : (
-                            <span className="text-amber-700">No riders</span>
+                            <span className="text-amber-700">No members</span>
                           )}
                         </td>
                         <td className="px-4 py-2 text-base">

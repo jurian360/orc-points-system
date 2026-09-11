@@ -33,13 +33,13 @@ export default function PersonPage({ params }: { params: Promise<{ id: string }>
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        setError(data.error || 'Could not load this rider.');
+        setError(data.error || 'Could not load this member.');
         return;
       }
 
       setResults(data);
     } catch {
-      setError('Could not load this rider.');
+      setError('Could not load this member.');
     } finally {
       setLoading(false);
     }
@@ -78,7 +78,7 @@ export default function PersonPage({ params }: { params: Promise<{ id: string }>
     <div className="min-h-screen bg-gray-100 py-8">
       <div className={PAGE_CONTAINER}>
         <Link href="/persons" className="text-blue-600 hover:underline text-base">
-          ← All riders
+          ← All members
         </Link>
 
         {error && (
@@ -88,17 +88,17 @@ export default function PersonPage({ params }: { params: Promise<{ id: string }>
         )}
 
         {loading ? (
-          <p className="mt-8 text-center text-lg text-gray-600">Loading rider…</p>
+          <p className="mt-8 text-center text-lg text-gray-600">Loading member…</p>
         ) : !results ? (
-          <p className="mt-8 text-center text-lg text-gray-600">This rider was not found.</p>
+          <p className="mt-8 text-center text-lg text-gray-600">This member was not found.</p>
         ) : (
           <div className="mt-4 space-y-6">
             {mayClassify && (
               <section className="bg-white rounded-xl shadow p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-1">Classification</h2>
                 <p className="text-gray-600 text-base mb-3 max-w-3xl">
-                  The class this rider rides in. A crew&apos;s class is the higher of its two
-                  riders&apos; (B &lt; A &lt; H), so changing this moves every crew they are
+                  The class this member rides in. A crew&apos;s class is the higher of its two
+                  members&apos; (B &lt; A &lt; H), so changing this moves every crew they are
                   half of. Rallies already ridden keep the class they were ridden under;
                   entries for rallies still to come follow the change.
                 </p>

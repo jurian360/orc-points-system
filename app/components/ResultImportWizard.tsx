@@ -202,10 +202,10 @@ const ResultImportWizard: React.FC<ResultImportWizardProps> = ({ initialRallyId 
           </p>
           <p className="mt-1">
             {summary.ridersCreated > 0
-              ? `${summary.ridersCreated} new rider${
+              ? `${summary.ridersCreated} new member${
                   summary.ridersCreated === 1 ? '' : 's'
                 } added to the register`
-              : 'Every rider was already in the register'}
+              : 'Every member was already in the register'}
             {summary.classificationsFilled > 0 &&
               `, ${summary.classificationsFilled} of them given a class from the sheet`}
             .
@@ -371,7 +371,7 @@ const ResultImportWizard: React.FC<ResultImportWizardProps> = ({ initialRallyId 
               </span>
               {warned.length > 0 && (
                 <span className="text-base text-amber-700">
-                  {warned.length} with a crew class that disagrees with its riders
+                  {warned.length} with a crew class that disagrees with its members
                 </span>
               )}
               {failed.length > 0 && (
@@ -452,9 +452,9 @@ const ResultImportWizard: React.FC<ResultImportWizardProps> = ({ initialRallyId 
               <span className="font-semibold">Importing replaces this rally&apos;s entry
               list</span>{' '}
               and marks it as a rally whose results were imported: it can no longer be given
-              stages or answer sheets. Riders the register does not have are created from
-              their e-mail address, and a rider with no class yet is given the one on the
-              sheet — a rider who already has a class keeps it.
+              stages or answer sheets. Members the register does not have are created from
+              their e-mail address, and a member with no class yet is given the one on the
+              sheet — a member who already has a class keeps it.
             </div>
 
             <button

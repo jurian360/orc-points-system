@@ -25,7 +25,7 @@ import {
 // simply overwriting a field.
 
 function invalidId() {
-  return NextResponse.json({ error: 'Invalid rider id' }, { status: 400 });
+  return NextResponse.json({ error: 'Invalid member id' }, { status: 400 });
 }
 
 // GET /api/persons/[id] — one rider, with their whole classification history.
@@ -44,14 +44,14 @@ export async function GET(
     await dbConnect();
 
     const person = await Person.findById(personId).lean();
-    if (!person) return NextResponse.json({ error: 'Rider not found' }, { status: 404 });
+    if (!person) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
 
     return NextResponse.json(
       toPersonDetail(person as unknown as Parameters<typeof toPersonDetail>[0])
     );
   } catch (error) {
     console.error('Failed to fetch rider:', error);
-    return NextResponse.json({ error: 'Failed to fetch rider' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch member' }, { status: 500 });
   }
 }
 
@@ -86,7 +86,7 @@ export async function PUT(
     await dbConnect();
 
     const person = await Person.findById(personId);
-    if (!person) return NextResponse.json({ error: 'Rider not found' }, { status: 404 });
+    if (!person) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
 
     if (body.email !== undefined) {
       const email = parseEmail(body.email);
@@ -108,7 +108,7 @@ export async function PUT(
       const name = parseName(body.name);
       if (!name) {
         return NextResponse.json(
-          { error: 'A rider needs a name (1-200 characters)' },
+          { error: 'A member needs a name (1-200 characters)' },
           { status: 400 }
         );
       }
@@ -171,13 +171,13 @@ export async function PUT(
   } catch (error) {
     if (typeof error === 'object' && error !== null && (error as { code?: number }).code === 11000) {
       return NextResponse.json(
-        { error: 'Another rider is already registered with that e-mail address' },
+        { error: 'Another member is already registered with that e-mail address' },
         { status: 409 }
       );
     }
 
     console.error('Failed to save rider:', error);
-    return NextResponse.json({ error: 'Failed to save rider' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to save member' }, { status: 500 });
   }
 }
 
@@ -203,7 +203,7 @@ export async function DELETE(
     await dbConnect();
 
     const person = await Person.findById(personId);
-    if (!person) return NextResponse.json({ error: 'Rider not found' }, { status: 404 });
+    if (!person) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
 
     const entries = await Participant.countDocuments({
       $or: [{ driverId: personId }, { navigatorId: personId }],
@@ -213,7 +213,7 @@ export async function DELETE(
       return NextResponse.json(
         {
           error:
-            `This rider is entered in ${entries} ${entries === 1 ? 'rally' : 'rallies'} and ` +
+            `This member is entered in ${entries} ${entries === 1 ? 'rally' : 'rallies'} and ` +
             'cannot be deleted. Removing them would leave those entries without a crew.',
         },
         { status: 409 }
@@ -225,6 +225,6 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to delete rider:', error);
-    return NextResponse.json({ error: 'Failed to delete rider' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to delete member' }, { status: 500 });
   }
 }

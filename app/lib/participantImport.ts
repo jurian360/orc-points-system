@@ -160,7 +160,7 @@ export function buildImportRows(
     } else if ((driverEmail && !driverName) || (navigatorEmail && !navigatorName)) {
       // A rider this import may have to create needs a name to be created
       // with — the register has no other way to say who they are.
-      error = 'A rider with an e-mail address also needs a name';
+      error = 'A member with an e-mail address also needs a name';
     }
 
     if (eq !== null && error === null) seen.set(eq, lineNumber);

@@ -145,7 +145,7 @@ export default function OverallStandingsPage() {
             <h1 className="text-3xl font-bold text-gray-900">Overall standings</h1>
             {data && (
               <p className="text-gray-600 text-base mt-1 max-w-4xl">
-                {countingRuleLabel(data.settings)} A crew is two riders, whichever seat each
+                {countingRuleLabel(data.settings)} A crew is two members, whichever seat each
                 of them took — swapping seats between rallies is the same crew.
               </p>
             )}
@@ -239,7 +239,7 @@ export default function OverallStandingsPage() {
                   }
                 />
                 <p className="text-gray-600 text-sm mt-1">
-                  How many official rallies the same two riders have to have ridden together.
+                  How many official rallies the same two members have to have ridden together.
                 </p>
               </div>
             </div>
@@ -449,7 +449,7 @@ export default function OverallStandingsPage() {
           ) : entries.length === 0 ? (
             <p className="p-8 text-center text-lg text-gray-600">
               No registered crew has ridden an official rally in this season yet. A crew counts
-              once both of its riders are registered on the entry — an entry with only names
+              once both of its members are registered on the entry — an entry with only names
               is scored in its own rally but is not a crew.
             </p>
           ) : (
@@ -570,7 +570,7 @@ export default function OverallStandingsPage() {
                 data?.settings.minimumRallies ?? 3
               } rallies needed`}
             . <Link href="/persons" className="text-blue-600 hover:underline">
-              Riders
+              Members
             </Link>
           </p>
         )}
