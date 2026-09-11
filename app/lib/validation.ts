@@ -11,14 +11,26 @@ import {
 } from './timeScoring';
 import { isClassification, type ClassificationValue } from './participants';
 import {
-  isRole,
+  EMPTY_VEHICLE,
+  isFuelType,
+  isValidEmail,
+  isValidPhone,
+  MAX_EMAIL_LENGTH,
+  MAX_FOOD_RESTRICTIONS_LENGTH,
+  MAX_PHONE_LENGTH,
+  normalizeEmail,
+  type Vehicle,
+} from './persons';
+import {
+  isOfficialRole,
   isValidUsername,
   MAX_PASSWORD_LENGTH,
   MAX_USERNAME_LENGTH,
   MIN_PASSWORD_LENGTH,
   normalizeUsername,
-  type Role,
+  type OfficialRole,
 } from './roles';
+import { isValidSeasonSettings, type SeasonSettings } from './seasons';
 
 // Input validation and normalization for the API routes.
 //
@@ -151,8 +163,129 @@ export function parsePassword(value: unknown): string | null {
   return value;
 }
 
-export function parseRole(value: unknown): Role | null {
-  return isRole(value) ? value : null;
+// The role of an **official's** account. `participant` is refused here rather
+// than merely unused: a `User` carrying it would be an account that
+// authenticates against the wrong collection, and the one field that decides
+// that is this one.
+export function parseRole(value: unknown): OfficialRole | null {
+  return isOfficialRole(value) ? value : null;
+}
+
+// --- Riders ----------------------------------------------------------------
+
+// A rider's e-mail address, normalised the way it is stored. This is the
+// identity of a `Person`, so it is also what a login and a lookup are keyed on:
+// proving it is a scalar string here is what keeps `{"$gt": ""}` out of the
+// query that finds an account.
+export function parseEmail(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = normalizeEmail(value.slice(0, MAX_EMAIL_LENGTH + 1));
+  return isValidEmail(normalized) ? normalized : null;
+}
+
+// A phone number as it is written. Optional, so '' is a valid answer — an
+// entry list arrives before the contact details do.
+export function parsePhone(value: unknown): string | null {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (trimmed === '') return '';
+  if (trimmed.length > MAX_PHONE_LENGTH) return null;
+  return isValidPhone(trimmed) ? trimmed : null;
+}
+
+// What a rider cannot eat. Free text, bounded — the answer is a sentence, not a
+// code.
+export function parseFoodRestrictions(value: unknown): string | null {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > MAX_FOOD_RESTRICTIONS_LENGTH ? null : trimmed;
+}
+
+// A bounded free-text field of a vehicle. Not `parseOptionalName`: these are
+// shorter than a person's name and a plate is not a name.
+function vehicleField(value: unknown, max: number): string | null {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > max ? null : trimmed;
+}
+
+// The car a crew registers for one rally. Returns null for a body that holds
+// something unusable, so a bad fuel type is a 400 rather than a silently
+// blanked field — the same rule `parseClassification` follows for a typo'd
+// class letter.
+export function parseVehicle(value: unknown): Vehicle | null {
+  if (value === undefined || value === null) return { ...EMPTY_VEHICLE };
+  if (typeof value !== 'object' || Array.isArray(value)) return null;
+
+  const raw = value as Record<string, unknown>;
+
+  const brand = vehicleField(raw.brand, 100);
+  const model = vehicleField(raw.model, 100);
+  const licensePlate = vehicleField(raw.licensePlate, 32);
+  const insurer = vehicleField(raw.insurer, 200);
+  if (brand === null || model === null || licensePlate === null || insurer === null) {
+    return null;
+  }
+
+  let fuelType: Vehicle['fuelType'] = '';
+  if (raw.fuelType !== undefined && raw.fuelType !== null && raw.fuelType !== '') {
+    if (!isFuelType(raw.fuelType)) return null;
+    fuelType = raw.fuelType;
+  }
+
+  return { brand, model, licensePlate, fuelType, insurer };
+}
+
+// --- Rallies and seasons ---------------------------------------------------
+
+// The day a rally was ridden. Accepted as the `YYYY-MM-DD` a date input sends
+// or as any timestamp `Date` understands, and stored at **noon UTC** rather
+// than at midnight: a rally dated 2026-01-01 must not slide into 2025 when it
+// is read in a timezone behind UTC, and the year is the whole reason the date
+// is here (app/lib/seasons.ts).
+export function parseRallyDate(value: unknown): Date | null {
+  if (typeof value === 'string') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (match) {
+      const [, year, month, day] = match;
+      const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+  }
+
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// A rally year, as it arrives in a `?year=` query string.
+export function parseYearParam(value: string | null): number | null {
+  if (value === null) return null;
+  if (!/^\d{4}$/.test(value)) return null;
+  const year = Number(value);
+  return year >= 2000 && year <= 2200 ? year : null;
+}
+
+// The two numbers that decide how a season is won. Both have to be whole and
+// in range, because between them they decide who is champion.
+export function parseSeasonSettings(
+  year: number,
+  body: Record<string, unknown>
+): SeasonSettings | null {
+  const whole = (value: unknown, fallback: number): number =>
+    typeof value === 'number' && Number.isInteger(value) ? value : fallback;
+
+  const settings: SeasonSettings = {
+    year,
+    countingResults: whole(body.countingResults, -1),
+    minimumRallies: whole(body.minimumRallies, -1),
+  };
+
+  return isValidSeasonSettings(settings) ? settings : null;
 }
 
 // Row of the time column an import writes into: 1 (the start), 2-9 (the GTC's)

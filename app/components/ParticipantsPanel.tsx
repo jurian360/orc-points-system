@@ -5,14 +5,18 @@ import Link from 'next/link';
 import ClassificationBadge from './ClassificationBadge';
 import ParticipantDetailsForm from './ParticipantDetailsForm';
 import ParticipantImportPanel from './ParticipantImportPanel';
-import { CLASSIFICATION_LIST, type ClassificationValue } from '../lib/participants';
+import type { ClassificationValue } from '../lib/participants';
+import { vehicleLabel, type PersonSummary, type Vehicle } from '../lib/persons';
 
 interface Participant {
   _id: string;
   eq: number;
+  driverId: string | null;
+  navigatorId: string | null;
   classification: ClassificationValue;
   driverName: string;
   navigatorName: string;
+  vehicle?: Vehicle;
 }
 
 interface ParticipantsPanelProps {
@@ -35,9 +39,18 @@ interface ParticipantsPanelProps {
 
 type Editing = { mode: 'add' } | { mode: 'edit'; eq: number } | null;
 
-// The participants of a rally: which EQ number is which crew, and in which
-// class they ride. None of it touches the scoring — a participant is still
-// their answer sheets — it is the entry list beside those sheets.
+// The participants of a rally: which EQ number is which **crew**, and the car
+// they brought. None of it touches the scoring — a participant is still their
+// answer sheets — it is the entry list beside those sheets.
+//
+// A crew is two registered riders, so this panel loads the rider register
+// alongside the entry list and hands it to every row's form: the register is
+// one request for the whole panel rather than one per row an official opens.
+//
+// An entry whose riders are not filled in yet — what an entry list without
+// e-mail addresses imports as — is shown as such. It is scored in this rally
+// like any other, and it counts towards no overall standing, because a season
+// is awarded to two named people.
 const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
   rallyId,
   sheetEqs,
@@ -46,6 +59,7 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
   readOnly = false,
 }) => {
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [people, setPeople] = useState<PersonSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
@@ -77,6 +91,43 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
   useEffect(() => {
     loadParticipants();
   }, [loadParticipants]);
+
+  // The rider register, once for the panel. Any official may read it — a crew
+  // is picked out of it, so a data-entry official reading the entry list sees
+  // the same names.
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPeople = async () => {
+      try {
+        const response = await fetch('/api/persons');
+        if (!response.ok) throw new Error('Failed to fetch riders');
+        const data: PersonSummary[] = await response.json();
+        if (!cancelled) setPeople(data);
+      } catch (err) {
+        // Not fatal: the entry list still reads, the pickers are simply empty
+        // and the row forms say there is nobody to pick.
+        console.error(err);
+      }
+    };
+
+    void loadPeople();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Every rider already in a car in this rally. A rider rides one car per
+  // rally, so the pickers grey the rest out rather than letting the unique
+  // index answer with a 409.
+  const takenIds = useMemo(() => {
+    const taken = new Set<string>();
+    for (const participant of participants) {
+      if (participant.driverId) taken.add(participant.driverId);
+      if (participant.navigatorId) taken.add(participant.navigatorId);
+    }
+    return taken;
+  }, [participants]);
 
   // One row per EQ that is part of the rally, whether that is because somebody
   // recorded the crew or because a card was entered for it.
@@ -117,11 +168,17 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
     total: number;
     created: number;
     updated: number;
+    ridersCreated: number;
   }) => {
     setImporting(false);
     setNotice(
       `Imported ${summary.total} participant${summary.total === 1 ? '' : 's'} — ` +
-        `${summary.created} added, ${summary.updated} updated.`
+        `${summary.created} added, ${summary.updated} updated` +
+        (summary.ridersCreated > 0
+          ? `, ${summary.ridersCreated} new rider${
+              summary.ridersCreated === 1 ? '' : 's'
+            } added to the register.`
+          : '.')
     );
     await loadParticipants();
     onChanged?.();
@@ -165,8 +222,9 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Participants</h2>
           <p className="text-gray-600 text-sm mt-1">
-            Who rides under which EQ number: their classification ({CLASSIFICATION_LIST}) and the full
-            names of the driver and the navigator.
+            Which crew rides under which EQ number: the driver, the navigator and the car.
+            The crew&apos;s class is the higher of its two riders&apos; (B &lt; A &lt; H) and is
+            worked out from the register, not typed here.
           </p>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
@@ -236,6 +294,8 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
             // opened for editing.
             key={editing.mode === 'add' ? 'add' : `edit-${editing.eq}`}
             rallyId={rallyId}
+            people={people}
+            takenIds={takenIds}
             lockedEq={editing.mode === 'edit' ? editing.eq : undefined}
             initial={editingRow?.details}
             submitLabel={editing.mode === 'add' ? 'Add Participant' : 'Save Participant'}
@@ -277,6 +337,9 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
                   Navigator
                 </th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                  Vehicle
+                </th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
                   Actions
                 </th>
@@ -303,10 +366,26 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
                     <span className="text-base text-gray-800">
                       {details?.driverName || <span className="text-gray-400">—</span>}
                     </span>
+                    {/* An entry with a name but no rider behind it is not a
+                        crew: it scores in this rally and counts towards no
+                        season. Said here, where it can still be fixed. */}
+                    {details?.driverName && !details.driverId && (
+                      <span className="block text-sm text-amber-700">not registered</span>
+                    )}
                   </td>
                   <td className="px-6 py-2">
                     <span className="text-base text-gray-800">
                       {details?.navigatorName || <span className="text-gray-400">—</span>}
+                    </span>
+                    {details?.navigatorName && !details.navigatorId && (
+                      <span className="block text-sm text-amber-700">not registered</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-2">
+                    <span className="text-base text-gray-700">
+                      {vehicleLabel(details?.vehicle) || (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </span>
                   </td>
                   <td className="px-6 py-2 whitespace-nowrap text-right">
@@ -319,7 +398,7 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
                             onClick={() => setEditing({ mode: 'edit', eq })}
                             className="text-indigo-600 hover:text-indigo-900 font-medium text-base"
                           >
-                            {details ? 'Edit' : 'Add Details'}
+                            {details?.driverId ? 'Edit' : 'Register Crew'}
                           </button>
                           <button
                             onClick={() => handleDelete(eq, hasSheets)}

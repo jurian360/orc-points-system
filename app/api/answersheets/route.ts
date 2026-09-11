@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../lib/mongodb';
 import { AnswerSheet, Participant, Stage } from '../../models';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../../lib/scoring';
-import { readBody, requireSession } from '../../lib/api-guard';
+import { readBody, requirePermission, requireSession } from '../../lib/api-guard';
 import { rescoreParticipants } from '../../lib/rescore';
 import {
   parseAnswerRows,
@@ -72,7 +72,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await requireSession();
+  // Typing a card is `enter:sheets`: a data-entry official's whole job and an
+  // admin's, and not a classification admin's.
+  const session = await requirePermission('enter:sheets');
   if (!session.ok) return session.response;
 
   const parsed = await readBody(request);

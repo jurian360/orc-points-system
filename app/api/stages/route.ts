@@ -3,12 +3,22 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../lib/mongodb';
 import { Rally, Route, Stage } from '../../models';
-import { readBody, requireSession, requireRallyAdmin } from '../../lib/api-guard';
+import {
+  readBody,
+  requireRallyAdmin,
+  requireSession,
+  withoutScoreKeys,
+} from '../../lib/api-guard';
+import { can } from '../../lib/roles';
 import { parseName, parseObjectId, processScoreKey } from '../../lib/validation';
 import { rescoreRally } from '../../lib/rescore';
 import { loadRunningOrder } from '../../lib/rallyOrder';
 import mongoose from 'mongoose';
 
+// Every official may list a rally's stages — it is how each page knows what
+// the stages are called and in what order they run. A stage also *carries* its
+// answer key, and an official without `view:keys` (a classification admin) has
+// it withheld below rather than being refused the list.
 export async function GET(request: NextRequest) {
   const session = await requireSession();
   if (!session.ok) return session.response;
@@ -34,7 +44,10 @@ export async function GET(request: NextRequest) {
     // in `routeId`, which is enough to group them; the route *names* come from
     // GET /api/rallies/[id]/routes.
     const { stages } = await loadRunningOrder(rallyId);
-    return NextResponse.json(stages);
+
+    return NextResponse.json(
+      can(session.user.role, 'view:keys') ? stages : stages.map(withoutScoreKeys)
+    );
   } catch (error) {
     console.error('Failed to fetch stages:', error);
     return NextResponse.json({ error: 'Failed to fetch stages' }, { status: 500 });

@@ -13,6 +13,7 @@ import ClassificationBadge from './ClassificationBadge';
 import ParticipantDetailsForm from './ParticipantDetailsForm';
 import { useAuth } from './AuthContext';
 import { crewLabel, type ClassificationValue } from '../lib/participants';
+import { vehicleLabel, type PersonSummary, type Vehicle } from '../lib/persons';
 import { PAGE_CONTAINER } from '../lib/layout';
 
 interface Rally {
@@ -49,12 +50,18 @@ interface AnswerSheet {
   submittedAt: string;
 }
 
-// The crew behind this EQ number, when somebody has recorded it.
+// The crew behind this EQ number, when somebody has registered it. The two
+// rider ids are null on an entry that only has names — an entry list imported
+// without e-mail addresses — which is scored here like any other and counts
+// towards no season.
 interface ParticipantDetails {
   eq: number;
+  driverId: string | null;
+  navigatorId: string | null;
   classification: ClassificationValue;
   driverName: string;
   navigatorName: string;
+  vehicle?: Vehicle;
 }
 
 interface ParticipantAnswersViewProps {
@@ -86,6 +93,10 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   const [stages, setStages] = useState<Stage[]>([]);
   const [sheets, setSheets] = useState<AnswerSheet[]>([]);
   const [details, setDetails] = useState<ParticipantDetails | null>(null);
+  // The rider register, for the two pickers in the crew form. Loaded with the
+  // rest of the page rather than when the form is opened, so the form does not
+  // flash an empty register on the way in.
+  const [people, setPeople] = useState<PersonSummary[]>([]);
   const [editingDetails, setEditingDetails] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,13 +110,15 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
       setLoading(true);
       setError(null);
 
-      const [rallyRes, stagesRes, sheetsRes, detailsRes, routesRes] = await Promise.all([
-        fetch(`/api/rallies/${rallyId}`),
-        fetch(`/api/stages?rallyId=${rallyId}`),
-        fetch(`/api/answersheets?rallyId=${rallyId}&eq=${eq}`),
-        fetch(`/api/rallies/${rallyId}/participants/${eq}`),
-        fetch(`/api/rallies/${rallyId}/routes`),
-      ]);
+      const [rallyRes, stagesRes, sheetsRes, detailsRes, routesRes, peopleRes] =
+        await Promise.all([
+          fetch(`/api/rallies/${rallyId}`),
+          fetch(`/api/stages?rallyId=${rallyId}`),
+          fetch(`/api/answersheets?rallyId=${rallyId}&eq=${eq}`),
+          fetch(`/api/rallies/${rallyId}/participants/${eq}`),
+          fetch(`/api/rallies/${rallyId}/routes`),
+          fetch('/api/persons'),
+        ]);
 
       if (!rallyRes.ok) throw new Error('Failed to fetch rally');
       setRally(await rallyRes.json());
@@ -124,6 +137,10 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
       // A 404 here only means nobody has recorded who this EQ is yet — the
       // participant is still whatever sheets they handed in.
       setDetails(detailsRes.ok ? await detailsRes.json() : null);
+
+      // Not fatal if it fails: the card still reads, and the crew form simply
+      // has nobody to offer.
+      if (peopleRes.ok) setPeople(await peopleRes.json());
     } catch (err) {
       setError('Failed to load this participant. Please try again later.');
       console.error(err);
@@ -310,6 +327,14 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                   'No participant details recorded yet.'
                 )}
               </span>
+              {/* The car this crew brought to this rally. On the entry rather
+                  than on a rider, so it says which car actually rode it. */}
+              {vehicleLabel(details?.vehicle) && (
+                <span className="text-gray-700 text-base">
+                  Car: {vehicleLabel(details?.vehicle)}
+                  {details?.vehicle?.fuelType ? ` · ${details.vehicle.fuelType}` : ''}
+                </span>
+              )}
             </div>
             <p className="text-gray-700 text-base">
               Every answer this participant submitted, stage by stage, scored against each
@@ -345,10 +370,11 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
         {editingDetails && (
           <div className="bg-white rounded-xl shadow-xl p-4 mb-4">
             <h2 className="text-base font-semibold text-gray-800 mb-3">
-              Classification and crew of participant {eq}
+              Crew and vehicle of participant {eq}
             </h2>
             <ParticipantDetailsForm
               rallyId={rallyId}
+              people={people}
               lockedEq={eq}
               initial={details || undefined}
               onSaved={async () => {

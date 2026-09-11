@@ -3,8 +3,8 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import dbConnect from '../../../lib/mongodb';
-import { User } from '../../../models';
-import { readBody, requireSession } from '../../../lib/api-guard';
+import { Person, User } from '../../../models';
+import { readBody, requireAnyAccount } from '../../../lib/api-guard';
 import { hashPassword, verifyPassword } from '../../../lib/passwords';
 import { parsePassword } from '../../../lib/validation';
 import { MAX_PASSWORD_LENGTH, PASSWORD_RULE } from '../../../lib/roles';
@@ -19,10 +19,16 @@ import {
 
 // POST /api/auth/password — change your own password.
 //
-// Any signed-in official, whatever their role: this is their own account, not
-// somebody else's. An admin resetting another user's password goes through
-// PUT /api/users/[id] instead, which does not ask for the current password
-// because an admin resets exactly the password nobody remembers.
+// Anybody signed in, whatever their role and **whichever collection they are
+// in**: an official changing theirs and a rider changing theirs are the same
+// request about their own account. It is the one route guarded by
+// `requireAnyAccount()` for exactly that reason — everything else either runs
+// the rally (officials) or reads one rider's own results (`/api/me`).
+//
+// An admin resetting somebody *else's* password goes through
+// PUT /api/users/[id] or PUT /api/persons/[id] instead, neither of which asks
+// for the current password: an admin resets exactly the password nobody
+// remembers.
 //
 // The current password is required even though the session already proves who
 // this is: it is what stops a borrowed, unlocked browser from becoming a
@@ -31,7 +37,7 @@ const CHANGE_ATTEMPT_LIMIT = 10;
 const CHANGE_WINDOW_MS = 15 * 60 * 1000;
 
 export async function POST(request: NextRequest) {
-  const session = await requireSession();
+  const session = await requireAnyAccount();
   if (!session.ok) return session.response;
 
   const { ok, retryAfter } = rateLimit(
@@ -76,33 +82,51 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const isRider = session.user.kind === 'participant';
+
   try {
     await dbConnect();
 
-    const user = await User.findById(session.user.sub);
-    if (!user) {
+    // Officials are `User` documents and riders are `Person` documents. Which
+    // one to read comes from the session's `kind`, never from the role or from
+    // anything in the body: the id in `sub` belongs to one collection.
+    const account = isRider
+      ? await Person.findById(session.user.sub)
+      : await User.findById(session.user.sub);
+
+    if (!account) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+    // A rider an admin has not given a login to has no password to change.
+    // Their session could not exist, so this is belt and braces — but reading a
+    // null hash as "no password required" is the shape of bug worth closing at
+    // the source.
+    if (!account.passwordHash) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!(await verifyPassword(currentPassword, account.passwordHash))) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 });
     }
 
-    user.passwordHash = await hashPassword(password);
-    // Signs this account's *other* sessions out: `requireSession()` refuses a
-    // token issued before this moment.
-    user.passwordChangedAt = new Date();
-    await user.save();
+    account.passwordHash = await hashPassword(password);
+    // Signs this account's *other* sessions out: the guards refuse a token
+    // issued before this moment.
+    account.passwordChangedAt = new Date();
+    await account.save();
 
-    // Re-issue this browser's cookie so the official who just changed their own
-    // password is not signed out by their own change.
+    // Re-issue this browser's cookie so whoever just changed their own password
+    // is not signed out by their own change. A rider signs in with their
+    // address, so that is what their session is named with.
     const cookieStore = await cookies();
     cookieStore.set(
       SESSION_COOKIE,
       await createSessionToken({
-        sub: String(user._id),
-        username: user.username,
-        role: user.role,
+        sub: String(account._id),
+        username: isRider ? account.email : account.username,
+        kind: session.user.kind,
+        role: session.user.role,
       }),
       { ...SESSION_COOKIE_OPTIONS, maxAge: SESSION_MAX_AGE_SECONDS }
     );

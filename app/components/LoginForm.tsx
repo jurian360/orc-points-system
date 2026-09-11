@@ -59,14 +59,14 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
             SARK Points System
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Sign in with your username and password
+            Officials sign in with their username, participants with their e-mail address
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-3">
             <div>
               <label htmlFor="username" className="sr-only">
-                Username
+                Username or e-mail address
               </label>
               <input
                 id="username"
@@ -79,7 +79,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
                 maxLength={MAX_USERNAME_LENGTH}
                 required
                 className={inputClass}
-                placeholder="Username"
+                placeholder="Username or e-mail address"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={loading}

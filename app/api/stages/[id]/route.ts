@@ -3,11 +3,21 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
 import { Route, Stage, AnswerSheet, CardAccess } from '../../../models';
-import { readBody, requireSession, requireRallyAdmin } from '../../../lib/api-guard';
+import {
+  readBody,
+  requireRallyAdmin,
+  requireSession,
+  withoutScoreKeys,
+} from '../../../lib/api-guard';
+import { can } from '../../../lib/roles';
 import { parseName, parseObjectId, processScoreKey } from '../../../lib/validation';
 import { rescoreRally } from '../../../lib/rescore';
 import mongoose from 'mongoose';
 
+// One stage. The key it carries is withheld from an official without
+// `view:keys` — a classification admin — the same way the list route does it;
+// the stage *page* is refused outright in `middleware.ts`, because a card
+// scored against an empty key would read as a row of zeros.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -30,7 +40,9 @@ export async function GET(
       return NextResponse.json({ error: 'Stage not found' }, { status: 404 });
     }
 
-    return NextResponse.json(stage);
+    return NextResponse.json(
+      can(session.user.role, 'view:keys') ? stage : withoutScoreKeys(stage)
+    );
   } catch (error) {
     console.error('Failed to fetch stage:', error);
     return NextResponse.json({ error: 'Failed to fetch stage' }, { status: 500 });

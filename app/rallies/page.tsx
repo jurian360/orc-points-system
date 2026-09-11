@@ -9,6 +9,13 @@ import { PAGE_CONTAINER } from '../lib/layout';
 interface Rally {
   _id: string;
   name: string;
+  // The day the rally is ridden, which is what puts it in a season. Missing on
+  // a rally created before the field existed, which falls back to `createdAt`
+  // exactly as the server does.
+  date?: string;
+  // False for an unofficial rit: ridden and scored like any other, but not
+  // counted towards the overall standings of its year.
+  countsForSeason?: boolean;
   createdAt: string;
 }
 
@@ -167,7 +174,7 @@ export default function RalliesPage() {
                     Rally Name
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                    Created At
+                    Date
                   </th>
                   <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
                     Actions
@@ -178,10 +185,22 @@ export default function RalliesPage() {
                 {rallies.map((rally) => (
                   <tr key={rally._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-lg font-medium text-gray-900">{rally.name}</div>
+                      <div className="text-lg font-medium text-gray-900">
+                        {rally.name}
+                        {/* An unofficial rit is ridden, typed and scored like
+                            any other — it just does not decide the year, and
+                            that is worth seeing from the list. */}
+                        {rally.countsForSeason === false && (
+                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-sm font-semibold align-middle">
+                            unofficial
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-base text-gray-600">{formatDate(rally.createdAt)}</div>
+                      <div className="text-base text-gray-600">
+                        {formatDate(rally.date ?? rally.createdAt)}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <div className="flex justify-end space-x-4">

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import ClassificationBadge from './ClassificationBadge';
 import { columnLetters } from '../lib/columnMapping';
 import { readSpreadsheet, SpreadsheetError } from '../lib/spreadsheet';
 import {
@@ -9,6 +8,7 @@ import {
   EMPTY_COLUMN_MAP,
   findHeaderRow,
   guessColumns,
+  importsAsCrew,
   IMPORT_FIELDS,
   toPayload,
   type ColumnMap,
@@ -21,7 +21,12 @@ interface ParticipantImportPanelProps {
   // The EQ numbers that already have a participant record, so the preview can
   // say which crews the import overwrites.
   existingEqs: number[];
-  onImported: (summary: { total: number; created: number; updated: number }) => void;
+  onImported: (summary: {
+    total: number;
+    created: number;
+    updated: number;
+    ridersCreated: number;
+  }) => void;
   onCancel: () => void;
 }
 
@@ -32,11 +37,17 @@ interface ParticipantImportPanelProps {
 // look at what will be saved. The mapping is guessed from the header names but
 // stays editable, because these sheets are exported for the entry system rather
 // than for this app — the one this was built against carries 28 columns, of
-// which four are used.
+// which a handful are used.
 //
-// The file is read in the browser; only the four mapped values per crew are
-// sent. Everything else in the sheet — e-mail addresses, phone numbers, dietary
-// notes — never leaves the official's machine.
+// A row that carries an **e-mail address per seat** comes out as a registered
+// crew: the addresses are matched to the rider register, and riders the club
+// has not seen before are created. A row with only names imports as an entry
+// with nobody in it yet, which an official links afterwards — the preview's
+// Crew column says which of the two each row will be.
+//
+// The file is read in the browser; only the mapped values per crew are sent.
+// Everything else in the sheet — phone numbers, dietary notes — never leaves
+// the official's machine.
 const ParticipantImportPanel: React.FC<ParticipantImportPanelProps> = ({
   rallyId,
   existingEqs,
@@ -112,6 +123,9 @@ const ParticipantImportPanel: React.FC<ParticipantImportPanelProps> = ({
         total: data.total ?? payload.length,
         created: data.created ?? 0,
         updated: data.updated ?? 0,
+        // Riders this import had to add to the register — the club growing,
+        // as opposed to another rally for people it already knows.
+        ridersCreated: data.ridersCreated ?? 0,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to import participants.');
@@ -140,8 +154,9 @@ const ParticipantImportPanel: React.FC<ParticipantImportPanelProps> = ({
           <h3 className="text-base font-semibold text-gray-800">Import an entry list</h3>
           <p className="text-gray-600 text-base mt-1">
             Pick the .xlsx (or .csv) entry list of this rally. The file is read here in the
-            browser — only the EQ number, the classification and the two names are saved.
-            An EQ that already exists is updated.
+            browser — only the EQ number, the two names and, if the sheet has them, the two
+            e-mail addresses are saved. An address is what registers a rider, so a sheet that
+            carries them imports finished crews. An EQ that already exists is updated.
           </p>
         </div>
         <button
@@ -262,13 +277,13 @@ const ParticipantImportPanel: React.FC<ParticipantImportPanelProps> = ({
                         EQ
                       </th>
                       <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700 uppercase">
-                        Class
-                      </th>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700 uppercase">
                         Driver
                       </th>
                       <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700 uppercase">
                         Navigator
+                      </th>
+                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700 uppercase">
+                        Crew
                       </th>
                       <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700 uppercase">
                         Status
@@ -282,14 +297,30 @@ const ParticipantImportPanel: React.FC<ParticipantImportPanelProps> = ({
                         <td className="px-4 py-2 text-base font-bold text-gray-900">
                           {row.eq ?? '—'}
                         </td>
-                        <td className="px-4 py-2">
-                          <ClassificationBadge classification={row.classification} />
-                        </td>
                         <td className="px-4 py-2 text-base text-gray-800">
                           {row.driverName || <span className="text-gray-400">—</span>}
+                          {row.driverEmail && (
+                            <span className="block text-sm text-gray-500">{row.driverEmail}</span>
+                          )}
                         </td>
                         <td className="px-4 py-2 text-base text-gray-800">
                           {row.navigatorName || <span className="text-gray-400">—</span>}
+                          {row.navigatorEmail && (
+                            <span className="block text-sm text-gray-500">
+                              {row.navigatorEmail}
+                            </span>
+                          )}
+                        </td>
+                        {/* Whether this row arrives as a crew the season can
+                            group, or as an entry an official still has to put
+                            two riders in. Both import; only the first counts
+                            towards an overall standing. */}
+                        <td className="px-4 py-2 text-base">
+                          {importsAsCrew(row) ? (
+                            <span className="text-green-700">Registered</span>
+                          ) : (
+                            <span className="text-amber-700">No riders</span>
+                          )}
                         </td>
                         <td className="px-4 py-2 text-base">
                           {row.error ? (

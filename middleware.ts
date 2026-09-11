@@ -33,11 +33,45 @@ const RESTRICTED_PAGES: { pattern: RegExp; permission: Permission }[] = [
   { pattern: /^\/rallies\/[^/]+\/stages\/new$/, permission: 'manage:rally' },
   { pattern: /^\/rallies\/[^/]+\/stages\/[^/]+\/edit$/, permission: 'manage:rally' },
   { pattern: /^\/rallies\/[^/]+\/stages\/[^/]+\/qr-codes$/, permission: 'manage:rally' },
+  // A stage page *is* its answer key, and a participant's card page scores
+  // itself against one — `ControlekaartCard` recomputes the ORC and merk
+  // totals from the stage keys rather than reading the stored total. An
+  // official without `view:keys` has the keys withheld by the stage routes, so
+  // both pages would render a column of zeros that look like real scores.
+  // Refused outright instead: "not you" beats a wrong number.
+  { pattern: /^\/rallies\/[^/]+\/stages\/[^/]+$/, permission: 'view:keys' },
+  { pattern: /^\/rallies\/[^/]+\/participants\/[^/]+$/, permission: 'view:keys' },
+  // Typing a card is a data-entry official's job and an admin's; a
+  // classification admin does neither.
+  { pattern: /^\/rallies\/[^/]+\/answer-sheets(\/|$)/, permission: 'enter:sheets' },
 ];
 
 // The permission a page needs, or null when any signed-in official may open it.
+//
+// The rider register (`/persons`) and the overall standings are deliberately
+// **not** here: both are read pages whose buttons are gated in the component
+// and whose routes are guarded, the same arrangement the rally dashboard has.
 function requiredPermission(pathname: string): Permission | null {
   return RESTRICTED_PAGES.find(({ pattern }) => pattern.test(pathname))?.permission ?? null;
+}
+
+// The pages a **participant** may open. Everything else in this app belongs to
+// the officials, so for a rider this is an allow-list rather than the
+// exception-list above: a role with no permissions would otherwise sail
+// straight past `requiredPermission`, which only ever refuses.
+//
+// The API half of the same rule is `requireSession()` in app/lib/api-guard.ts,
+// which refuses a rider on every official route. This keeps them off the pages
+// that would call those routes and render as a wall of 403s.
+const PARTICIPANT_PAGES = [/^\/participant(\/|$)/, /^\/account(\/|$)/, /^\/forbidden(\/|$)/];
+
+// The API a participant may reach: their own data, and signing in and out.
+const PARTICIPANT_API = [/^\/api\/me(\/|$)/, /^\/api\/auth\//];
+
+function participantMayOpen(pathname: string, isApi: boolean): boolean {
+  return (isApi ? PARTICIPANT_API : PARTICIPANT_PAGES).some((pattern) =>
+    pattern.test(pathname)
+  );
 }
 
 // Coarse per-IP ceiling across the whole API, on top of the stricter
@@ -121,6 +155,31 @@ export async function middleware(request: NextRequest) {
       // otherwise a Server Component added later would render real data to
       // anonymous visitors.
       return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    // A rider is only ever in their own half of the app. Checked before the
+    // permission table below, because a participant holds no permission at
+    // all: `requiredPermission` returns null for every page it does not name,
+    // so on its own it would wave them through the whole rally.
+    if (session.role === 'participant') {
+      if (!participantMayOpen(pathname, isApi)) {
+        if (isApi) {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+        // To their own dashboard rather than to /forbidden: there is nothing
+        // for them to be refused *from*, they simply followed a link into the
+        // officials' side of the app.
+        return NextResponse.redirect(new URL('/participant', request.url));
+      }
+
+      return NextResponse.next();
+    }
+
+    // An official must not land on the riders' dashboard either. It reads
+    // `/api/me`, which has no answer for them — an admin looking at a rider
+    // opens that rider's page in the register instead.
+    if (!isApi && PARTICIPANT_PAGES[0].test(pathname)) {
+      return NextResponse.redirect(new URL('/persons', request.url));
     }
 
     // Role gating for pages. The role comes out of the signed cookie, which is

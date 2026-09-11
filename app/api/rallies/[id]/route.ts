@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
 import { Rally, Route, Stage, AnswerSheet, Participant, CardAccess } from '../../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../../lib/api-guard';
-import { parseName } from '../../../lib/validation';
+import { parseName, parseRallyDate } from '../../../lib/validation';
 import { parseRallyCode } from '../../../lib/rallyCodes';
 import mongoose from 'mongoose';
 
@@ -68,6 +68,29 @@ export async function PUT(
     );
   }
 
+  // The date and the season flag are optional for the same reason the code is:
+  // a caller that only renames the rally must not be able to clear them by
+  // omission. Moving a rally to another date *can* move it into another
+  // season, and moving the flag changes whether it counts at all — both are
+  // deliberate edits, so both are only made when the body asks for them.
+  const changesDate = parsed.body.date !== undefined;
+  const date = changesDate ? parseRallyDate(parsed.body.date) : null;
+
+  if (changesDate && !date) {
+    return NextResponse.json(
+      { error: 'The rally date must be a date (YYYY-MM-DD)' },
+      { status: 400 }
+    );
+  }
+
+  const changesSeasonFlag = parsed.body.countsForSeason !== undefined;
+  if (changesSeasonFlag && typeof parsed.body.countsForSeason !== 'boolean') {
+    return NextResponse.json(
+      { error: 'countsForSeason must be true or false' },
+      { status: 400 }
+    );
+  }
+
   try {
     await dbConnect();
 
@@ -77,11 +100,15 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid rally ID' }, { status: 400 });
     }
 
-    const updatedRally = await Rally.findByIdAndUpdate(
-      id,
-      code ? { name, code } : { name },
-      { new: true, runValidators: true }
-    );
+    const update: Record<string, unknown> = { name };
+    if (code) update.code = code;
+    if (date) update.date = date;
+    if (changesSeasonFlag) update.countsForSeason = parsed.body.countsForSeason;
+
+    const updatedRally = await Rally.findByIdAndUpdate(id, update, {
+      new: true,
+      runValidators: true,
+    });
 
     if (!updatedRally) {
       return NextResponse.json({ error: 'Rally not found' }, { status: 404 });

@@ -4,18 +4,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/mongodb';
 import { Participant, Rally } from '../../../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../../../lib/api-guard';
-import { CLASSIFICATION_LIST } from '../../../../lib/participants';
-import {
-  parseClassification,
-  parseEq,
-  parseOptionalName,
-} from '../../../../lib/validation';
+import { duplicateCrewMessage, readCrew } from '../../../../lib/crewRegistration';
+import { parseEq } from '../../../../lib/validation';
 import mongoose from 'mongoose';
 
-// The participants of a rally: who rides under which EQ number, and in which
-// class. A participant record is optional — an EQ with answer sheets but no
-// record is still scored, it just has no name attached — so this collection is
-// a lookup table beside the sheets, never a precondition for entering one.
+// The participants of a rally: which **crew** rides under which EQ number.
+//
+// A crew is two registered riders — a driver and a navigator (see
+// `app/lib/crewRegistration.ts`) — plus the car they brought. The class they
+// ride in is derived from the two of them and never sent by the client.
+//
+// A participant record is still optional: an EQ with answer sheets but no
+// record is scored exactly as before, it just has no crew attached. So is an
+// entry with no riders yet, which is what an entry-list import produces before
+// anybody has been registered — such an entry is scored in its own rally and
+// is simply not part of a season, because a season is awarded to a pair of
+// named people.
 
 // GET /api/rallies/[id]/participants — every participant record of the rally,
 // in EQ order.
@@ -71,21 +75,9 @@ export async function POST(
     );
   }
 
-  const classification = parseClassification(body.classification);
-  if (classification === null) {
-    return NextResponse.json(
-      { error: `Classification must be one of ${CLASSIFICATION_LIST}` },
-      { status: 400 }
-    );
-  }
-
-  const driverName = parseOptionalName(body.driverName);
-  const navigatorName = parseOptionalName(body.navigatorName);
-  if (driverName === null || navigatorName === null) {
-    return NextResponse.json(
-      { error: 'Names must be text of at most 200 characters' },
-      { status: 400 }
-    );
+  const crew = await readCrew(body);
+  if (!crew.ok) {
+    return NextResponse.json({ error: crew.error }, { status: 400 });
   }
 
   try {
@@ -102,24 +94,18 @@ export async function POST(
       return NextResponse.json({ error: 'Rally not found' }, { status: 404 });
     }
 
-    const participant = new Participant({
-      rallyId: id,
-      eq,
-      classification,
-      driverName,
-      navigatorName,
-    });
+    const participant = new Participant({ rallyId: id, eq, ...crew.crew });
 
     const saved = await participant.save();
 
     return NextResponse.json(saved, { status: 201 });
   } catch (error) {
-    // The unique {rallyId, eq} index is the authoritative guard here.
+    // Three unique indexes can refuse this: the EQ is taken, or one of the two
+    // riders is already in another car in this rally. `duplicateCrewMessage`
+    // reads which, because "already entered" pointing at the wrong field sends
+    // an official looking in the wrong place.
     if (error instanceof Error && 'code' in error && error.code === 11000) {
-      return NextResponse.json(
-        { error: 'This rally already has a participant with this EQ number' },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: duplicateCrewMessage(error) }, { status: 409 });
     }
 
     console.error('Failed to create participant:', error);

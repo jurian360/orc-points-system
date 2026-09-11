@@ -10,6 +10,10 @@ import { PAGE_CONTAINER } from './lib/layout';
 const Navigation: React.FC = () => {
   const { user, loading, can, logout } = useAuth();
   const isAdmin = can('manage:rally');
+  // A rider sees one page and their account. Everything else in this app is
+  // the officials', and middleware.ts sends them back from it — so the nav
+  // must not offer it in the first place.
+  const isParticipant = user?.role === 'participant';
 
   // The nav is never printed. Every printable view of this app — the results
   // on A4, the sheet of QR codes — is a page of paper an official hands out,
@@ -27,24 +31,53 @@ const Navigation: React.FC = () => {
               </Link>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              <Link
-                href="/"
-                className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
-              >
-                Home
-              </Link>
-              <Link
-                href="/rallies"
-                className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
-              >
-                Rallies
-              </Link>
+              {/* Nothing renders until /api/auth/check has answered, so no
+                  link flashes away from the account that may use it. */}
+              {!loading && isParticipant && (
+                <Link
+                  href="/participant"
+                  className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                >
+                  My rallies
+                </Link>
+              )}
+              {!loading && !isParticipant && (
+                <>
+                  <Link
+                    href="/"
+                    className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Home
+                  </Link>
+                  <Link
+                    href="/rallies"
+                    className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Rallies
+                  </Link>
+                  {/* Both are read pages for every official — a data-entry
+                      account picks crews out of the register, and a
+                      classification admin lives in it. */}
+                  <Link
+                    href="/persons"
+                    className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Riders
+                  </Link>
+                  <Link
+                    href="/standings/overall"
+                    className="text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Overall
+                  </Link>
+                </>
+              )}
               {/* The admin links are hidden for a data-entry account. Hiding is
                   a courtesy, not the control: middleware.ts redirects the page
                   and every route behind it answers 403. Nothing renders until
                   /api/auth/check has answered, so the links do not flash away
                   from an admin. */}
-              {!loading && isAdmin && (
+              {!loading && !isParticipant && isAdmin && (
                 <>
                   <Link
                     href="/time-import"

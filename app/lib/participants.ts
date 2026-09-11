@@ -29,6 +29,62 @@ export function isClassification(value: unknown): value is Classification {
   return typeof value === 'string' && (CLASSIFICATIONS as readonly string[]).includes(value);
 }
 
+// The **main** classes, and the only ones that stand in an order: `B < A < H`.
+// A crew's class is the higher of its two members' (below), which is a question
+// that only has an answer for these three.
+//
+// The other letters are not a step on this ladder. `I` and `T` are their own
+// classes and `N` / `S` say *where* a crew rides (Nickerie, Stad), so ranking
+// them against `H` would invent a judgement the sport does not make. They are
+// deliberately absent from this table rather than given a rank of 0, so
+// `classificationRank` returns null for them and the callers below have to say
+// what they do about it.
+const CLASSIFICATION_RANKS: Partial<Record<Classification, number>> = {
+  B: 1,
+  A: 2,
+  H: 3,
+};
+
+// The main classes in order, lowest first. What the overall standings group on.
+export const MAIN_CLASSIFICATIONS: readonly Classification[] = ['B', 'A', 'H'];
+
+// Where a class sits on the `B < A < H` ladder, or null for a class that is not
+// on it (and for a crew member whose class has not been recorded).
+export function classificationRank(value: ClassificationValue): number | null {
+  if (value === '') return null;
+  return CLASSIFICATION_RANKS[value] ?? null;
+}
+
+// True for one of the three classes a crew is ranked in.
+export function isMainClassification(value: ClassificationValue): boolean {
+  return classificationRank(value) !== null;
+}
+
+// The class a **crew** rides in: the highest of the driver's and the
+// navigator's, on `B < A < H`. Pairing a B with an H puts the car in H — the
+// crew is as strong as its stronger half, which is the whole reason this is
+// recorded per person and derived per crew rather than typed per entry.
+//
+// Only the main classes are ranked, so a pair holding `I`, `T`, `N` or `S`
+// cannot be compared: the driver's class is then taken, falling back to the
+// navigator's when the driver has none. That crew is simply not in the running
+// for an overall standing, which reads the main classes.
+export function crewClassification(
+  driver: ClassificationValue,
+  navigator: ClassificationValue
+): ClassificationValue {
+  const driverRank = classificationRank(driver);
+  const navigatorRank = classificationRank(navigator);
+
+  if (driverRank !== null && navigatorRank !== null) {
+    return driverRank >= navigatorRank ? driver : navigator;
+  }
+  if (driverRank !== null) return driver;
+  if (navigatorRank !== null) return navigator;
+
+  return driver || navigator;
+}
+
 // The classes in a sentence, for the message a rejected class answers with:
 // "B, A, H, I, T, N or S". Derived rather than written out, because it was
 // spelled out in four places and adding a class left all four of them lying.

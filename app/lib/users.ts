@@ -20,9 +20,10 @@ import 'server-only';
 import mongoose from 'mongoose';
 
 import dbConnect from './mongodb';
-import { User } from '../models';
-import { ENV_ADMIN_SUBJECT, type SessionUser } from './session';
+import { Person, User } from '../models';
+import { ENV_ADMIN_SUBJECT, type SessionKind, type SessionUser } from './session';
 import { normalizeUsername, type Role } from './roles';
+import { isValidEmail, normalizeEmail } from './persons';
 import { verifyPassword } from './passwords';
 
 const DEFAULT_ENV_ADMIN_USERNAME = 'admin';
@@ -66,25 +67,71 @@ interface StoredUser {
   passwordChangedAt?: Date | string | null;
 }
 
+// The stored shape of a `Person` for the two reads below. A rider with no
+// `passwordHash` has no login, which is most of the entry list.
+interface StoredPerson {
+  _id: unknown;
+  email: string;
+  name: string;
+  passwordHash?: string | null;
+  passwordChangedAt?: Date | string | null;
+}
+
 export interface AuthenticatedUser {
   sub: string;
   username: string;
+  // Which collection `sub` is an id in. Every caller that reads rider-owned
+  // data branches on this rather than on the role, because it is the claim
+  // that says *what* the id is.
+  kind: SessionKind;
   role: Role;
 }
 
-// Check a username and password against the environment admin and then the
-// database. Returns null for "no such account or wrong password" — the caller
+// Check a credential against the environment admin, then the officials, then
+// the riders. Returns null for "no such account or wrong password" — the caller
 // must not tell the two apart.
+//
+// **What was typed decides which collection is searched.** An address with an
+// `@` in it can only be a rider's; anything else can only be an official's
+// username. So the two logins are one form and one endpoint without either
+// being able to shadow the other: a username cannot contain `@`
+// (`isValidUsername`), and an e-mail address must.
 export async function authenticate(
-  username: string,
+  identifier: string,
   password: string
 ): Promise<AuthenticatedUser | null> {
-  const normalized = normalizeUsername(username);
+  const email = normalizeEmail(identifier);
+
+  if (isValidEmail(email)) {
+    await dbConnect();
+
+    const person = (await Person.findOne({ email }).lean()) as StoredPerson | null;
+    // A rider with no password has no login. Not a different answer from a
+    // wrong one: whether an address is on the entry list is not something a
+    // login form should tell anybody.
+    if (!person || !person.passwordHash) return null;
+
+    if (!(await verifyPassword(password, person.passwordHash))) return null;
+
+    return {
+      sub: String(person._id),
+      username: person.email,
+      kind: 'participant',
+      role: 'participant',
+    };
+  }
+
+  const normalized = normalizeUsername(identifier);
 
   const admin = envAdmin();
   if (admin && admin.username === normalized) {
     if (await verifyPassword(password, admin.passwordHash)) {
-      return { sub: ENV_ADMIN_SUBJECT, username: admin.username, role: 'admin' };
+      return {
+        sub: ENV_ADMIN_SUBJECT,
+        username: admin.username,
+        kind: 'official',
+        role: 'admin',
+      };
     }
     return null;
   }
@@ -101,6 +148,7 @@ export async function authenticate(
   return {
     sub: String(user._id),
     username: user.username,
+    kind: 'official',
     role: user.role,
   };
 }
@@ -115,29 +163,76 @@ export async function currentUser(session: SessionUser): Promise<AuthenticatedUs
   // The environment admin has no document to re-read. Its credential lives in
   // the environment, so a session for it is as fresh as the deployment is.
   if (session.sub === ENV_ADMIN_SUBJECT) {
+    // Only an official's session can be the environment admin's. A token that
+    // claims otherwise is forged or corrupt.
+    if (session.kind !== 'official') return null;
     const admin = envAdmin();
     if (!admin || admin.username !== session.username) return null;
-    return { sub: ENV_ADMIN_SUBJECT, username: admin.username, role: 'admin' };
+    return {
+      sub: ENV_ADMIN_SUBJECT,
+      username: admin.username,
+      kind: 'official',
+      role: 'admin',
+    };
   }
 
   if (!mongoose.Types.ObjectId.isValid(session.sub)) return null;
 
   await dbConnect();
 
+  // The `kind` claim decides which collection is read. It is not guessed from
+  // the role: the id in `sub` belongs to one collection, and asking the other
+  // one for it is how a lookup ends up pointed at the wrong table.
+  if (session.kind === 'participant') {
+    const person = (await Person.findById(session.sub).lean()) as StoredPerson | null;
+    if (!person) return null;
+
+    // A rider whose login was taken away — an admin cleared their password —
+    // is signed out on their next request, exactly like a deleted official.
+    if (!person.passwordHash) return null;
+
+    if (passwordChangedSince(person.passwordChangedAt, session.issuedAt)) return null;
+
+    return {
+      sub: String(person._id),
+      username: person.email,
+      kind: 'participant',
+      role: 'participant',
+    };
+  }
+
   const user = (await User.findById(session.sub).lean()) as StoredUser | null;
   if (!user) return null;
 
-  const changedAt = user.passwordChangedAt ? new Date(user.passwordChangedAt).getTime() : 0;
-  // One second of slack: the token's `iat` and the document's timestamp are
-  // written milliseconds apart by the same request when a user changes their
-  // own password, and that session must survive its own change.
-  if (changedAt - 1000 > session.issuedAt) return null;
+  if (passwordChangedSince(user.passwordChangedAt, session.issuedAt)) return null;
 
   return {
     sub: String(user._id),
     username: user.username,
+    kind: 'official',
     role: user.role,
   };
+}
+
+// Was the account's password set after this token was issued? That is how a
+// password change signs the account's *other* sessions out.
+//
+// One second of slack: the token's `iat` and the document's timestamp are
+// written milliseconds apart by the same request when somebody changes their
+// own password, and that session must survive its own change.
+function passwordChangedSince(
+  passwordChangedAt: Date | string | null | undefined,
+  issuedAt: number
+): boolean {
+  const changedAt = passwordChangedAt ? new Date(passwordChangedAt).getTime() : 0;
+  return changedAt - 1000 > issuedAt;
+}
+
+// The rider behind a participant's session, or null when the session is not a
+// participant's. The `/api/me` routes are authorised by *being* this person, so
+// this is the one place that turns a session into a `Person` id.
+export function sessionPersonId(user: AuthenticatedUser): string | null {
+  return user.kind === 'participant' ? user.sub : null;
 }
 
 // How many admin accounts exist in the database. The user routes refuse the

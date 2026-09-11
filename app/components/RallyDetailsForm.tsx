@@ -11,6 +11,25 @@ import {
 export interface RallyDetailsValue {
   name: string;
   code: string;
+  // `YYYY-MM-DD`, the day the rally is ridden. It is what puts the rally in a
+  // season, so it is asked for up front rather than left to be filled in later.
+  date: string;
+  // False for an unofficial rally: ridden and scored like any other, but not
+  // counted towards the overall standings of its year.
+  countsForSeason: boolean;
+}
+
+// Today, as the date input wants it. The default for a new rally, because most
+// rallies are entered in the week around the event — and a wrong-looking date
+// in the field is noticed, where an empty one is skipped past.
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// A stored date (an ISO timestamp) as the `YYYY-MM-DD` the input needs.
+function toDateInput(value: string | undefined): string {
+  if (!value) return '';
+  return value.slice(0, 10);
 }
 
 interface RallyDetailsFormProps {
@@ -40,6 +59,12 @@ const RallyDetailsForm: React.FC<RallyDetailsFormProps> = ({
 
   const [name, setName] = useState<string>(initial?.name || '');
   const [code, setCode] = useState<string>(initial?.code || '');
+  const [date, setDate] = useState<string>(
+    toDateInput(initial?.date) || (isEditing ? '' : today())
+  );
+  const [countsForSeason, setCountsForSeason] = useState<boolean>(
+    initial?.countsForSeason !== false
+  );
   // Once the code has been typed in it stops following the name. An existing
   // rally's code is always its own — renaming a rally must not silently change
   // what the printed sheets say.
@@ -73,12 +98,17 @@ const RallyDetailsForm: React.FC<RallyDetailsFormProps> = ({
       return;
     }
 
+    if (!date) {
+      setError('Enter the date the rally is ridden — it decides which season it counts in.');
+      return;
+    }
+
     setSaving(true);
     try {
       const response = await fetch(isEditing ? `/api/rallies/${rallyId}` : '/api/rallies', {
         method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), code }),
+        body: JSON.stringify({ name: name.trim(), code, date, countsForSeason }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -136,6 +166,52 @@ const RallyDetailsForm: React.FC<RallyDetailsFormProps> = ({
         what the control-card app shows as the name of their card. Letters, digits and dashes.
         {!isEditing && ' Suggested from the rally name until you change it.'}
       </p>
+
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div>
+          <label htmlFor="rallyDate" className="block text-lg font-medium mb-2 text-gray-800">
+            Date
+          </label>
+          <input
+            type="date"
+            id="rallyDate"
+            className="w-full p-3 border border-gray-300 rounded-md shadow-sm text-lg text-gray-800"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
+          <p className="text-gray-600 text-base mt-2">
+            The day this rally is ridden. Its year is the season it counts in.
+          </p>
+        </div>
+
+        <div>
+          <span className="block text-lg font-medium mb-2 text-gray-800">Season</span>
+          <label className="flex items-start gap-3 p-3 border border-gray-300 rounded-md">
+            <input
+              type="checkbox"
+              className="mt-1.5 h-5 w-5"
+              checked={countsForSeason}
+              onChange={(e) => setCountsForSeason(e.target.checked)}
+            />
+            <span className="text-base text-gray-800">
+              <span className="font-medium">Counts towards the overall standings</span>
+              <span className="block text-gray-600">
+                Clear this for an unofficial rit. It is still ridden, typed and scored like
+                any other — it just does not decide the year.
+              </span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {isEditing && !countsForSeason && (
+        <div className="mt-3 bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded text-base">
+          <span className="font-semibold">This rally does not count towards the season.</span>{' '}
+          Its own standings are unaffected; it is left out of the overall standings of its
+          year, and out of the three rallies a crew needs to be placed there.
+        </div>
+      )}
 
       {codeChanged && (
         <div className="mt-3 bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded text-base">

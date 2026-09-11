@@ -10,15 +10,15 @@ import {
   PASSWORD_RULE,
   ROLE_DESCRIPTIONS,
   ROLE_LABELS,
-  ROLES,
+  OFFICIAL_ROLES,
   USERNAME_RULE,
-  type Role,
+  type OfficialRole,
 } from '../lib/roles';
 
 export interface UserValue {
   _id: string;
   username: string;
-  role: Role;
+  role: OfficialRole;
   createdAt?: string;
 }
 
@@ -37,7 +37,7 @@ interface UserFormProps {
 const UserForm: React.FC<UserFormProps> = ({ user, onSaved, onCancel }) => {
   const isEditing = Boolean(user);
   const [username, setUsername] = useState(user?.username ?? '');
-  const [role, setRole] = useState<Role>(user?.role ?? 'data-entry');
+  const [role, setRole] = useState<OfficialRole>(user?.role ?? 'data-entry');
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,10 +122,12 @@ const UserForm: React.FC<UserFormProps> = ({ user, onSaved, onCancel }) => {
           id="user-role"
           className={inputClass}
           value={role}
-          onChange={(e) => setRole(e.target.value as Role)}
+          onChange={(e) => setRole(e.target.value as OfficialRole)}
           disabled={saving}
         >
-          {ROLES.map((value) => (
+          {/* The officials' roles only. `participant` is a `Person`, not an
+              account here, so it is not on offer — /api/users refuses it too. */}
+          {OFFICIAL_ROLES.map((value) => (
             <option key={value} value={value}>
               {ROLE_LABELS[value]}
             </option>

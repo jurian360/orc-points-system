@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import UserForm, { type UserValue } from '../components/UserForm';
-import { ROLE_DESCRIPTIONS, ROLE_LABELS, ROLES } from '../lib/roles';
+import { OFFICIAL_ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS } from '../lib/roles';
 
 // The officials' accounts. Admin only — middleware.ts keeps a data-entry
 // account off this page and /api/users refuses them anyway.
@@ -75,9 +75,9 @@ export default function UsersPage() {
       </div>
 
       <div className="bg-white rounded-xl shadow border border-gray-100 p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">The two roles</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">The three roles</h2>
         <dl className="space-y-2 text-sm">
-          {ROLES.map((role) => (
+          {OFFICIAL_ROLES.map((role) => (
             <div key={role}>
               <dt className="font-medium text-gray-800">{ROLE_LABELS[role]}</dt>
               <dd className="text-gray-600">{ROLE_DESCRIPTIONS[role]}</dd>

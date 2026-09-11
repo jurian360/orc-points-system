@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../lib/mongodb';
 import { AnswerSheet, Participant, Stage } from '../../../models';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../../../lib/scoring';
-import { readBody, requireSession } from '../../../lib/api-guard';
+import { readBody, requirePermission, requireSession } from '../../../lib/api-guard';
 import { rescoreParticipants } from '../../../lib/rescore';
 import {
   parseAnswerRows,
@@ -47,7 +47,8 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireSession();
+  // Correcting a card is the same permission as typing one.
+  const session = await requirePermission('enter:sheets');
   if (!session.ok) return session.response;
 
   const parsed = await readBody(request);
@@ -151,7 +152,8 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireSession();
+  // As is deleting one.
+  const session = await requirePermission('enter:sheets');
   if (!session.ok) return session.response;
 
   try {

@@ -4,12 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../../lib/mongodb';
 import { AnswerSheet, Participant, Rally } from '../../../../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../../../../lib/api-guard';
-import { CLASSIFICATION_LIST } from '../../../../../lib/participants';
-import {
-  parseClassification,
-  parseEqParam,
-  parseOptionalName,
-} from '../../../../../lib/validation';
+import { duplicateCrewMessage, readCrew } from '../../../../../lib/crewRegistration';
+import { parseEqParam } from '../../../../../lib/validation';
 import mongoose from 'mongoose';
 
 // One participant of a rally, addressed by their EQ number.
@@ -75,9 +71,13 @@ export async function GET(
 
 // PUT /api/rallies/[id]/participants/[eq]
 //
-// Save the class and the crew of this EQ. Upserts on purpose: a participant
-// usually exists as answer sheets long before anybody types their names, so
-// saving details for an EQ that has no record yet has to create one.
+// Register (or correct) the crew riding under this EQ: the two riders and the
+// car they brought. The class is derived from the riders and is not taken from
+// the body — see `app/lib/crewRegistration.ts`.
+//
+// Upserts on purpose: a participant usually exists as answer sheets long
+// before anybody registers the crew, so saving a crew for an EQ that has no
+// record yet has to create one.
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; eq: string }> }
@@ -88,23 +88,9 @@ export async function PUT(
   const parsed = await readBody(request);
   if (!parsed.ok) return parsed.response;
 
-  const body = parsed.body;
-
-  const classification = parseClassification(body.classification);
-  if (classification === null) {
-    return NextResponse.json(
-      { error: `Classification must be one of ${CLASSIFICATION_LIST}` },
-      { status: 400 }
-    );
-  }
-
-  const driverName = parseOptionalName(body.driverName);
-  const navigatorName = parseOptionalName(body.navigatorName);
-  if (driverName === null || navigatorName === null) {
-    return NextResponse.json(
-      { error: 'Names must be text of at most 200 characters' },
-      { status: 400 }
-    );
+  const crew = await readCrew(parsed.body);
+  if (!crew.ok) {
+    return NextResponse.json({ error: crew.error }, { status: 400 });
   }
 
   try {
@@ -126,7 +112,7 @@ export async function PUT(
     const participant = await Participant.findOneAndUpdate(
       { rallyId: id, eq },
       {
-        $set: { classification, driverName, navigatorName, updatedAt: new Date() },
+        $set: { ...crew.crew, updatedAt: new Date() },
         $setOnInsert: { createdAt: new Date() },
       },
       { new: true, upsert: true, runValidators: true }
@@ -134,13 +120,11 @@ export async function PUT(
 
     return NextResponse.json(participant);
   } catch (error) {
-    // Two officials saving the same new participant at once: the unique index
-    // lets one insert win and turns the other into a duplicate-key error.
+    // Either a rider is already in another car in this rally, or two officials
+    // saved the same new participant at once and the unique index let one
+    // insert win.
     if (error instanceof Error && 'code' in error && error.code === 11000) {
-      return NextResponse.json(
-        { error: 'This participant was just added by someone else — reload and try again' },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: duplicateCrewMessage(error) }, { status: 409 });
     }
 
     console.error('Failed to save participant:', error);

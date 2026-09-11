@@ -25,6 +25,13 @@ interface Rally {
   // The rally's public code, shown to the crews and printed under every QR
   // code. Missing on a rally created before codes existed.
   code?: string;
+  // The day the rally is ridden — what puts it in a season. Missing on a rally
+  // created before the field existed, which falls back to `createdAt` exactly
+  // as the server does.
+  date?: string;
+  // False for an unofficial rit: scored like any other, counted towards no
+  // overall standing.
+  countsForSeason?: boolean;
   createdAt: string;
 }
 
@@ -426,9 +433,20 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                     {rally.code}
                   </span>
                 )}
+                {/* An unofficial rit is ridden, typed and scored like any
+                    other; it simply does not decide the year. Said in the
+                    header, because everything below it looks identical. */}
+                {rally.countsForSeason === false && (
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-base font-semibold"
+                    title="Not counted towards the overall standings of its year"
+                  >
+                    unofficial
+                  </span>
+                )}
               </div>
               <p className="text-gray-500 text-sm">
-                Created {formatDate(rally.createdAt)} ·{' '}
+                Ridden {formatDate(rally.date ?? rally.createdAt)} ·{' '}
                 {routes.length > 0 ? `${routes.length} routes · ` : ''}
                 {stages.length} stage
                 {stages.length === 1 ? '' : 's'} · {crewsScored} crew

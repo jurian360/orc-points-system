@@ -1,5 +1,8 @@
 import type { StageTimeConfig, TimeRowKind } from '../lib/timeScoring';
 import type { ClassificationValue } from '../lib/participants';
+import type { ClassificationChange, Vehicle } from '../lib/persons';
+import type { SeasonSettings } from '../lib/seasons';
+import type { CrewSeasonEntry, SeasonRally } from '../lib/overallStandings';
 import type { StandingsStatus } from '../lib/standings';
 
 // Rally types
@@ -10,6 +13,13 @@ export interface Rally {
   // sent back with a card the participant finalises. Generated on first use, so
   // it is missing on a rally that has never issued a QR code.
   code?: string;
+  // The day the rally was ridden, which is what puts it in a season. Missing
+  // on a rally created before the field existed; the read paths fall back to
+  // `createdAt` rather than dropping it out of its own year.
+  date?: string;
+  // False for an unofficial rally — ridden and scored like any other, but not
+  // counted towards the overall standings of its year.
+  countsForSeason?: boolean;
   createdAt: string;
 }
 
@@ -79,24 +89,41 @@ export interface MerkScoreKeyRow {
   maxPenalty?: number;
 }
 
-// Participant of a rally: the crew riding under an EQ number. Optional — an EQ
-// with answer sheets but no record is still scored, it just has no name.
+// Participant of a rally: the **crew** registered under an EQ number. Optional
+// — an EQ with answer sheets but no record is still scored, it just has no crew
+// attached.
+//
+// `driverId` / `navigatorId` are the two riders (app/lib/persons.ts). They are
+// null on an entry typed before the riders were registered, which is what an
+// entry-list import produces and what the entry form then fills in. The names
+// beside them are copies of the riders' names as they stood at registration —
+// see the model for why that copy exists and how it is kept fresh.
 export interface Participant {
   _id: string;
   rallyId: string;
   eq: number;
+  driverId: string | null;
+  navigatorId: string | null;
+  // The class the **crew** rides in: the higher of its two riders' on B < A < H.
   classification: ClassificationValue;
+  driverClassification: ClassificationValue;
+  navigatorClassification: ClassificationValue;
   driverName: string;
   navigatorName: string;
+  // The car this crew brought to this rally.
+  vehicle: Vehicle;
   createdAt: string;
   updatedAt: string;
 }
 
+// What the entry form sends. The crew's class is **not** here: it is derived
+// from the two riders server-side, so a form cannot claim a class the pair does
+// not hold.
 export interface ParticipantFormData {
   eq: number;
-  classification: ClassificationValue;
-  driverName: string;
-  navigatorName: string;
+  driverId: string | null;
+  navigatorId: string | null;
+  vehicle: Vehicle;
 }
 
 // Answer sheet types (a participant's submission for one stage)
@@ -190,6 +217,11 @@ export interface StandingsEntry {
   classification: ClassificationValue;
   driverName: string;
   navigatorName: string;
+  // The two riders behind this entry, so a season can group the same pair
+  // across ten rallies (app/lib/overallStandings.ts). Null on an EQ that was
+  // typed straight onto a card without a crew being registered.
+  driverId: string | null;
+  navigatorId: string | null;
   totalPenalty: number;
   // The three parts of `totalPenalty`: the ORC's (letters), the time penalty and
   // the merk penalty (shown as "Diversen").
@@ -223,6 +255,9 @@ export interface RallyFormData {
   // left out of a PUT it keeps the code it has, because a rally with no code
   // cannot be scanned into the app at all.
   code?: string;
+  // `YYYY-MM-DD`, the day the rally is ridden.
+  date?: string;
+  countsForSeason?: boolean;
 }
 
 export interface StageFormData {
@@ -329,4 +364,108 @@ export interface RallyTimes {
     driverName: string;
     navigatorName: string;
   }[];
+}
+
+// --- Riders -----------------------------------------------------------------
+
+// One rider as the registry lists them. The password never leaves the API, so
+// `hasLogin` is all a view learns about it.
+export interface PersonRow {
+  _id: string;
+  email: string;
+  name: string;
+  phone: string;
+  foodRestrictions: string;
+  classification: ClassificationValue;
+  classificationChangedAt: string | null;
+  hasLogin: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// A rider with the whole of their classification history, as the detail page
+// reads them. The list route leaves the history out — two hundred riders'
+// histories is a lot of wire for a column that shows one date.
+export interface PersonDetail extends PersonRow {
+  classificationHistory: ClassificationChange[];
+}
+
+// What the rider form sends. `classification` is deliberately absent: it moves
+// through its own route (`PUT /api/persons/[id]/classification`) because it is
+// the one field a classification admin may change and the one that writes a
+// history entry.
+export interface PersonFormData {
+  email: string;
+  name: string;
+  phone: string;
+  foodRestrictions: string;
+  // Set to give this rider a login, or to reset the one they have. Absent
+  // leaves whatever they had alone; `null` takes their login away.
+  password?: string | null;
+}
+
+// --- A rider's own results --------------------------------------------------
+
+// One rally a rider entered, with who they rode it with and what it cost them.
+// The same shape answers `/api/me/results` and
+// `/api/persons/[id]/results` — the rider's own dashboard and an official
+// looking at that rider — so the two cannot show different histories.
+export interface RiderEntry {
+  rallyId: string;
+  rallyName: string;
+  date: string;
+  countsForSeason: boolean;
+  eq: number;
+  // Which seat this rider took. The pair is unordered across a season, but one
+  // entry has a driver and a navigator.
+  seat: 'driver' | 'navigator';
+  // The other half of the crew. Null on an entry whose other seat was never
+  // filled in.
+  partner: { _id: string; name: string; email: string } | null;
+  classification: ClassificationValue;
+  vehicle: Vehicle;
+  // What the rally's own standings gave this crew. Null while the rally has no
+  // stages, which is a rally still being set up rather than a result of zero.
+  result: {
+    totalPenalty: number;
+    orcPenalty: number;
+    timePenalty: number;
+    merkPenalty: number;
+    status: StandingsStatus;
+    // The place among the crews who finished; 0 for a DNF or a DNS, which have
+    // no place.
+    rank: number;
+    // How many crews were in this rally at all, so a place reads as "7 of 43".
+    fieldSize: number;
+  } | null;
+}
+
+export interface RiderResults {
+  person: PersonDetail;
+  entries: RiderEntry[];
+  // The rider's crews per season, newest year first: who they rode with, how
+  // many official rallies they managed together and where that puts them.
+  seasons: {
+    year: number;
+    settings: SeasonSettings;
+    crews: CrewSeasonEntry[];
+  }[];
+}
+
+// --- The overall standings of one season -----------------------------------
+
+export interface OverallStandingsResponse {
+  year: number;
+  // The years that have a rally in them at all, newest first, so a view can
+  // offer a year picker without a second request.
+  years: number[];
+  settings: SeasonSettings;
+  // The official rallies of the year, in the order they were ridden. The
+  // unofficial ones are not here: they do not count, and a column for them
+  // would say otherwise.
+  rallies: SeasonRally[];
+  // How many rallies of the year were left out for being unofficial, so the
+  // page can say so rather than leaving a reader to wonder.
+  unofficialRallies: number;
+  entries: CrewSeasonEntry[];
 }

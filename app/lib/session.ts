@@ -81,13 +81,35 @@ async function sign(payload: string): Promise<string> {
 // delete it or take its role away (see app/lib/users.ts).
 export const ENV_ADMIN_SUBJECT = 'env';
 
+// Which collection this session's `sub` is an id in.
+//
+//   * `official`   — a `User` document, or the break-glass admin from the
+//                    environment. Signs in with a username.
+//   * `participant`— a `Person` document (app/lib/persons.ts). Signs in with an
+//                    e-mail address.
+//
+// It is a claim rather than something inferred from the role because it decides
+// **which collection is read** when the session is re-checked, and a lookup
+// that guesses is a lookup that can be pointed at the wrong table. A token
+// minted before this claim existed has no `knd` and reads as `official`, which
+// is what every session in the wild was.
+export type SessionKind = 'official' | 'participant';
+
+export function isSessionKind(value: unknown): value is SessionKind {
+  return value === 'official' || value === 'participant';
+}
+
 export interface SessionUser {
-  // The user's `_id` as a string, or ENV_ADMIN_SUBJECT for the environment admin.
+  // The account's `_id` as a string — a `User` or a `Person` depending on
+  // `kind` — or ENV_ADMIN_SUBJECT for the environment admin.
   sub: string;
+  // The username of an official, or the e-mail address of a participant:
+  // whatever this account signs in with and is shown as.
   username: string;
+  kind: SessionKind;
   role: Role;
   // When the session was issued, in epoch milliseconds. `requireSession()`
-  // compares it with the user's `passwordChangedAt`, so changing a password
+  // compares it with the account's `passwordChangedAt`, so changing a password
   // signs the account's other sessions out.
   issuedAt: number;
 }
@@ -95,6 +117,7 @@ export interface SessionUser {
 export async function createSessionToken(user: {
   sub: string;
   username: string;
+  kind: SessionKind;
   role: Role;
 }): Promise<string> {
   // The nonce makes each session individually identifiable, which is what a
@@ -105,6 +128,7 @@ export async function createSessionToken(user: {
     nonce,
     sub: user.sub,
     usr: user.username,
+    knd: user.kind,
     role: user.role,
   };
 
@@ -152,18 +176,30 @@ export async function readSessionToken(
     return null;
   }
 
-  const { iat, sub, usr, role } = claims;
+  const { iat, sub, usr, knd, role } = claims;
   if (typeof iat !== 'number' || !Number.isFinite(iat)) return null;
   if (typeof sub !== 'string' || !sub) return null;
   if (typeof usr !== 'string' || !usr) return null;
   if (!isRole(role)) return null;
+
+  // A token minted before the claim existed is an official's: that is what
+  // every session there was. An unrecognisable value is not read charitably —
+  // it is a forged or corrupted token, and those are `null` like any other.
+  if (knd !== undefined && !isSessionKind(knd)) return null;
+  const kind: SessionKind = isSessionKind(knd) ? knd : 'official';
+
+  // A participant is a `Person` and an official is not, so the two halves of
+  // the claim set have to agree. Refusing the mismatch here means no caller
+  // downstream has to wonder whether a `participant` role on an `official`
+  // session is a promotion or a demotion.
+  if ((role === 'participant') !== (kind === 'participant')) return null;
 
   // Expiry is enforced here, server-side. The cookie's maxAge is only a hint to
   // the browser and says nothing about a replayed or exported cookie value.
   const age = Date.now() - iat;
   if (age < 0 || age >= MAX_AGE_MS) return null;
 
-  return { sub, username: usr, role, issuedAt: iat };
+  return { sub, username: usr, kind, role, issuedAt: iat };
 }
 
 export const SESSION_COOKIE = 'session';

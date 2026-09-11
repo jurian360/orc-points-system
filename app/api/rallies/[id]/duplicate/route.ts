@@ -88,7 +88,19 @@ export async function POST(
       if (!code) break;
 
       try {
-        duplicate = await new Rally({ name, code }).save();
+        duplicate = await new Rally({
+          name,
+          code,
+          // **Today**, not the original's date. A duplicate is next year's
+          // running of the same course, and two rallies sharing one day would
+          // put the copy in the season the original already won. The official
+          // sets the real date when they know it; until then the copy sits in
+          // the current season, which is where a rally being prepared belongs.
+          date: new Date(),
+          // Whether an event counts is part of its setup, not of its running:
+          // an unofficial rit duplicated for next year is still unofficial.
+          countsForSeason: source.countsForSeason !== false,
+        }).save();
       } catch (error) {
         // Another rally already answers to this code: try the next marker
         // rather than making a submission from the app ambiguous.

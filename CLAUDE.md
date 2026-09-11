@@ -31,12 +31,17 @@ in code and UI — do not "translate" them:
 
 | Term | Meaning |
 | --- | --- |
-| **Rally** | Top-level event. Has many routes and/or stages. |
+| **Rally** | Top-level event. Has many routes and/or stages. Carries the **date** it is ridden, which puts it in a season, and whether it **counts** towards that season. |
+| **Season** | One rally year, and the two rules that decide how it is won (`app/lib/seasons.ts`). Not a document you create — a rally with a date in it is the season starting. |
+| **Rider / Person** | One human being who rides rallies, across every event and every season (`Person`). **Identified by their e-mail address.** Carries their class, its whole history, their contact details and — optionally — a login. |
+| **Crew** | The two riders in one car: a driver and a navigator. **An unordered pair** — swapping seats between rallies is the same crew — and what an overall standing is awarded to (`app/lib/crews.ts`). |
 | **Route** | A sequential leg of a rally: every crew rides route 1, then route 2, and a route holds several stages. At a boundary the crews are re-started, so the time delta is neutralised. Two events a year use them; **a rally with no routes is one implicit leg** and behaves exactly as every rally did before routes existed. |
 | **Stage** | One proef of a rally. Holds the answer key used to grade sheets. |
 | **Answer sheet** | One participant's submission for **one** stage. |
 | **EQ** | Participant/equipe number, integer `1..100`. Identifies a competitor — crews have no account, only the officials do. |
-| **Classification** | The class a crew rides in: `B`, `A`, `H`, `I`, `T`, `N` or `S` (or empty while unknown) — `N` is Nickerie and `S` is Stad, where the crew rides. `CLASSIFICATIONS` in `app/lib/participants.ts` is the one list, and `CLASSIFICATION_LIST` is that list in the sentence a rejected class answers with, so adding a class does not leave four hand-written messages behind. Recorded per participant, not used by the scoring. |
+| **Classification** | The class a **rider** rides in: `B`, `A`, `H`, `I`, `T`, `N` or `S` (or empty while unknown) — `N` is Nickerie and `S` is Stad, where they ride. `CLASSIFICATIONS` in `app/lib/participants.ts` is the one list, and `CLASSIFICATION_LIST` is that list in the sentence a rejected class answers with, so adding a class does not leave four hand-written messages behind. Recorded per rider, not used by the scoring. |
+| **Crew classification** | The class the **car** rides in: the higher of its two riders' on `B < A < H` (`crewClassification`). Derived, never typed. `B`, `A` and `H` are the main classes and the only ones that stand in an order; `I`, `T`, `N` and `S` are not steps on that ladder. |
+| **Overall standings** | The ranking of a whole year: crews, on what the year's official rallies cost them (`app/lib/overallStandings.ts`). |
 | **Controlekaart** | The paper control card the whole UI is modelled on: 4 columns — ORC's 1–15 \| ORC's 16–30 \| For Official Use Only (time) \| Merk + TOTAAL STRAFPUNTEN. |
 | **ORC's** | The 30 lettered answer rows, up to 4 letters (columns) per row. |
 | **Strafp. / strafpunten** | Penalty points. |
@@ -46,8 +51,10 @@ in code and UI — do not "translate" them:
 | **Delta** | How many minutes a participant is off their own schedule. It runs from the start of the rally to the last stage. |
 | **Merk** | Marker/sign rows, 6 rows, one letter each. Scored *vertically* against the stage's merk key, which holds the correct letters and the letters it rules out. |
 | **Diversen** | The merk part of a sheet's penalty, the third line of TOTAAL STRAFPUNTEN next to ORC's and Tijd. |
-| **Admin** | An official who runs the rally: stages, answer keys, entry list, imports, QR codes and the accounts. |
+| **Admin** | An official who runs the rally: stages, answer keys, entry list, imports, QR codes, the rider register and the accounts. |
 | **Data entry** | An official who types control cards (ORC's, tijd, merk) and reads the standings — nothing else. |
+| **Classification admin** | An official who sets the riders' classes and reads their results. **No answer keys and no control cards** — the one role that may not see a stage's key. |
+| **Participant** (role) | A rider with a login. Signs in with their e-mail address, sees their own results and nothing else. |
 | **Recovery admin** | The admin configured in the deployment environment (`ADMIN_USERNAME` + `ADMIN_PASSWORD_HASH`). No database record, so it cannot be deleted or demoted: the way back in when every admin has forgotten their password. |
 | **App code** | The 8-character code behind the QR a participant scans. It stands for exactly one card — one `{rally, stage, eq}` — and is the crew's only credential. |
 | **Rally code** | A rally's short public identifier (`Rally.code`), e.g. `SARKNAJAAR`. Officials name it when they create the rally; the app shows it and sends it back with a finalised card. |
@@ -57,13 +64,22 @@ in code and UI — do not "translate" them:
 
 ```
 User                   (an official's account; owns no rally data)
+Season                 (the rules of one rally year, keyed on the year)
 
+Person                 (one rider, identified by e-mail; their own login)
+   │                    ↑ ↑
 Rally ──< Stage ──< AnswerSheet
    │        ↑        │  (AnswerSheet also stores rallyId for cheap standings)
    ├──< Route┘       └─< CardAccess   (the QR code of one {stage, eq})
    │      (Stage.routeId, unset on a rally with no routes)
-   └──< Participant       (optional details of one EQ: class + crew names)
+   └──< Participant       (the crew of one EQ: two Persons + the car)
 ```
+
+A **crew is not a document.** It is what you get when you read a season's
+`Participant`s and notice the same two `Person`s in a car three times
+(`app/lib/crews.ts`). Storing it would be a second place for the pairing to
+disagree with the entries it comes from — the same reason `routeTotals` is
+derived rather than written onto a rally.
 
 - `Stage.scoreKey` — 30 rows:
   `{ rowNumber, answers[], alternativeAnswers[][], falseAnswers[{column,value}],
@@ -93,20 +109,56 @@ Rally ──< Stage ──< AnswerSheet
 - **Unique index `{ stageId, eq }`** — one sheet per participant per stage. The
   pre-insert `findOne` check is a nicety; the index is the real guard, and the
   `11000` duplicate-key error is mapped to a 409.
-- `Participant` — `{ rallyId, eq, classification, driverName, navigatorName }`, the
-  crew behind an EQ number of one rally. Optional and inert: nothing in the
-  scoring reads it, an EQ with sheets but no record is still scored, and a record
-  without sheets is listed in the standings as a **DNS** — a crew who was entered
-  and never started (see *Finished, DNF and DNS* below).
-  **Unique index `{ rallyId, eq }`**; the `11000` duplicate-key error is mapped
-  to a 409, same as the sheets. `PUT /api/rallies/[id]/participants/[eq]` upserts
-  because a participant usually exists as sheets before anybody types their name;
-  `POST /api/rallies/[id]/participants` only creates, so a taken EQ warns instead
-  of overwriting another crew. Deleting a participant removes the record *and*
-  their sheets in that rally. `POST .../participants/import` writes a whole entry
-  list in one `bulkWrite` of upserts — see the import section below.
-- `User` — `{ username, role, passwordHash, passwordChangedAt }`, an official's
-  account. It hangs off nothing: an account owns no rally data, so deleting one
+- `Person` — `{ email, name, phone, foodRestrictions, classification,
+  classificationChangedAt, classificationHistory[], passwordHash,
+  passwordChangedAt }`, one rider. **The e-mail address is the identity** and
+  the only unique thing about them (two riders share a name often enough that
+  the club has stopped being surprised by it). Because the address lives here
+  and **nowhere else**, correcting it is one field on one document and every
+  entry, crew and result follows — there is no second copy to migrate.
+  `classificationHistory` grows only when the class actually changes, so it
+  reads as what happened to the rider rather than as a log of who pressed Save.
+  `passwordHash` is null for most of the register: a rider without a login is
+  still entered, scored and placed, they just cannot look at it themselves. The
+  hash never leaves the API — `toPersonDetail` in `app/lib/riderResults.ts` is
+  the one function that shapes a rider for the wire, and it emits `hasLogin`.
+- `Season` — `{ year, countingResults, minimumRallies }`, the rules of one rally
+  year. A year with **no document** is a normal year read with the defaults in
+  `app/lib/seasons.ts`; a document exists only for a year an official has
+  changed something about.
+- `Participant` — `{ rallyId, eq, driverId, navigatorId, classification,
+  driverClassification, navigatorClassification, driverName, navigatorName,
+  vehicle }`, the **crew** behind an EQ number of one rally, and the car they
+  brought. Optional and inert: nothing in the scoring reads it, an EQ with
+  sheets but no record is still scored, and a record without sheets is listed in
+  the standings as a **DNS** (see *Finished, DNF and DNS* below).
+  `classification` is the **crew's** — the higher of its two riders' — derived
+  at registration and never taken from the client.
+  **Both seats or neither**: an entry with one rider named cannot be grouped
+  into a crew's season, so it is refused. An entry with *no* riders is allowed
+  and is what an entry list without addresses imports as; it scores in its own
+  rally and counts towards no season.
+  `driverName` / `navigatorName` are **copies** of the riders' names, the one
+  denormalisation in this feature — see *Why the crew names are copied* below.
+  **Unique index `{ rallyId, eq }`**, plus `{rallyId, driverId}` and
+  `{rallyId, navigatorId}`, which are **partial (`$type: 'objectId'`), not
+  sparse**: both ids are stored as an explicit `null` on an unregistered entry,
+  and a sparse index only skips a *missing* field — it would index every
+  unregistered entry under `null` and let the second one in a rally collide with
+  the first. All three `11000`s are mapped to a 409, and
+  `duplicateCrewMessage` reads `keyPattern` to say **which** of the three,
+  because "already entered" pointing at the wrong field sends an official
+  looking in the wrong place.
+  `PUT /api/rallies/[id]/participants/[eq]` upserts
+  because a participant usually exists as sheets before anybody registers the
+  crew; `POST /api/rallies/[id]/participants` only creates, so a taken EQ warns
+  instead of overwriting another crew. Deleting a participant removes the record
+  *and* their sheets in that rally. `POST .../participants/import` writes a whole
+  entry list in one `bulkWrite` of upserts — see the import section below.
+- `User` — `{ username, role, passwordHash, passwordChangedAt }`, an **official's**
+  account. Its `role` enum is `OFFICIAL_ROLES`, not `ROLES`: `participant` is a
+  `Person` and authenticates against that collection, so a `User` holding that
+  role would be an account that can never be what it claims. It hangs off nothing: an account owns no rally data, so deleting one
   cascades nothing and the sheets it typed stay where they are. The username is
   stored already lower-cased (`normalizeUsername`) so the **unique index** means
   what it says, and `passwordHash` never leaves the API — every user route
@@ -216,6 +268,124 @@ uses: `routes.length === 0` means "render exactly what you rendered before", not
   deliberately not restricted, a data-entry official reads it. The panel is
   gated on `manage:rally` in the component *and* every route it calls is guarded
   — hiding a button is never the control.
+
+## Riders, crews and the overall standings
+
+Three of the ten rallies a year decide nothing on their own: the club also runs
+a **season**. This is the half of the app that answers "who won the year".
+
+- **A rider is a `Person`, identified by their e-mail address**
+  (`app/lib/persons.ts`). That is the whole reason the identity is an address
+  and not a name: names repeat, and the address is what the rider signs in
+  with. Because it is stored on that one document and on nothing else,
+  *changing* it is an ordinary edit — every entry, crew and result follows,
+  with no second copy to update and nothing to migrate.
+- **A crew is two riders, unordered** (`app/lib/crews.ts`). Jan driving with
+  Piet navigating and Piet driving with Jan navigating are the same crew: they
+  rode the season together, and which seat each took on a Sunday is a property
+  of that entry. `crewKey` sorts the two ids before joining them, and that sort
+  *is* the rule — an implementation that forgot it would split a crew's season
+  in two and drop both halves below the threshold.
+- **A rider can be in several crews in a year, and be placed in each.** Three
+  rallies with Jan and three with Piet is two crews, and both are real. Nothing
+  in the grouping treats a person as belonging to one pairing.
+- **A crew's class is the higher of its two riders'**, on `B < A < H`
+  (`crewClassification`). Derived per entry, never typed, so promoting one
+  rider moves every crew they are half of. Only those three classes stand in an
+  order: `I`, `T`, `N` and `S` are not steps on the ladder, so a pair holding
+  one cannot be compared and takes the driver's — such a crew is simply not in
+  the running for an overall standing, which reads the main classes.
+- **A rally counts unless it says otherwise** (`Rally.countsForSeason`). Some
+  of the ten a year are unofficial — a training run, a rit that missed the
+  calendar — and those are ridden, typed and scored exactly like any other.
+  They just do not decide the season. The default is `true` because an
+  unofficial rally wrongly counted is a wrong champion and it takes one tick to
+  prevent.
+- **The year comes off `Rally.date`** (`rallyYear`), not from a `season` field:
+  a second field would be a second answer to a question the date already
+  answers. A rally that predates the field falls back to its `createdAt`
+  (`effectiveRallyDate`) rather than dropping out of its own year.
+
+### The two rules of a season (`app/lib/seasons.ts`)
+
+`minimumRallies` (3 by default) is how many official rallies the **same pair**
+has to have ridden together before they are placed at all. `countingResults`
+(0 = all, the club's usual) is how many of their results are added up — set it
+to 3 and a crew's best three count, so riding a fourth can only help.
+
+They live on a `Season` document per year, and a year nobody has configured
+reads the defaults. Writing them is `requireRallyAdmin()`: two numbers that
+decide who is champion carry the same weight as an answer key.
+
+### What is ranked, and what is not
+
+`computeOverallStandings` (pure, shared) groups, counts and ranks; it
+**scores nothing**. Every rally total it reads comes from
+`computeRallyStandings`, the same function behind that rally's own table and
+its printed result sheet — which is why `app/lib/rallyStandings.ts` exists at
+all: it used to be the body of the standings route, and a second aggregation
+over the same sheets would eventually answer something slightly different from
+the screen.
+
+- A crew **started** a rally when they have a card in it. A DNS is an entry and
+  nothing more: it counts towards neither the three rallies nor the total, so a
+  crew who stayed home is not charged for a rally they could not have scored
+  in. A **DNF** did ride — it counts, and its points stand.
+- A crew **short of the minimum is listed, not dropped**, behind the placed
+  crews and ordered by how close they came. A pair who rode two rallies
+  together should be able to see that they were one short.
+- A result the counting rule left out is **shown struck through**, not hidden:
+  an official reading the sheet wants to see what was dropped.
+- The season's class for a crew is the **highest** they rode in that year. A
+  crew promoted in August rides the season out in their new class — you cannot
+  win B after being moved up to A.
+- An entry whose two riders are not both registered **is not a crew** and has
+  no season. That is not a gap to paper over: an overall standing is awarded to
+  two named people, and an entry nobody registered names none.
+
+### Classification, and when a change reaches an entry
+
+A rider's class is set through a route of its own
+(`PUT /api/persons/[id]/classification`) rather than as a field on their
+details, for two reasons that are the same reason: it is the **only** thing a
+classification admin may change, and a guard is a poor place to express "this
+field but not those". Every change appends to `classificationHistory` with the
+day and the official who made it; a save that changes nothing writes nothing.
+
+The class stored on an **entry** is a snapshot, and it is deliberately not
+rewritten wholesale — a promotion in August must not restate what a crew won in
+March. But a rally that has not been ridden yet has nothing to restate, so
+entries in rallies dated **after today** follow the change
+(`applyToUnriddenEntries`). A rally with no date at all predates the feature and
+is left alone rather than guessed about.
+
+### Why the crew names are copied
+
+`Participant.driverName` / `navigatorName` are copies of the riders' names, and
+the one denormalisation here. Fifteen read paths print a crew — the entry list,
+the QR sheet, the standings, the WPT overview, the printed result sheet — and
+the name is what they print while the ids are what the season reasons about.
+Both are on the row, so none of them needs a join. The copy is kept honest by
+`PUT /api/persons/[id]`, which rewrites every entry of a rider it renames, and
+**only** when the name actually changed: renaming fifty entries on every save
+of a phone number would be a lot of writing to say nothing.
+
+## A rider's own dashboard
+
+`/participant` is what a rider sees: the rallies they rode, who they rode each
+of them with, what the crew scored, and where their crews stand in each season.
+
+- It reads `/api/me/results`, whose id is `session.user.sub` **and nothing
+  else**. That is the whole authorisation, and it is why the route exists
+  separately from `/api/persons/[id]/results` rather than being the same route
+  with a looser guard: a route that takes an id has to be *told* not to accept
+  somebody else's, and this one cannot be.
+- Both routes call one module (`app/lib/riderResults.ts`) and both render
+  through one component (`RiderResultsView`), so a rider and the official
+  looking at that rider cannot see different histories.
+- The season lines there are read off `loadSeasonStandings`, so "we are 2 of
+  the 3 rallies we need" on a dashboard is the same arithmetic that decides the
+  championship.
 
 ## Scoring rules (`app/lib/scoring.ts`)
 
@@ -514,13 +684,32 @@ reads the organisation's own spreadsheet.
   `readBody`'s 256 KB object-only guard — 56 crews is about 5 KB.
 - **Columns are guessed, not fixed** (`app/lib/participantImport.ts`): these
   sheets are exported for the entry system (the reference file has 28 columns,
-  `Equipe` / `EqKlasse` / `bNaam` (driver, "bestuurder") / `nNaam` (navigator)),
-  so the header row and the four columns are detected by name and then shown in
-  selects the official can correct. Rows are validated for the preview with the
-  same rules the API applies, and the bad ones are listed with their line number
-  instead of being dropped silently.
+  `Equipe` / `bNaam` (driver, "bestuurder") / `nNaam` (navigator)), so the
+  header row and the columns are detected by name and then shown in selects the
+  official can correct. Rows are validated for the preview with the same rules
+  the API applies, and the bad ones are listed with their line number instead of
+  being dropped silently.
+- **An e-mail address per seat is what turns an import into a registration.**
+  A rider is identified by their address, so a row that carries one for each
+  seat is matched to the register — creating the rider if this is their first
+  rally — and the entry comes out as a real crew that a season can group. A row
+  with only names still imports, as an entry with nobody in it; the preview's
+  **Crew** column says which of the two each row will be. Both addresses or
+  neither: half a crew would silently drop out of every standing it rode.
+- **A rider already in the register is never overwritten by a sheet.** The
+  register is the record, and a spreadsheet's spelling of somebody's name is
+  not a reason to rewrite it; only riders the import has to create take their
+  name from the file.
+- **There is no classification column any more**, and that is forced rather
+  than chosen: a class belongs to a rider now and a crew's is derived from its
+  two riders, so the single per-crew class an entry list carries has nowhere to
+  go — writing it onto both riders would promote the weaker half of every mixed
+  crew. Classes are set in the register, where they carry a history and an
+  owner.
 - **The import route re-validates everything** and is all-or-nothing: one bad row
   rejects the request, because a half-imported entry list is worse than none.
+  It also refuses a sheet that puts one rider in two cars, before writing
+  anything, rather than letting the unique index fail the write halfway through.
   Rows upsert on `{rallyId, eq}`, so re-importing a corrected sheet updates the
   crews. Nothing is re-scored — a participant record carries no points.
 
@@ -726,6 +915,13 @@ copies exactly that.
   entry list, the answer sheets and the printed QR codes stay behind: a duplicate
   is a rally waiting for its crews, not a second copy of last year's results. It
   therefore re-scores nothing — it has no sheets, because it has no crews.
+- **The copy is dated today, not on the original's day**, and keeps whether it
+  counts. A duplicate is next year's running of the same course, and two
+  rallies sharing one day would put the copy in the season the original already
+  won; the official sets the real date when they know it, and until then the
+  copy sits in the current season, which is where a rally being prepared
+  belongs. Whether an event is official is part of its setup, so an unofficial
+  rit duplicated for next year is still unofficial.
 - **The copy is named `<name>-copy`** and takes the code `<CODE>-COPY`, falling
   back to `-COPY2`, `-COPY3` … while another rally already answers to one: two
   rallies on one code would make a submission from the app ambiguous. Both are
@@ -795,27 +991,82 @@ stays sharp on paper.
 
 ## Accounts and roles (`app/lib/roles.ts`)
 
-Officials sign in with a **username and a password**; participants still have no
-account at all (a crew authorises on the code behind their QR). There are two
-roles and no plan for a third:
+Two kinds of people hold an account, and the difference runs deeper than the
+permissions:
 
-| | admin | data-entry |
-| --- | --- | --- |
-| Answer sheets: type, correct, delete | yes | **yes** |
-| Read rallies, stages, keys, cards, standings | yes | yes |
-| Rally, stages and answer keys | yes | no |
-| Entry list, time import, QR codes, re-score | yes | no |
-| Accounts | yes | no |
-| Own password | yes | yes |
+- **Officials** run the event. They are `User` documents and sign in with a
+  **username**.
+- **Riders** ride it. They are `Person` documents and sign in with their
+  **e-mail address**.
+
+`authenticate()` tells the two apart by *what was typed*: an address with an
+`@` in it can only be a rider's, anything else can only be a username. So the
+two logins are one form and one endpoint without either being able to shadow
+the other — a username cannot contain `@` (`isValidUsername`) and an address
+must.
+
+A crew handing a card in from the Android app still authorises on neither: the
+code behind the QR they scanned is the whole credential.
+
+| | admin | data-entry | classification-admin | participant |
+| --- | --- | --- | --- | --- |
+| Answer sheets: type, correct, delete | yes | **yes** | no | no |
+| Read a stage's **answer key** | yes | yes | **no** | no |
+| Read rallies, cards, standings, riders | yes | yes | yes | no |
+| Rally, stages and answer keys | yes | no | no | no |
+| Entry list, time import, QR codes, re-score | yes | no | no | no |
+| The rider register (add, edit, delete) | yes | no | no | no |
+| A rider's **classification** | yes | no | **yes** | no |
+| Accounts | yes | no | no | no |
+| Their **own** results | — | — | — | yes |
+| Own password | yes | yes | yes | yes |
+
+**`requireSession()` means "any signed-in official", not "anybody signed in".**
+Riders hold a session now, and the twenty-odd read routes of the rally guard
+themselves with exactly that call — so the moment a `Person` could hold one,
+"is signed in" stopped being the same question as "may read this rally's entry
+list". A rider reaching an official route gets a **403**, not a 401: they are
+perfectly well signed in, and bouncing them to a login screen would not help.
+`requireAnyAccount()` is the one guard that takes both, and exactly one route
+uses it — `/api/auth/password`, which is about your own account whoever you
+are.
+
+**`view:keys` was split out of `view:results`** when the classification admin
+arrived: that official reads results and may not see the correct letters, so
+"is an official" stopped being enough to hand a key over.
+
+It **withholds rather than refuses**. `GET /api/stages` and
+`GET /api/stages/[id]` still answer an official without it — the stage list is
+how every page of a rally knows what its stages are called and in what order
+they run, and refusing it would break the dashboard for the one role that
+lives in the results — but the three key arrays come back **empty**
+(`withoutScoreKeys`). Empty rather than absent, because a dozen client files
+do arithmetic over `stage.scoreKey` and an empty key scores zero where a
+missing one throws.
+
+The two pages that would *show* those zeros as though they meant something —
+the stage page and a participant's card, which both recompute from the keys
+rather than reading a stored total — are in `RESTRICTED_PAGES` behind
+`view:keys` and refused outright. "Not you" beats a wrong number.
+
+For the same reason **writing an answer sheet is now `enter:sheets`** rather
+than merely a session: it was the latter back when the only two roles were the
+two that may both type a card.
 
 `app/lib/roles.ts` is the one table: it is pure and shared, so the buttons a
 view hides, the pages `middleware.ts` gates and the routes `api-guard.ts`
 refuses cannot drift apart. **Hiding a button is never the control** — the route
 guard is; a hidden button only spares an official a 403.
 
-- **A session says who you are.** The signed cookie carries `{sub, username,
-  role}` (`app/lib/session.ts`), which is what lets middleware gate an admin
-  page at the edge, where there is no database. It is the role the account had
+- **A session says who you are, and which collection you are in.** The signed
+  cookie carries `{sub, username, kind, role}` (`app/lib/session.ts`), which is
+  what lets middleware gate an admin page at the edge, where there is no
+  database. `kind` is `official` or `participant` and decides **which
+  collection `currentUser()` reads** — it is a claim rather than something
+  inferred from the role, because a lookup that guesses is a lookup that can be
+  pointed at the wrong table. A token minted before the claim existed has no
+  `knd` and reads as `official`, which is what every session in the wild was;
+  a token whose `kind` and `role` disagree is refused outright. It is the role the account had
   at sign-in: `requireSession()` re-reads the account through
   `currentUser()` on every API request, so a demotion or a deletion takes effect
   on the next request rather than when the 24-hour token expires.
@@ -848,6 +1099,12 @@ guard is; a hidden button only spares an official a 403.
 app/
   api/            route handlers (rallies, stages, answersheets, auth, standings,
                   users + users/[id] to manage the officials' accounts,
+                  persons + persons/[id] for the rider register,
+                  persons/[id]/classification (a classification admin's one
+                  write) and persons/[id]/results (one rider's history),
+                  me + me/results, the riders' own half of the API,
+                  standings/overall for the ranking of one season,
+                  seasons/[year] for the two rules that decide it,
                   auth/login + auth/check + auth/password (own password),
                   rallies/[id]/routes to list/add the legs of a rally and to
                   reorder them, .../[routeId] to rename or remove one,
@@ -863,6 +1120,16 @@ app/
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env,
                   layout (PAGE_CONTAINER, the one page width of the app),
+                  persons (a rider: e-mail identity, vehicle, contact, shared
+                  client + server) + crews (the unordered pair two riders make),
+                  seasons (a rally year and the two rules that decide it) +
+                  overallStandings (who won the year, pure and shared) +
+                  seasonStandings (that ranking read out of the database),
+                  rallyStandings (one rally's standings as a module, so the
+                  season can read them without a second aggregation),
+                  riderResults (one rider's history, behind /api/me and
+                  /api/persons/[id]/results) + crewRegistration (two rider ids
+                  off the wire into a stored entry),
                   missingSheets (a stage a crew handed no card in for, scored as
                   the blank card it stands for, shared client + server),
                   standings (finished / DNF / DNS: the three groups a result
@@ -881,9 +1148,14 @@ app/
                   duplicate gets, shared client + server),
                   appCards (codes and identifiers of the Android app) + qrcode
   models/         Mongoose schemas
+  persons/        the rider register, and persons/[id] for one rider: their
+                  details, their classification with its history, and
+                  everything they have ridden (admin + classification admin)
+  participant/    a rider's own dashboard (the participant role only)
+  standings/      standings/overall: the ranking of one season
   rallies/...     pages (rally dashboard — the Stages / Standings / Participants
-                  / Times tabs — rallies/[id]/edit for its name and
-                  code, stages, answer sheets, participant view,
+                  / Times tabs — rallies/[id]/edit for its name, code, date and
+                  whether it counts, stages, answer sheets, participant view,
                   stages/[stageId]/qr-codes: the printable sheet of QR codes,
                   rallies/[id]/standings/print: the results on A4, one sheet
                   per classification)
@@ -908,7 +1180,11 @@ npm run lint      # ESLint — run before committing
 
 There is **no test suite**. Verify changes by running the app and, for scoring
 work, by checking a sheet against the stage key by hand. Do not add a test
-framework unless asked.
+framework unless asked. The pure modules (`scoring`, `timeScoring`, `routes`,
+`standings`, `overallStandings`, `crews`, `participants`) are free of
+`server-only` precisely so they can be compiled and run on their own with
+`npx tsc <file> --outDir <tmp> --module commonjs` when a rule needs checking by
+hand.
 
 Environment (`.env.local`, see `.env.example` and `README.md`): `MONGODB_URI`,
 `SESSION_SECRET` (≥32 chars), `APP_PASSWORD_HASH` (`<saltHex>:<hashHex>`).
@@ -921,10 +1197,14 @@ Do not regress them.**
 
 - Every API route starts with a guard from `app/lib/api-guard.ts` and reads its
   body with `readBody()` (256 KB cap, object-only JSON). The guard is
-  `requireSession()` for a read and for writing an **answer sheet**,
+  `requireSession()` for a read (**any signed-in official** — never a rider),
+  `requirePermission('enter:sheets')` for writing an **answer sheet**,
+  `requireKeyAccess()` for reading a stage's **answer key**,
   `requireRallyAdmin()` for **everything else that writes** — a rally, its
   routes, a stage or its key, the entry list, the imports, the access codes, the
-  re-score — and
+  re-score, a season's rules — `requirePersonAdmin()` for the rider register,
+  `requireClassificationAdmin()` for a rider's class, `requireParticipant()`
+  for the `/api/me/*` routes and
   `requireUserAdmin()` for `/api/users`. They all return
   `{ ok, user | response }`, so a handler starts
   `if (!session.ok) return session.response;` and can read `session.user`.
@@ -935,8 +1215,18 @@ Do not regress them.**
   scanned-code check, a per-IP rate limit and a one-submission lock. Do not add
   a third public route without the same three.
 - **A new mutating route defaults to `requireRallyAdmin()`.** Typing a
-  participant's card is the one thing a data-entry account may change; if a new
-  route is not that, it is an admin's.
+  participant's card is the one thing a data-entry account may change, and a
+  rider's class the one thing a classification admin may; if a new route is
+  neither, it is an admin's.
+- **A route that returns one rider's data takes the id from the session, never
+  from the request.** That is the whole difference between `/api/me/results`
+  and `/api/persons/[id]/results`, which share a module and differ only in
+  where the id comes from.
+- **Never interpolate a raw `$in` into a Mongoose filter.**
+  `sanitizeFilter` is on globally (`app/lib/mongodb.ts`) and wraps any operator
+  that reaches a filter in `$eq`, which turns the query into a cast error.
+  `mongoose.trusted({ $in: ids })` is the documented opt-out, and every `$in`
+  in this app uses it.
 - **A `routeId` off the wire is looked up against the *stored* stage's rally**,
   never against a rally id from the body (`PUT /api/stages/[id]`), and on POST
   against the rally's own route list already in hand. A route of another rally
@@ -1030,6 +1320,34 @@ Do not regress them.**
   from that list still refuses every write, it just looks broken instead of
   saying "not you".
 
+- **`RESTRICTED_PAGES` cannot express a participant**, and that is why
+  middleware checks the role for one *before* consulting it. The list only ever
+  refuses — a page it does not name is allowed — so a role holding **no**
+  permission at all sails straight through it. A rider is handled by an
+  allow-list (`PARTICIPANT_PAGES` / `PARTICIPANT_API`) instead, and is
+  redirected to their own dashboard rather than to `/forbidden`: they were not
+  refused anything, they followed a link into the officials' side of the app.
+
+- **A `Person` is not deleted once they have ridden.** The route refuses with a
+  409, because removing them would leave every entry they are half of naming a
+  rider who does not exist — which silently drops their crew out of the overall
+  standings and leaves a result sheet half-named. A rider who has ridden is
+  part of the record.
+
+- **`default: null` and `sparse` do not mix.** The two indexes that stop a
+  rider being entered twice in one rally are *partial*
+  (`$type: 'objectId'`), because Mongoose writes an explicit `null` for an
+  unregistered entry and a sparse index only skips a **missing** field — it
+  would index every unregistered entry of a rally under `null` and refuse the
+  second one. Any future unique index over an optional reference has the same
+  hazard.
+
+- **Changing a rally's date can move it into another season**, and changing
+  `countsForSeason` takes it out of one. Neither re-scores anything — the
+  rally's own standings are untouched — but both change who is champion, which
+  is why they are `requireRallyAdmin()` and why a `PUT` that omits them leaves
+  the stored values alone rather than clearing them.
+
 - A card handed in from the app is a sheet write like any other, so it
   re-scores that participant's rally. If you add another way for a card to
   arrive, it has to call `rescoreParticipants` too.
@@ -1063,4 +1381,11 @@ Do not regress them.**
   single-container deployment. Scaling out needs a shared store.
 - `COOLIFY.md` still mentions the pre-refactor `quizzes` /
   `participantanswers` collections; the live collections are `rallies`,
-  `stages`, `answersheets`.
+  `stages`, `answersheets`, `participants`, `people` (Mongoose pluralises
+  `Person` that way) and `seasons`.
+
+- **The overall standings read every official rally of a year in turn.** Ten
+  rallies of fifty crews is a handful of queries each and it is fine; if the
+  club ever runs a calendar long enough for that to hurt, the fix is to cache
+  `computeRallyStandings` per rally, not to write a second aggregation over the
+  sheets.

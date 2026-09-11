@@ -3,12 +3,18 @@
 // Structure:
 //   Rally  -> the top-level event an admin creates first
 //   Stage  -> a rally has many stages; each stage holds an answer key
-//   Participant -> optional details of one EQ number in a rally (class, crew).
+//   Person -> one human being who rides rallies, across every event and every
+//             season. Identified by their e-mail address, and the record a
+//             crew, a classification and an overall standing all hang off.
+//   Season -> the two numbers that decide how one rally year is won.
+//   Participant -> the crew registered under one EQ number of one rally: two
+//             Persons, the class they ride in and the car they brought.
 //   AnswerSheet -> a participant's filled-in sheet for a single stage.
 //   CardAccess  -> the code behind the QR a participant scans to pull one
 //                  {stage, eq} card into the Android app.
 //   User        -> an official's account: a username, a password and one of the
-//                  two roles (admin / data-entry).
+//                  three official roles (admin / data-entry /
+//                  classification-admin).
 //                  A participant (eq) can have many answer sheets per rally
 //                  (one per stage). The rally winner is decided by the sum of
 //                  the penalty points of all of a participant's answer sheets.
@@ -18,7 +24,12 @@ import 'server-only';
 import mongoose from 'mongoose';
 
 import { CLASSIFICATIONS } from '../lib/participants';
-import { MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH, ROLES } from '../lib/roles';
+import { FUEL_TYPES, MAX_EMAIL_LENGTH, MAX_PHONE_LENGTH } from '../lib/persons';
+import {
+  MAX_USERNAME_LENGTH,
+  MIN_USERNAME_LENGTH,
+  OFFICIAL_ROLES,
+} from '../lib/roles';
 
 // A rally is the top-level event. Stages and answer sheets hang off of it.
 const RallySchema = new mongoose.Schema({
@@ -40,6 +51,31 @@ const RallySchema = new mongoose.Schema({
     uppercase: true,
     maxlength: 32,
     index: { unique: true, sparse: true },
+  },
+  // The day the rally was ridden. It is what puts a rally in a season — the
+  // year is read off this date (app/lib/seasons.ts) rather than stored beside
+  // it, because a second field would be a second answer to a question the date
+  // already answers.
+  //
+  // Deliberately not `required`: a rally created before this field existed has
+  // none, and the read paths fall back to `createdAt` for it rather than
+  // dropping it out of its own year. Every rally created from now on has one —
+  // POST /api/rallies demands it.
+  date: {
+    type: Date,
+    index: true,
+  },
+  // Whether this rally counts towards the overall standings of its year. Some
+  // of the ten rallies a year are unofficial — a training run, a rit that did
+  // not make the calendar — and those are ridden, typed and scored exactly like
+  // any other. They simply do not decide the season.
+  //
+  // Defaults to true: a rally is official unless somebody says otherwise, which
+  // is both the common case and the safe one — an unofficial rally wrongly
+  // counted is a wrong champion, and it takes a tick to prevent.
+  countsForSeason: {
+    type: Boolean,
+    default: true,
   },
   createdAt: {
     type: Date,
@@ -207,9 +243,175 @@ const StageSchema = new mongoose.Schema({
   }],
 });
 
-// A participant of a rally: the crew riding under an EQ number. Optional —
-// nothing in the scoring depends on it, an EQ with no record is just an EQ
-// nobody named — it records the class the crew rides in and who is in the car.
+// One human being who rides rallies. The registry the whole participant side
+// of this app hangs off: a crew is two of these, a classification belongs to
+// one of these, and an overall standing is the same two of these turning up
+// together three times.
+//
+// **The e-mail address is the identity.** It is what an official looks a rider
+// up by and what a participant signs in with, and it is the only unique thing
+// about a person — two riders share a name often enough that the club has
+// stopped being surprised by it. Because the address lives here and nowhere
+// else, correcting it is one field on one document and every entry, crew and
+// result follows automatically: there is no second copy to update.
+//
+// A Person is not a `User`. Officials are `User` documents and sign in with a
+// username; participants are these and sign in with their address. Keeping them
+// apart is what stops an official's account from carrying a food restriction
+// and a participant's record from carrying a rally permission.
+const PersonSchema = new mongoose.Schema({
+  // Stored already normalised (lower case, trimmed) by `normalizeEmail`, so the
+  // unique index means what it says: "Jan@Example.com" and "jan@example.com"
+  // are one rider.
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+    lowercase: true,
+    maxlength: MAX_EMAIL_LENGTH,
+  },
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 200,
+  },
+  phone: {
+    type: String,
+    trim: true,
+    maxlength: MAX_PHONE_LENGTH,
+    default: '',
+  },
+  // What this rider cannot eat. The club caters the finish, and the answer is
+  // free text because "no pork, and my navigator is coeliac" is the shape it
+  // actually arrives in.
+  foodRestrictions: {
+    type: String,
+    trim: true,
+    maxlength: 500,
+    default: '',
+  },
+  // The class this rider rides in, or '' while it has not been decided. A
+  // *crew's* class is derived from its two members' (app/lib/participants.ts)
+  // and is never typed in: that is the whole reason the class lives here rather
+  // than on the entry.
+  classification: {
+    type: String,
+    enum: [...CLASSIFICATIONS, ''],
+    default: '',
+  },
+  // When the class above was last changed. The head of `classificationHistory`,
+  // kept beside it so a list of two hundred riders can show "changed in March"
+  // without sending every rider's whole history down the wire.
+  classificationChangedAt: {
+    type: Date,
+    default: null,
+  },
+  // Every change of the class, oldest first. Written only when the class
+  // actually moves — a save that leaves it alone adds nothing — so this reads
+  // as what happened to the rider rather than as a log of who pressed Save.
+  // It is what answers the question that always follows a promotion: when were
+  // they moved up, and by whom.
+  classificationHistory: [{
+    from: {
+      type: String,
+      enum: [...CLASSIFICATIONS, ''],
+      default: '',
+    },
+    to: {
+      type: String,
+      enum: [...CLASSIFICATIONS, ''],
+      default: '',
+    },
+    changedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    // The username of the official who made the change.
+    changedBy: {
+      type: String,
+      trim: true,
+      maxlength: MAX_USERNAME_LENGTH,
+      default: '',
+    },
+  }],
+  // scrypt, as "<saltHex>:<hashHex>" — the same format a `User`'s password is
+  // stored in, verified by the same `app/lib/passwords.ts`. Null for a rider
+  // who has no login: most of the entry list, most of the time. A rider without
+  // one is still scored, still crewed and still in the overall standings; they
+  // simply cannot sign in and look at it themselves.
+  passwordHash: {
+    type: String,
+    default: null,
+  },
+  // When the password was last set. `requireSession()` refuses a token issued
+  // before it, exactly as for an official, so a reset signs the rider's other
+  // sessions out.
+  passwordChangedAt: {
+    type: Date,
+    default: null,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+// The settings of one rally year. There is no "create a season" step — a rally
+// with a date in it is the season starting — so a year with no document here is
+// read with the defaults in `app/lib/seasons.ts`. A document exists only for a
+// year an official has changed something about.
+const SeasonSchema = new mongoose.Schema({
+  year: {
+    type: Number,
+    required: true,
+    unique: true,
+    min: 2000,
+    max: 2200,
+  },
+  // How many of a crew's results are added up: their best N, or 0 for all of
+  // them. See app/lib/seasons.ts.
+  countingResults: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  // How many official rallies a pair has to have ridden together before they
+  // are placed at all.
+  minimumRallies: {
+    type: Number,
+    default: 3,
+    min: 1,
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+// A participant of a rally: the **crew** registered under one EQ number, and
+// the car they brought.
+//
+// A crew is two `Person`s — a driver and a navigator — and the class it rides
+// in is the higher of their two classes (`crewClassification`), derived at
+// registration rather than typed, so promoting one rider moves every crew they
+// are half of. The pairing itself is what an overall standing is grouped on,
+// and it is unordered: swapping seats between rallies is the same crew
+// (app/lib/crews.ts).
+//
+// `driverName` / `navigatorName` are **copies** of the two riders' names as
+// they stood when the entry was registered, and the one denormalisation in this
+// feature. They are what the entry list, the QR sheet, the standings and the
+// printed result sheet read, and they are refreshed whenever the person is
+// renamed (`PUT /api/persons/[id]`), so the copy cannot go stale while the
+// record it came from is edited. The alternative — a join in each of the
+// fifteen read paths that show a crew — buys nothing here: the name is what is
+// printed, the ids are what is reasoned about, and both are on the row.
 const ParticipantSchema = new mongoose.Schema({
   rallyId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -223,8 +425,38 @@ const ParticipantSchema = new mongoose.Schema({
     min: 1,
     max: 100,
   },
-  // One of the class letters, or '' while the class is still unknown.
+  // The two riders. Indexed because a rider's dashboard asks "which rallies was
+  // I in", which is exactly a query on these.
+  driverId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Person',
+    default: null,
+    index: true,
+  },
+  navigatorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Person',
+    default: null,
+    index: true,
+  },
+  // The class the **crew** rides in: the higher of the driver's and the
+  // navigator's on B < A < H. Derived and stored at registration, because it is
+  // what the rally was ridden and printed under — a promotion in August must
+  // not restate what a crew won in March.
   classification: {
+    type: String,
+    enum: [...CLASSIFICATIONS, ''],
+    default: '',
+  },
+  // Each rider's own class, as it stood on the day. Stored beside the crew's so
+  // an entry can be read back without resolving two people whose classes have
+  // since moved.
+  driverClassification: {
+    type: String,
+    enum: [...CLASSIFICATIONS, ''],
+    default: '',
+  },
+  navigatorClassification: {
     type: String,
     enum: [...CLASSIFICATIONS, ''],
     default: '',
@@ -241,6 +473,16 @@ const ParticipantSchema = new mongoose.Schema({
     maxlength: 200,
     default: '',
   },
+  // The car this crew brought to **this** rally. On the entry rather than on a
+  // person: a crew turns up in whatever they have that weekend, and last year's
+  // entry should keep saying which car actually rode it.
+  vehicle: {
+    brand: { type: String, trim: true, maxlength: 100, default: '' },
+    model: { type: String, trim: true, maxlength: 100, default: '' },
+    licensePlate: { type: String, trim: true, maxlength: 32, default: '' },
+    fuelType: { type: String, enum: [...FUEL_TYPES, ''], default: '' },
+    insurer: { type: String, trim: true, maxlength: 200, default: '' },
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -250,6 +492,26 @@ const ParticipantSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
+
+// A rider may not be entered twice in one rally, in either seat: a person
+// cannot be in two cars at once, and counting them twice would give one of
+// those "crews" a season it never rode.
+//
+// **Partial, not sparse**, and the difference is the whole reason this comment
+// exists. Both ids are `null` — not absent — on an entry typed straight onto a
+// card before anybody registered the riders, and a *sparse* index only skips a
+// document where the field is **missing**. It would therefore index every
+// unregistered entry under `null` and let the second one in a rally collide
+// with the first, which is the common case on an imported entry list.
+// `$type: 'objectId'` indexes only the entries that actually name a rider.
+ParticipantSchema.index(
+  { rallyId: 1, driverId: 1 },
+  { unique: true, partialFilterExpression: { driverId: { $type: 'objectId' } } }
+);
+ParticipantSchema.index(
+  { rallyId: 1, navigatorId: 1 },
+  { unique: true, partialFilterExpression: { navigatorId: { $type: 'objectId' } } }
+);
 
 // An EQ number identifies one crew within a rally, so a rally holds at most one
 // record per participant. As with the answer sheets, the index is the real
@@ -428,12 +690,14 @@ const CardAccessSchema = new mongoose.Schema({
 CardAccessSchema.index({ stageId: 1, eq: 1 }, { unique: true });
 
 
-// An account of an official. There are two kinds — an admin runs the rally, a
-// data-entry user types cards for it — and what each may do lives in
-// `app/lib/roles.ts`, not here.
+// An account of an official. There are three kinds — an admin runs the rally, a
+// data-entry user types cards for it, a classification admin sets the riders'
+// classes — and what each may do lives in `app/lib/roles.ts`, not here.
 //
-// Participants have no account at all: a crew authorises on the code behind the
-// QR they scanned (see CardAccess above).
+// A participant has no account *here*: they sign in as the `Person` they are,
+// with their e-mail address. A crew handing a card in from the Android app
+// authorises on neither — the code behind the QR they scanned is the whole
+// credential (see CardAccess above).
 const UserSchema = new mongoose.Schema({
   // Stored already normalised (lower case, trimmed) by `normalizeUsername`, so
   // the unique index means what it says: "jurian" and "Jurian" are one account.
@@ -446,10 +710,14 @@ const UserSchema = new mongoose.Schema({
     minlength: MIN_USERNAME_LENGTH,
     maxlength: MAX_USERNAME_LENGTH,
   },
+  // An account here is an **official's**. `participant` is deliberately not in
+  // this list: a participant is a `Person` and authenticates against that
+  // collection, so a `User` holding that role would be an account that can
+  // never be what it claims.
   role: {
     type: String,
     required: true,
-    enum: [...ROLES],
+    enum: [...OFFICIAL_ROLES],
   },
   // scrypt, as "<saltHex>:<hashHex>" — the format app/lib/passwords.ts writes
   // and scripts/hash-password.mjs prints. A plaintext password is never stored,
@@ -475,6 +743,8 @@ const UserSchema = new mongoose.Schema({
 export const Rally = mongoose.models.Rally || mongoose.model('Rally', RallySchema);
 export const Route = mongoose.models.Route || mongoose.model('Route', RouteSchema);
 export const Stage = mongoose.models.Stage || mongoose.model('Stage', StageSchema);
+export const Person = mongoose.models.Person || mongoose.model('Person', PersonSchema);
+export const Season = mongoose.models.Season || mongoose.model('Season', SeasonSchema);
 export const Participant = mongoose.models.Participant ||
   mongoose.model('Participant', ParticipantSchema);
 export const AnswerSheet = mongoose.models.AnswerSheet ||
