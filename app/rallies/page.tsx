@@ -160,61 +160,63 @@ export default function RalliesPage() {
               )}
             </div>
           ) : (
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                    Rally Name
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                    Created At
-                  </th>
-                  <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {rallies.map((rally) => (
-                  <tr key={rally._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-lg font-medium text-gray-900">{rally.name}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-base text-gray-600">{formatDate(rally.createdAt)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <div className="flex justify-end space-x-4">
-                        <Link
-                          href={`/rallies/${rally._id}`}
-                          className="text-blue-600 hover:text-blue-900 font-medium text-base"
-                        >
-                          Open
-                        </Link>
-                        {isAdmin && (
-                          <>
-                            <button
-                              onClick={() => handleDuplicateRally(rally)}
-                              disabled={duplicating === rally._id}
-                              title="Create a new rally with the stages and answer keys of this one"
-                              className="text-indigo-600 hover:text-indigo-900 font-medium text-base disabled:opacity-60"
-                            >
-                              {duplicating === rally._id ? 'Duplicating…' : 'Duplicate'}
-                            </button>
-                            <button
-                              onClick={() => handleDeleteRally(rally._id)}
-                              className="text-red-600 hover:text-red-900 font-medium text-base"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                      Rally Name
+                    </th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                      Created At
+                    </th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {rallies.map((rally) => (
+                    <tr key={rally._id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-lg font-medium text-gray-900">{rally.name}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-base text-gray-600">{formatDate(rally.createdAt)}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="flex justify-end space-x-4">
+                          <Link
+                            href={`/rallies/${rally._id}`}
+                            className="text-blue-600 hover:text-blue-900 font-medium text-base"
+                          >
+                            Open
+                          </Link>
+                          {isAdmin && (
+                            <>
+                              <button
+                                onClick={() => handleDuplicateRally(rally)}
+                                disabled={duplicating === rally._id}
+                                title="Create a new rally with the stages and answer keys of this one"
+                                className="text-indigo-600 hover:text-indigo-900 font-medium text-base disabled:opacity-60"
+                              >
+                                {duplicating === rally._id ? 'Duplicating…' : 'Duplicate'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteRally(rally._id)}
+                                className="text-red-600 hover:text-red-900 font-medium text-base"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 

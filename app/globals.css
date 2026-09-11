@@ -27,6 +27,27 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/*
+ * The page itself must never scroll sideways — see PAGE_CONTAINER's comment
+ * in app/lib/layout.ts. The wide grids (a controlekaart, the WPT overview)
+ * are already wrapped in their own `overflow-x-auto` container so *they*
+ * scroll instead; this is the backstop for the rest of the page, so that
+ * something briefly wider than the viewport (an overlong username in the
+ * nav, a stray fixed width) widens a scrollbar inside itself rather than the
+ * whole body — which on a touchscreen is what makes swiping across an inner
+ * grid drag the whole page instead.
+ *
+ * Screen-only: the results print page is deliberately wider than
+ * PAGE_CONTAINER for A4 landscape (see "Printing the standings" in
+ * CLAUDE.md), and print layout must not be clipped by this.
+ */
+@media screen {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+}
+
 /* Form controls default to readable text; utility classes still win. */
 @layer base {
   input,

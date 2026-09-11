@@ -511,13 +511,18 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
             </div>
           </div>
 
-          <nav className="flex gap-1 -mb-px" aria-label="Rally sections">
+          {/* The four tabs do not fit one row at phone width; rather than wrap
+              (which would push the panel below down an unpredictable amount
+              as an official switches tabs) or clip, this scrolls sideways
+              inside itself — the same pattern the wide grids below use, and
+              the reason the page itself is not allowed to (see globals.css). */}
+          <nav className="flex gap-1 -mb-px overflow-x-auto" aria-label="Rally sections">
             {tabs.map((entry) => (
               <button
                 key={entry.id}
                 onClick={() => switchTab(entry.id)}
                 aria-current={tab === entry.id ? 'page' : undefined}
-                className={`px-4 py-2.5 text-base font-semibold border-b-2 transition-colors ${
+                className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-base font-semibold border-b-2 transition-colors ${
                   tab === entry.id
                     ? 'border-blue-600 text-blue-700'
                     : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
