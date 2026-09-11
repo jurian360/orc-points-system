@@ -126,12 +126,20 @@ const Navigation: React.FC = () => {
 // over every page, so middleware has somewhere to redirect unauthenticated
 // visitors to. Everything else renders behind the nav; middleware has already
 // verified the session by the time this runs.
+//
+// A rally's public results page (/public/rallies/[id]) is the other
+// exception: it is reached by anyone with the link or a printed QR code, most
+// of them with no account at all, so the officials' own nav — Rallies, Users,
+// Logout — would be both useless to them and a set of links middleware would
+// only bounce them out of. It builds its own minimal header instead.
+const noNav = (pathname: string) => pathname === '/login' || pathname.startsWith('/public/');
+
 const ClientLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const pathname = usePathname();
 
   return (
     <AuthProvider>
-      {pathname === '/login' ? (
+      {noNav(pathname) ? (
         <main>{children}</main>
       ) : (
         <>

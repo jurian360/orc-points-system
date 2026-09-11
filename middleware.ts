@@ -14,6 +14,16 @@ const PUBLIC_API_PREFIX = '/api/auth/';
 // the whole credential (see app/api/app/card/route.ts).
 const PUBLIC_APP_PREFIX = '/api/app/';
 
+// A rally's public results page and the data route behind it
+// (app/rallies/[id]/public-results is where an admin turns this on — see
+// "Public results page" in CLAUDE.md). Public because that is the point: an
+// admin who has enabled it wants anyone with the link, or the printed QR
+// code, to read it with no account. The route itself still checks
+// `publicResultsEnabled` per rally, so this prefix only ever reaches a page or
+// an API that answers "not found" for a rally that is not opted in.
+const PUBLIC_RESULTS_PAGE_PREFIX = '/public/';
+const PUBLIC_RESULTS_API_PREFIX = '/api/public/';
+
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 // Pages only an admin may open. A data-entry account types cards and reads the
@@ -33,6 +43,7 @@ const RESTRICTED_PAGES: { pattern: RegExp; permission: Permission }[] = [
   { pattern: /^\/rallies\/[^/]+\/stages\/new$/, permission: 'manage:rally' },
   { pattern: /^\/rallies\/[^/]+\/stages\/[^/]+\/edit$/, permission: 'manage:rally' },
   { pattern: /^\/rallies\/[^/]+\/stages\/[^/]+\/qr-codes$/, permission: 'manage:rally' },
+  { pattern: /^\/rallies\/[^/]+\/public-results$/, permission: 'manage:rally' },
 ];
 
 // The permission a page needs, or null when any signed-in official may open it.
@@ -77,6 +88,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname.startsWith('/api/');
   const isAppApi = pathname.startsWith(PUBLIC_APP_PREFIX);
+  const isPublicResultsApi = pathname.startsWith(PUBLIC_RESULTS_API_PREFIX);
 
   // CSRF defense in depth. The session cookie is SameSite=Lax, which already
   // blocks cross-site form posts, but `request.json()` parses any content type,
@@ -85,7 +97,8 @@ export async function middleware(request: NextRequest) {
   // The app endpoints are exempt: they are cross-origin by nature (a phone, not
   // a page on this site) and there is no ambient authority for a forged request
   // to ride on — they carry no session cookie and authorise on the scanned code
-  // alone.
+  // alone. The public results API is GET-only (never in UNSAFE_METHODS), so it
+  // never reaches this check regardless.
   if (UNSAFE_METHODS.has(request.method) && !isAppApi && !isSameOrigin(request)) {
     return NextResponse.json({ error: 'Cross-origin request blocked' }, { status: 403 });
   }
@@ -106,7 +119,11 @@ export async function middleware(request: NextRequest) {
   }
 
   const isPublic =
-    pathname.startsWith(PUBLIC_API_PREFIX) || isAppApi || PUBLIC_PATHS.includes(pathname);
+    pathname.startsWith(PUBLIC_API_PREFIX) ||
+    isAppApi ||
+    isPublicResultsApi ||
+    PUBLIC_PATHS.includes(pathname) ||
+    pathname.startsWith(PUBLIC_RESULTS_PAGE_PREFIX);
 
   if (!isPublic) {
     const session = await readSessionToken(request.cookies.get(SESSION_COOKIE)?.value);

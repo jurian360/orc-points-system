@@ -489,6 +489,13 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   >
                     {rescoring ? 'Recalculating…' : 'Recalculate Scores'}
                   </button>
+                  <Link
+                    href={`/rallies/${rally._id}/public-results`}
+                    title="Let anyone with the link, or a printed QR code, read this rally's standings with no account"
+                    className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 font-medium border border-gray-300"
+                  >
+                    Public Results
+                  </Link>
                 </>
               )}
 
