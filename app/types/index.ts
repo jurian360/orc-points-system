@@ -43,6 +43,10 @@ export interface Stage {
   timeScoreKey?: TimeScoreKeyRow[];
   merkScoreKey?: MerkScoreKeyRow[];
   timeConfig?: StageTimeConfig;
+  // Whether this stage's ORC rows run 1-60 and its merk rows 1-12 instead of
+  // 1-30/1-6 — a crew ran out of rows mid-stage and switched to a second
+  // paper card. The time module is unaffected either way.
+  usesSecondCard?: boolean;
 }
 
 export interface ScoreKeyRow {

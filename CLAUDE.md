@@ -81,6 +81,8 @@ Rally ──< Stage ──< AnswerSheet
   because the merk check is vertical, both are read as sets over the whole column
   and its `maxPenalty` fields are not row caps — they are summed into one cap on
   the whole column.
+  **`usesSecondCard`** doubles `scoreKey` to 60 rows and `merkScoreKey` to 12 —
+  see *Second answer card* below — while `timeScoreKey` stays 10 either way.
 - `AnswerSheet` — `{ eq, rallyId, stageId, answers[], timePenalties[], merkScores[],
   totalPenalty, timePenalty, merkPenalty, disqualified, startDelta, endDelta }`.
   **Officials type letters and times, never points.** On an ORC row they type only
@@ -117,6 +119,11 @@ Rally ──< Stage ──< AnswerSheet
   it cannot be guessed from an EQ number. `submittedAt` is the hand-in lock: a
   code stores one card, and a second submission is refused until an official
   reopens it. See the Android app section below.
+  It also carries `part` (default `1`) — inert groundwork for a future second
+  QR code on a `usesSecondCard` stage, not wired to any route yet. The unique
+  index stays `{stage, eq}` only; widening it to include `part` is a real
+  migration on a live collection, deliberately not done. See *Second answer
+  card*.
 - `Rally.code` and `Stage.cardId` are what a submission from the app is resolved
   by. A rally gets its code when an official creates it — they type it, starting
   from a suggestion derived from the name (`app/lib/rallyCodes.ts`, pure and
@@ -503,6 +510,77 @@ above already keep the standings correct, so this is for what happens outside
 them: a scoring rule that shipped after the cards were typed, or a document
 edited straight in the database. It takes no body — the rally in the path is the
 whole request.
+
+## Second answer card (`Stage.usesSecondCard`)
+
+30 ORC rows are not always enough. On a stage that needs more, the crew
+switches to a second paper card mid-stage — continuing their ORC letters as
+rows 31-60 **and their merk letters as rows 7-12**, since merk is sightings
+recorded as the crew goes, the same as the ORC letters. The **time module
+does not double**: it is fixed controls (start, GTCs, finish) the crew passes
+once regardless of how many answer rows they need, so `timeScoreKey` stays
+10 rows whatever `usesSecondCard` is.
+
+- **`Stage.usesSecondCard` is the one flag, and it moves both keys
+  together.** Toggled in `StageForm` (a checkbox above the answer key), it
+  appends 30 blank ORC rows and 6 blank merk rows to the form's state when
+  turned on, and — after a `window.confirm` if any of those rows actually
+  hold something — truncates both back down when turned off. There is no
+  independent "double the merk only" or "double the ORC only": a second
+  card is a second card.
+- **The scoring engine needed no changes at all.** `calculateTotalPenalty`,
+  `calculateRowPenalty`, `calculateMerkPenalty` (`app/lib/scoring.ts`),
+  `blankSheetPenalties` (`app/lib/missingSheets.ts`) and `rescoreRally`/
+  `rescoreParticipants` (`app/lib/rescore.ts`) already iterated whatever
+  `scoreKey`/`merkScoreKey`/`answers`/`merkScores` arrays they were given —
+  30 or 60, 6 or 12 was never a number any of them hardcoded. Neither did
+  the read-only card renderers (`OrcAnswerGrid.tsx`, `StageKeyCard.tsx`,
+  `ControlekaartCard.tsx`): they already bisect the ORC columns and list the
+  merk column by the actual array length, so a 60-row key or a 12-row merk
+  key renders correctly with no edits to any of the four.
+- **The two *editing* forms did need changing.** `StageForm.tsx` and
+  `AnswerSheetForm.tsx` each hardcoded `ANSWER_ROWS = 30` / `MERK_ROWS = 6`
+  as the row count to seed and render — a stage's own `usesSecondCard` now
+  resolves the real count (`answerRowCount`/`merkRowCount` in
+  `AnswerSheetForm`), and the ORC left/right split derives from that count
+  rather than from the constant (`half = Math.ceil(scoreKey.length / 2)`,
+  matching what the read-only renderers already did). `AnswerSheetForm`
+  additionally moved its keyboard-navigation grid dimensions (`gridDims`,
+  covering `orc-left`/`orc-right`/`merk` — `time` stays fixed) from a module
+  constant into the component, sized off the selected stage, with a
+  `useEffect` keyed on the stage id to resize `answers`/`merkScores` if the
+  official switches stages before typing (the stage select is disabled once
+  editing an existing sheet, so this only ever fires while adding a new
+  one).
+- **`ORC_ROWS_PER_CARD`/`MERK_ROWS_PER_CARD`** (`app/lib/validation.ts`) are
+  the one-card sizes the server resolves `usesSecondCard` against:
+  `processScoreKey`/`parseAnswerRows`/`parseMerkScores` each take the
+  resolved cap (30/60, 6/12) as a parameter now, so a stage not opted in can
+  never accumulate rows past its one card server-side even if a client
+  sends them. `MAX_ANSWER_ROWS` (60) and `MAX_MERK_ROWS` (20) were already
+  sized with this headroom before the feature existed — `processScoreKey`'s
+  cap defaults to them, the same generous ceiling every other caller keeps
+  seeing. `StageForm.tsx`/`AnswerSheetForm.tsx` keep their **own** copies of
+  the base 30/6 constants rather than importing them: `validation.ts` is
+  `server-only` and these are client components.
+- **Turning this on for a stage that already has sheets re-scores them
+  immediately**, the same as any other key edit (`PUT /api/stages/[id]`
+  already re-scores on every save) — and every sheet's ORC and merk penalty
+  spikes until an official fills in the new rows, because a row the key
+  scores and the sheet has no answer for costs its missing letters, exactly
+  like any other blank row. Expected, not a bug.
+- **The Android app cannot submit a second card.** `CardAccess` is one per
+  `{stage, eq}` and `parseAppCardRows`/`APP_ORC_ROWS`/`APP_MERK_ROWS`
+  (`app/lib/validation.ts`) hardcode the app's fixed 30-ORC + 6-merk card
+  shape — a submission through the app for a `usesSecondCard` stage always
+  covers only ORC 1-30 and merk 1-6, leaving 31-60/7-12 blank on the sheet
+  it creates or updates, exactly the way a time-imported sheet starts with
+  blank ORC rows. An official completes the rest through the web form.
+  Supporting a real second QR per participant needs a second `CardAccess`
+  per `{stage, eq}` (the unique index would have to widen to
+  `{stage, eq, part}` — see `CardAccess.part` above, unused groundwork
+  only), new mint/print/submit code here, and changes in the separate
+  `jurian360/android-control-card` repo — none of that exists yet.
 
 ## Importing an entry list
 
@@ -1131,9 +1209,13 @@ Do not regress them.**
   `fetch`; there are no Server Components reading the DB yet. Route params
   arrive as `Promise` (Next 15) — `await`/resolve them.
 - Fixed grid sizes: **30 answer rows × 4 letter columns, 10 time rows (start,
-  8 GTC's, finish), 6 merk rows × 1 correct + 1 false letter**. If you change a count, change the form constants
-  (`AnswerSheetForm.tsx`), `StageForm.tsx`, and the caps in
-  `app/lib/validation.ts` (which keep headroom above the form's counts).
+  8 GTC's, finish), 6 merk rows × 1 correct + 1 false letter** — except the
+  30 and the 6 are per-*card*, not per-stage: a `usesSecondCard` stage runs
+  60 ORC rows and 12 merk rows (see *Second answer card*). The 10 time rows
+  never change; time is fixed controls, not rows that run out. If you change
+  a count, change the form constants (`AnswerSheetForm.tsx`), `StageForm.tsx`,
+  and the caps in `app/lib/validation.ts` (which keep headroom above the
+  form's counts).
 - Entry grids support arrow-key / auto-advance navigation via `data-grid`,
   `data-row`, `data-col` attributes — preserve them on any new input cell.
 - Participant details are edited through `ParticipantDetailsForm` — used by the

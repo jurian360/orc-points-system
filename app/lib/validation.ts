@@ -40,9 +40,19 @@ import { RESET_TOKEN_HEX_LENGTH } from './passwordReset';
 // Caps carry headroom over what the current forms send so a UI change does not
 // immediately start rejecting legitimate submissions.
 
-export const MAX_ANSWER_ROWS = 60; // forms send 30
+// One physical controlekaart holds this many ORC rows and this many merk
+// rows. A stage whose crews run out of ORC rows mid-stage
+// (`Stage.usesSecondCard`) doubles both — the second card carries its own
+// merk section too, since merk is sightings recorded as the crew goes, the
+// same as the ORC letters — while the 10-row time module never doubles: it
+// is fixed controls the crew passes once, not rows that can run out. See
+// "Second answer card" in CLAUDE.md.
+export const ORC_ROWS_PER_CARD = 30;
+export const MERK_ROWS_PER_CARD = 6;
+
+export const MAX_ANSWER_ROWS = 60; // forms send 30, or 60 for a usesSecondCard stage
 export const MAX_TIME_ROWS = 20; // forms send 10
-export const MAX_MERK_ROWS = 20; // forms send 6
+export const MAX_MERK_ROWS = 20; // forms send 6, or 12 for a usesSecondCard stage
 export const MAX_COLUMNS = 8; // forms send 4
 // Answers an appeal added to an ORC row, on top of the row's own. The stage
 // form offers two, which covers the appeals that occur in practice ("both DR
@@ -50,10 +60,14 @@ export const MAX_COLUMNS = 8; // forms send 4
 export const MAX_ALTERNATIVE_ANSWERS = 4; // forms send up to 2
 export const MAX_FIELD_LENGTH = 64;
 export const MAX_NAME_LENGTH = 200;
-// The controlekaart the Android app renders: 30 ORC rows, then the 6 merk rows.
-// A submission is bounded by the card, not by the generous caps above.
-export const APP_ORC_ROWS = 30;
-export const APP_MERK_ROWS = 6;
+// The controlekaart the Android app renders: one physical card's worth of ORC
+// and merk rows. A submission is bounded by the card, not by the generous
+// caps above — and stays bounded to one card's shape even for a stage with
+// usesSecondCard: the app has no way to scan or submit a second card yet
+// (see "Second answer card" in CLAUDE.md), so rows past this always come
+// from an official completing the sheet through the web form instead.
+export const APP_ORC_ROWS = ORC_ROWS_PER_CARD;
+export const APP_MERK_ROWS = MERK_ROWS_PER_CARD;
 export const APP_CARD_ROWS = APP_ORC_ROWS + APP_MERK_ROWS;
 // A rally is numbered 1..100, so an entry list cannot hold more crews than that.
 export const MAX_IMPORT_PARTICIPANTS = 100;
@@ -282,8 +296,18 @@ export function parseTimeConfig(value: unknown): StageTimeConfig {
 
 // Shared by POST /api/stages and PUT /api/stages/[id] — these were previously
 // two identical copies that could drift apart.
-export function processScoreKey(body: Record<string, unknown>): NormalizedScoreKey {
-  const scoreKey = rows(body.scoreKey, MAX_ANSWER_ROWS).map((row) => {
+//
+// `orcCap`/`merkCap` are how many ORC/merk rows a stage is actually allowed
+// to keep: `ORC_ROWS_PER_CARD`/`MERK_ROWS_PER_CARD` normally, doubled by the
+// caller for a `usesSecondCard` stage. Defaulting to the generous
+// `MAX_ANSWER_ROWS`/`MAX_MERK_ROWS` ceilings keeps every other caller (there
+// are none yet, but the signature should not surprise one) working as before.
+export function processScoreKey(
+  body: Record<string, unknown>,
+  orcCap: number = MAX_ANSWER_ROWS,
+  merkCap: number = MAX_MERK_ROWS
+): NormalizedScoreKey {
+  const scoreKey = rows(body.scoreKey, orcCap).map((row) => {
     const r = (row ?? {}) as Record<string, unknown>;
     return {
       rowNumber: num(r.rowNumber),
@@ -317,7 +341,7 @@ export function processScoreKey(body: Record<string, unknown>): NormalizedScoreK
     };
   });
 
-  const merkScoreKey = rows(body.merkScoreKey, MAX_MERK_ROWS).map((row) => {
+  const merkScoreKey = rows(body.merkScoreKey, merkCap).map((row) => {
     const r = (row ?? {}) as Record<string, unknown>;
     return {
       rowNumber: num(r.rowNumber),
@@ -338,8 +362,12 @@ export function processScoreKey(body: Record<string, unknown>): NormalizedScoreK
 // against the stage's answer key server-side (see app/lib/rescore.ts), so
 // accepting a `strafp` here would let a sheet claim a total it did not earn —
 // the same rule the time and merk rows follow.
-export function parseAnswerRows(value: unknown) {
-  return rows(value, MAX_ANSWER_ROWS).map((row) => {
+//
+// `maxRows` is the caller-resolved cap: `ORC_ROWS_PER_CARD` for a normal
+// stage, doubled for a `usesSecondCard` one. Defaults to the generous
+// `MAX_ANSWER_ROWS` ceiling for a caller with no stage in hand yet.
+export function parseAnswerRows(value: unknown, maxRows: number = MAX_ANSWER_ROWS) {
+  return rows(value, maxRows).map((row) => {
     const r = (row ?? {}) as Record<string, unknown>;
     return {
       rowNumber: num(r.rowNumber),
@@ -372,8 +400,12 @@ export function parseTimePenalties(value: unknown) {
 // the stage's merk key server-side (see app/lib/rescore.ts), so accepting a
 // `strafp` here would let a sheet claim a total it did not earn — the same rule
 // the time rows follow.
-export function parseMerkScores(value: unknown) {
-  return rows(value, MAX_MERK_ROWS).map((row) => {
+//
+// `maxRows` is the caller-resolved cap: `MERK_ROWS_PER_CARD` for a normal
+// stage, doubled for a `usesSecondCard` one. Defaults to the generous
+// `MAX_MERK_ROWS` ceiling for a caller with no stage in hand yet.
+export function parseMerkScores(value: unknown, maxRows: number = MAX_MERK_ROWS) {
+  return rows(value, maxRows).map((row) => {
     const r = (row ?? {}) as Record<string, unknown>;
     return {
       rowNumber: num(r.rowNumber),

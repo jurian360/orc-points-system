@@ -96,6 +96,7 @@ export default function EditStagePage({
           timeScoreKey: payload.timeScoreKey,
           merkScoreKey: payload.merkScoreKey,
           timeConfig: payload.timeConfig,
+          usesSecondCard: payload.usesSecondCard,
         }),
       });
 

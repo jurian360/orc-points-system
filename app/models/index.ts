@@ -214,6 +214,18 @@ const StageSchema = new mongoose.Schema({
       default: 0
     }
   }],
+  // A crew sometimes runs out of rows mid-stage and switches to a second
+  // paper card, continuing their ORC letters as rows 31-60 and their merk
+  // letters as rows 7-12 — merk is sightings recorded as the crew goes, the
+  // same as the ORC letters, so it grows with the second card too. The time
+  // module (10 rows) does not: it is fixed controls the crew passes once
+  // regardless of how many answer rows they need, so it is never affected by
+  // this flag. See app/lib/validation.ts's ORC_ROWS_PER_CARD/MERK_ROWS_PER_CARD
+  // and "Second answer card" in CLAUDE.md.
+  usesSecondCard: {
+    type: Boolean,
+    default: false
+  },
 });
 
 // A participant of a rally: the crew riding under an EQ number. Optional —
@@ -427,13 +439,28 @@ const CardAccessSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  // Groundwork for a stage with `usesSecondCard`: which physical card this
+  // code stands for. Unused today — every code is minted and resolved as
+  // `part: 1` and the unique index below stays `{stageId, eq}` only, so this
+  // field changes nothing about how a code is looked up. Wiring a second QR
+  // per participant (so the app can scan card 2 as well as card 1) needs the
+  // index widened to `{stageId, eq, part}` and new mint/print/submit code —
+  // a real migration on a live collection, deliberately not done yet. See
+  // "Second answer card" in CLAUDE.md.
+  part: {
+    type: Number,
+    default: 1,
+    min: 1,
+    max: 2,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
   },
 });
 
-// One code per participant per stage — the same shape as the sheets.
+// One code per participant per stage — the same shape as the sheets. Not
+// `{stageId, eq, part}`: see the comment on `part` above.
 CardAccessSchema.index({ stageId: 1, eq: 1 }, { unique: true });
 
 

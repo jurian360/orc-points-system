@@ -4,7 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../lib/mongodb';
 import { Rally, Route, Stage } from '../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../lib/api-guard';
-import { parseName, parseObjectId, processScoreKey } from '../../lib/validation';
+import {
+  MERK_ROWS_PER_CARD,
+  ORC_ROWS_PER_CARD,
+  parseName,
+  parseObjectId,
+  processScoreKey,
+} from '../../lib/validation';
 import { rescoreRally } from '../../lib/rescore';
 import { loadRunningOrder } from '../../lib/rallyOrder';
 import mongoose from 'mongoose';
@@ -99,7 +105,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'This rally has no routes' }, { status: 400 });
     }
 
-    const { scoreKey, timeScoreKey, merkScoreKey, timeConfig } = processScoreKey(body);
+    // A crew that runs out of ORC rows mid-stage switches to a second card,
+    // carrying its own merk section too; the time module never doubles (see
+    // "Second answer card" in CLAUDE.md). Resolved from the body here so a
+    // stage not opted in can never accumulate rows past one card's worth,
+    // even if a client sends them.
+    const usesSecondCard = body.usesSecondCard === true;
+    const orcCap = usesSecondCard ? ORC_ROWS_PER_CARD * 2 : ORC_ROWS_PER_CARD;
+    const merkCap = usesSecondCard ? MERK_ROWS_PER_CARD * 2 : MERK_ROWS_PER_CARD;
+
+    const { scoreKey, timeScoreKey, merkScoreKey, timeConfig } = processScoreKey(
+      body,
+      orcCap,
+      merkCap
+    );
 
     const stage = new Stage({
       rallyId,
@@ -109,6 +128,7 @@ export async function POST(request: NextRequest) {
       timeScoreKey,
       merkScoreKey,
       timeConfig,
+      usesSecondCard,
     });
     const savedStage = await stage.save();
 
