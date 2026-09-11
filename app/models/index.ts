@@ -41,6 +41,15 @@ const RallySchema = new mongoose.Schema({
     maxlength: 32,
     index: { unique: true, sparse: true },
   },
+  // Whether this rally's standings are readable with no session, at
+  // /public/rallies/[id] (app/api/public/rallies/[id]/results). Off by
+  // default — every rally starts private — and an admin's own switch, not a
+  // secret: once flipped the rally's own id in the URL is the whole address,
+  // handed out as a QR code (see "Public results page" in CLAUDE.md).
+  publicResultsEnabled: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

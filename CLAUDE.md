@@ -127,6 +127,9 @@ Rally ──< Stage ──< AnswerSheet
   unique index's `11000` to a 409: two rallies answering to one code would make
   a submission ambiguous. A `PUT` that sends no `code` keeps the stored one —
   a rally without a code cannot be scanned into the app at all.
+- `Rally.publicResultsEnabled` — off by default, an admin's own switch
+  (`PUT /api/rallies/[id]/public-results`) for whether `/public/rallies/[id]`
+  answers with no session at all. See *Public results page* below.
 - `totalPenalty` is **denormalised** on the sheet: the ORC's penalty plus the
   time penalty plus the merk penalty, computed server-side at write time.
   Standings read this field.
@@ -709,6 +712,80 @@ on a rally ridden in routes.
   app's header and menu — for the QR sheet as much as for the results. Anything
   else added around the pages themselves belongs behind `print:hidden` too.
 
+## Public results page (`app/lib/standingsQuery.ts`)
+
+A rally's standings on paper are for the wall at the finish; this is the same
+numbers for a phone. An admin turns it on per rally
+(`/rallies/[id]/public-results`) and prints the QR code that page generates —
+one code for the whole rally, unlike the per-participant sheet at
+`.../stages/[stageId]/qr-codes` — and from then on anyone who scans it, or
+opens the link, reads the current standings with **no account at all**.
+
+- **Off by default, and an admin's own switch, not a secret.**
+  `Rally.publicResultsEnabled` gates it; `PUT /api/rallies/[id]/public-results`
+  (admin only, its own route rather than a field on the rally-details `PUT`,
+  which requires a `name` on every call — a toggle should not have to resend
+  one) is the only way to flip it. Once it is on, the rally's own id in the URL
+  is the whole address — there is nothing else to guess, because the intent is
+  for anyone with the link to read it.
+- **It is the Algemeen klassement, on screen, filterable.** One table, the
+  whole field, ranked exactly the way `/rallies/[id]/standings/print` ranks its
+  combined sheet — finished crews first on points then EQ, then the DNF's, then
+  the DNS's — with a classification filter (`CLASSIFICATIONS`) over the same
+  fetch, the way the dashboard's own standings tab filters. A rally of more
+  than one stage also gets the four numbers per stage (ORC's, Tijd, Diversen,
+  that stage's own total, a stage a crew has no card for marked with the same
+  `*` the print sheet uses) in running order ahead of the rally total, the
+  same rule `showStages` follows on the print page — one stage means the stage
+  total *is* the rally total, so there is nothing to break out. **What stays
+  off this page is the per-route grouping and the wedstrijdklasse sheet**: the
+  stages are shown in running order regardless of legs, which is what a phone
+  screen has room for; those stay admin-only detail on the print page. **It
+  never shows an answer sheet** — not the letters, not a WPT, not a merk
+  letter — only the ORC's / Tijd / Diversen / Totaal a crew's sheets add up
+  into, rally-wide and per stage, the same numbers the print sheet shows and
+  nothing a sheet's own rows would reveal.
+- **The computation is shared, not reimplemented.** `computeRallyStandings` in
+  `app/lib/standingsQuery.ts` is what `GET /api/rallies/[id]/standings` (the
+  dashboard, session-gated) and `GET /api/public/rallies/[id]/results` (this
+  page, public) both call. An official and a public reader must never see two
+  different rankings of the same rally, which a second implementation would
+  eventually make true by accident.
+- **The public API is the third exception to "every route requires a
+  session"**, after the two Android-app endpoints (`/api/app/*`). It pays for
+  being public the same way they do — a per-IP rate limit
+  (`app/lib/rate-limit.ts`) — but its gate is structural rather than a scanned
+  credential: a participant has no identity to check at all, so their code
+  *is* one; here the rally itself decides, via `publicResultsEnabled`, and a
+  rally that does not exist and one that is not turned on answer the same 404
+  either way, so the route cannot be used to find out which private rallies
+  exist. That check runs before `computeRallyStandings`, so a disabled rally
+  costs the route nothing beyond the one flag it was refused on. Do not add a
+  fourth public route without an equally-considered gate of its own — a rate
+  limit alone is not one.
+- **`middleware.ts` treats `/public/` and `/api/public/` as prefixes**, not
+  exact paths like `/login` — a rally's id is part of the address, so a fixed
+  list of paths cannot cover it. Both the page and the API answer with no
+  session; the API additionally skips the CSRF same-origin check the way the
+  app endpoints do, though it never needs to; it is GET-only.
+- **`ClientLayout` renders no app nav on a `/public/` page.** Someone who
+  scanned a QR code has no session and no use for Rallies, Users or Logout —
+  worse, clicking any of them would just bounce off `/login` — so the page
+  builds its own minimal header instead, the same reason `/login` skips the
+  nav too.
+- **A duplicated rally starts with public results off**, like every rally:
+  `POST /api/rallies/[id]/duplicate` builds the copy from only `name` and
+  `code`, so `publicResultsEnabled` is whatever the schema defaults it to. It
+  is a running-of-it setting, not part of the setup a duplicate carries over.
+- **The QR code is generated in the browser**, the same encoder every other QR
+  in the app uses (`app/lib/qrcode.ts`, `QrCode.tsx`) — no server round trip to
+  produce it. The link it encodes is built from `window.location.origin`
+  rather than a configured base URL: whoever is on `/rallies/[id]/public-results`
+  printing it is an admin already signed in on the app's real address, so that
+  address is correct without an environment variable to keep in sync — unlike
+  the forgot-password email link, which is built with no browser to ask
+  (`app/lib/email.ts`, `APP_BASE_URL`).
+
 ## Duplicating a rally
 
 An event is run over the same course year after year: the stages, the answer keys,
@@ -923,10 +1000,14 @@ app/
                   rallies/[id]/rescore to re-score a whole rally on demand,
                   rallies/[id]/times for the WPT overview of a whole rally,
                   rallies/[id]/duplicate to copy a rally's stages and keys,
+                  rallies/[id]/public-results to turn a rally's public results
+                  page on or off,
                   stages/[id]/times/import for the times of one control,
                   stages/[id]/access-codes for the QR codes of one stage,
                   app/card + app/submit, the two public endpoints of the
-                  Android app)
+                  Android app,
+                  public/rallies/[id]/results, the public endpoint behind a
+                  rally's public results page)
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env,
                   layout (PAGE_CONTAINER, the one page width of the app),
@@ -934,6 +1015,8 @@ app/
                   the blank card it stands for, shared client + server),
                   standings (finished / DNF / DNS: the three groups a result
                   sheet ranks, shared client + server),
+                  standingsQuery (computeRallyStandings — one rally's ranked
+                  standings, shared by the dashboard route and the public one),
                   routes (the legs of a rally: the running order, the leg
                   boundaries and a crew's totals per route, shared client +
                   server) + rallyOrder (that order read out of the database),
@@ -954,7 +1037,10 @@ app/
                   code, stages, answer sheets, participant view,
                   stages/[stageId]/qr-codes: the printable sheet of QR codes,
                   rallies/[id]/standings/print: the results on A4, one sheet
-                  per classification)
+                  per classification,
+                  rallies/[id]/public-results: turn the public results page on
+                  or off and print its QR code, admin only)
+  public/rallies/[id]/  the public results page itself — no session, no app nav
   time-import/    the time import wizard (rally -> stage -> control -> file)
   users/          the accounts page (admin only)
   account/        your own account: role, email and password
@@ -1003,10 +1089,17 @@ Do not regress them.**
   `if (!session.ok) return session.response;` and can read `session.user`.
   `middleware.ts` also blocks unauthenticated requests and keeps a data-entry
   account off the admin *pages* — the per-handler guard is deliberate defence in
-  depth, keep both. **The two Android-app endpoints are the only exception**
-  (`/api/app/*`): they are public by design, and they pay for it with a
-  scanned-code check, a per-IP rate limit and a one-submission lock. Do not add
-  a third public route without the same three.
+  depth, keep both. **Public routes are the deliberate exception**, and there
+  are two kinds so far, each with its own reasoning for what stands in for a
+  session: the two Android-app endpoints (`/api/app/*`) are public because a
+  participant has no account, and they pay for it with a scanned-code check, a
+  per-IP rate limit and a one-submission lock; `GET /api/public/rallies/[id]/results`
+  is public because an admin explicitly turned that one rally's results public
+  (`Rally.publicResultsEnabled`, see *Public results page*), and it pays for it
+  with that per-rally flag plus a per-IP rate limit — no scanned code, because
+  nothing here is a credential naming one participant, and no submission lock,
+  because it never writes. Do not add another public route without an equally
+  considered gate of its own; a rate limit alone is not one.
 - **A new mutating route defaults to `requireRallyAdmin()`.** Typing a
   participant's card is the one thing a data-entry account may change; if a new
   route is not that, it is an admin's.
