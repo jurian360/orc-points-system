@@ -6,9 +6,9 @@ import dbConnect from '../../../lib/mongodb';
 import { User } from '../../../models';
 import { readBody, requireUserAdmin } from '../../../lib/api-guard';
 import { hashPassword } from '../../../lib/passwords';
-import { adminCount, isEnvAdminUsername } from '../../../lib/users';
-import { parsePassword, parseRole, parseUsername } from '../../../lib/validation';
-import { PASSWORD_RULE, USERNAME_RULE } from '../../../lib/roles';
+import { adminCount, duplicateAccountField, isEnvAdminUsername } from '../../../lib/users';
+import { parseOptionalEmail, parsePassword, parseRole, parseUsername } from '../../../lib/validation';
+import { EMAIL_RULE, PASSWORD_RULE, USERNAME_RULE } from '../../../lib/roles';
 
 // One account. Admin only, like the collection route.
 //
@@ -61,6 +61,17 @@ export async function PUT(
       user.username = username;
     }
 
+    if (parsed.body.email !== undefined) {
+      const email = parseOptionalEmail(parsed.body.email);
+      if (email === null) {
+        return NextResponse.json({ error: `Invalid email. ${EMAIL_RULE}` }, { status: 400 });
+      }
+      // '' stores as undefined, never as an empty string: the unique index is
+      // `sparse`, which only skips a missing field, not an empty one — two
+      // accounts both saved with '' would collide on it.
+      user.email = email || undefined;
+    }
+
     if (parsed.body.role !== undefined) {
       const role = parseRole(parsed.body.role);
       if (!role) return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
@@ -93,6 +104,11 @@ export async function PUT(
       // A reset signs that account's sessions out, wherever they are: the point
       // of resetting a password is usually that somebody else may know it.
       user.passwordChangedAt = new Date();
+      // An admin resetting the password here makes any forgot-password link
+      // still in someone's inbox stale — it must not go on working once the
+      // password it targeted has already changed.
+      user.resetTokenHash = null;
+      user.resetTokenExpiresAt = null;
     }
 
     await user.save();
@@ -100,12 +116,19 @@ export async function PUT(
     return NextResponse.json({
       _id: user._id,
       username: user.username,
+      email: user.email ?? '',
       role: user.role,
+      lastLoginAt: user.lastLoginAt,
+      lastLoginIp: user.lastLoginIp,
       passwordChangedAt: user.passwordChangedAt,
       createdAt: user.createdAt,
     });
   } catch (error) {
-    if (typeof error === 'object' && error !== null && (error as { code?: number }).code === 11000) {
+    const field = duplicateAccountField(error);
+    if (field === 'email') {
+      return NextResponse.json({ error: 'That email address is already in use' }, { status: 409 });
+    }
+    if (field === 'username') {
       return NextResponse.json({ error: 'That username is already taken' }, { status: 409 });
     }
 

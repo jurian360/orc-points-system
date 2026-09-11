@@ -18,7 +18,7 @@ import 'server-only';
 import mongoose from 'mongoose';
 
 import { CLASSIFICATIONS } from '../lib/participants';
-import { MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH, ROLES } from '../lib/roles';
+import { MAX_EMAIL_LENGTH, MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH, ROLES } from '../lib/roles';
 
 // A rally is the top-level event. Stages and answer sheets hang off of it.
 const RallySchema = new mongoose.Schema({
@@ -458,12 +458,50 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  // Where a forgot-password link (app/lib/passwordReset.ts) is sent. Optional
+  // and `sparse` — an account added before this existed has none until an
+  // official fills it in — but unique when set, so one address resolves to one
+  // account. Stored already normalised (lower case) by `normalizeEmail`.
+  email: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    maxlength: MAX_EMAIL_LENGTH,
+    index: { unique: true, sparse: true },
+  },
+  // The forgot-password credential in flight, never the token itself — see
+  // app/lib/passwordReset.ts for why only the hash is stored. Null once the
+  // link is used, expires, or a fresh request overwrites it; also cleared
+  // whenever the password changes through any other path, so a stale emailed
+  // link cannot outlive the password it was meant to replace.
+  resetTokenHash: {
+    type: String,
+    default: null,
+  },
+  resetTokenExpiresAt: {
+    type: Date,
+    default: null,
+  },
   // When this account's password was last set. `requireSession()` refuses a
   // token issued before it, so changing (or having an admin reset) a password
   // signs that account's other sessions out.
   passwordChangedAt: {
     type: Date,
     default: Date.now,
+  },
+  // When and from where this account last signed in successfully. Written by
+  // `authenticate()` in app/lib/users.ts on a successful login; the
+  // environment admin has no document to write it to, so it stays unset for
+  // that account regardless of how often it signs in.
+  lastLoginAt: {
+    type: Date,
+    default: null,
+  },
+  lastLoginIp: {
+    type: String,
+    trim: true,
+    maxlength: 64,
+    default: null,
   },
   createdAt: {
     type: Date,

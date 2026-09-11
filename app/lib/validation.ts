@@ -12,13 +12,17 @@ import {
 import { isClassification, type ClassificationValue } from './participants';
 import {
   isRole,
+  isValidEmail,
   isValidUsername,
+  MAX_EMAIL_LENGTH,
   MAX_PASSWORD_LENGTH,
   MAX_USERNAME_LENGTH,
   MIN_PASSWORD_LENGTH,
+  normalizeEmail,
   normalizeUsername,
   type Role,
 } from './roles';
+import { RESET_TOKEN_HEX_LENGTH } from './passwordReset';
 
 // Input validation and normalization for the API routes.
 //
@@ -153,6 +157,35 @@ export function parsePassword(value: unknown): string | null {
 
 export function parseRole(value: unknown): Role | null {
   return isRole(value) ? value : null;
+}
+
+// An email as typed into the forgot-password form: required, so an
+// unparseable value is simply not a request the route can act on.
+export function parseEmail(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = normalizeEmail(value.slice(0, MAX_EMAIL_LENGTH + 1));
+  return isValidEmail(normalized) ? normalized : null;
+}
+
+// An account's email as sent from the user forms. Optional, unlike
+// `parseEmail` above, so '' is a valid value — clearing the field — the same
+// shape `parseOptionalName` gives driver and navigator names.
+export function parseOptionalEmail(value: unknown): string | null {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') return null;
+  const normalized = normalizeEmail(value.slice(0, MAX_EMAIL_LENGTH + 1));
+  if (normalized === '') return '';
+  return isValidEmail(normalized) ? normalized : null;
+}
+
+// The token a forgot-password link carries. Bounded and shaped before it ever
+// reaches a query: `generateResetToken` only ever produces this exact hex
+// shape, so anything else is not a token this app issued.
+const RESET_TOKEN_PATTERN = new RegExp(`^[0-9a-f]{${RESET_TOKEN_HEX_LENGTH}}$`, 'i');
+
+export function parseResetToken(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return RESET_TOKEN_PATTERN.test(value) ? value : null;
 }
 
 // Row of the time column an import writes into: 1 (the start), 2-9 (the GTC's)

@@ -61,30 +61,51 @@ export function isEnvAdminUsername(username: string): boolean {
 interface StoredUser {
   _id: unknown;
   username: string;
+  email?: string | null;
   role: Role;
   passwordHash: string;
   passwordChangedAt?: Date | string | null;
+}
+
+// Which unique field a duplicate-key error (Mongo code 11000) tripped over, so
+// a route can tell "that username is taken" apart from "that email is taken"
+// instead of one generic message for both.
+export function duplicateAccountField(error: unknown): 'username' | 'email' | null {
+  if (typeof error !== 'object' || error === null) return null;
+  const err = error as { code?: number; keyPattern?: Record<string, unknown> };
+  if (err.code !== 11000 || !err.keyPattern) return null;
+  if ('email' in err.keyPattern) return 'email';
+  if ('username' in err.keyPattern) return 'username';
+  return null;
 }
 
 export interface AuthenticatedUser {
   sub: string;
   username: string;
   role: Role;
+  // '' for the environment admin, which has no document to hold one.
+  email: string;
 }
 
 // Check a username and password against the environment admin and then the
 // database. Returns null for "no such account or wrong password" — the caller
 // must not tell the two apart.
+//
+// `ip` is optional only because the environment admin's branch never reaches
+// the write below; every real caller (the login route) has one from
+// `clientIp()`. On a successful database login it is stored as this account's
+// `lastLoginIp`, so an admin can see who last signed in and from where.
 export async function authenticate(
   username: string,
-  password: string
+  password: string,
+  ip?: string
 ): Promise<AuthenticatedUser | null> {
   const normalized = normalizeUsername(username);
 
   const admin = envAdmin();
   if (admin && admin.username === normalized) {
     if (await verifyPassword(password, admin.passwordHash)) {
-      return { sub: ENV_ADMIN_SUBJECT, username: admin.username, role: 'admin' };
+      return { sub: ENV_ADMIN_SUBJECT, username: admin.username, role: 'admin', email: '' };
     }
     return null;
   }
@@ -93,15 +114,22 @@ export async function authenticate(
   // in still works while the database is unreachable.
   await dbConnect();
 
-  const user = (await User.findOne({ username: normalized }).lean()) as StoredUser | null;
+  // A real document, not `.lean()`, because a successful login writes the
+  // last-login fields back onto it.
+  const user = await User.findOne({ username: normalized });
   if (!user) return null;
 
   if (!(await verifyPassword(password, user.passwordHash))) return null;
+
+  user.lastLoginAt = new Date();
+  user.lastLoginIp = ip ? ip.slice(0, 64) : null;
+  await user.save();
 
   return {
     sub: String(user._id),
     username: user.username,
     role: user.role,
+    email: user.email ?? '',
   };
 }
 
@@ -117,7 +145,7 @@ export async function currentUser(session: SessionUser): Promise<AuthenticatedUs
   if (session.sub === ENV_ADMIN_SUBJECT) {
     const admin = envAdmin();
     if (!admin || admin.username !== session.username) return null;
-    return { sub: ENV_ADMIN_SUBJECT, username: admin.username, role: 'admin' };
+    return { sub: ENV_ADMIN_SUBJECT, username: admin.username, role: 'admin', email: '' };
   }
 
   if (!mongoose.Types.ObjectId.isValid(session.sub)) return null;
@@ -137,6 +165,7 @@ export async function currentUser(session: SessionUser): Promise<AuthenticatedUs
     sub: String(user._id),
     username: user.username,
     role: user.role,
+    email: user.email ?? '',
   };
 }
 

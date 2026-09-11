@@ -15,6 +15,13 @@ import { can, type Permission, type Role } from '../lib/roles';
 export interface CurrentUser {
   username: string;
   role: Role;
+  // '' for the environment admin, which has no email on file (see
+  // app/lib/users.ts).
+  email: string;
+  // The recovery admin configured in the environment: no document, so no
+  // email to set and no /api/users entry. The account page reads this to hide
+  // the email form instead of letting it fail on submit.
+  isEnvAdmin: boolean;
 }
 
 interface AuthContextType {
@@ -42,7 +49,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setUser(
         data.authenticated && typeof data.username === 'string'
-          ? { username: data.username, role: data.role as Role }
+          ? {
+              username: data.username,
+              role: data.role as Role,
+              email: data.email || '',
+              isEnvAdmin: data.isEnvAdmin === true,
+            }
           : null
       );
     } catch (error) {

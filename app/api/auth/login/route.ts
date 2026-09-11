@@ -8,6 +8,7 @@ import { burnPasswordTime } from '../../../lib/passwords';
 import { authenticate } from '../../../lib/users';
 import { MAX_PASSWORD_LENGTH, MAX_USERNAME_LENGTH, normalizeUsername } from '../../../lib/roles';
 import {
+  ENV_ADMIN_SUBJECT,
   SESSION_COOKIE,
   SESSION_COOKIE_OPTIONS,
   SESSION_MAX_AGE_SECONDS,
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const user = await authenticate(normalizeUsername(username), password);
+    const user = await authenticate(normalizeUsername(username), password, clientIp(request));
 
     if (!user) {
       // Spend the same scrypt time a real account costs, so the response time
@@ -76,7 +77,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      user: { username: user.username, role: user.role },
+      user: {
+        username: user.username,
+        role: user.role,
+        email: user.email,
+        isEnvAdmin: user.sub === ENV_ADMIN_SUBJECT,
+      },
     });
   } catch (error) {
     // Configuration errors (no admin credential in the environment, a malformed

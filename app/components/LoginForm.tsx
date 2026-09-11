@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MAX_PASSWORD_LENGTH, MAX_USERNAME_LENGTH } from '../lib/roles';
 
@@ -116,6 +117,12 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </div>
+
+          <p className="text-center text-sm">
+            <Link href="/forgot-password" className="text-indigo-600 hover:text-indigo-500">
+              Forgot your password?
+            </Link>
+          </p>
         </form>
       </div>
     </div>

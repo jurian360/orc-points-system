@@ -2,7 +2,7 @@ import 'server-only';
 
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { SESSION_COOKIE, readSessionToken } from '../../../lib/session';
+import { ENV_ADMIN_SUBJECT, SESSION_COOKIE, readSessionToken } from '../../../lib/session';
 import { currentUser } from '../../../lib/users';
 
 // Who is signed in, for the client: the nav and the forms hide what this
@@ -28,6 +28,11 @@ export async function GET() {
       authenticated: true,
       username: user.username,
       role: user.role,
+      email: user.email,
+      // The recovery admin has no document, so it has no email to change here
+      // and no lastLoginAt/lastLoginIp to show — the account page uses this to
+      // hide the email form rather than let it fail on submit.
+      isEnvAdmin: user.sub === ENV_ADMIN_SUBJECT,
     });
   } catch (error) {
     console.error('Session check failed:', error);
