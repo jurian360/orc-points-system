@@ -77,6 +77,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 });
     }
 
+    // A reset link already mailed to the old address must not keep working once
+    // the account no longer answers to it: that address may be a typo, or a
+    // mailbox somebody else now reads. Same rule as a password change.
+    if ((user.email ?? '') !== email) {
+      user.resetTokenHash = null;
+      user.resetTokenExpiresAt = null;
+    }
+
     // '' stores as undefined, never as an empty string: the unique index is
     // `sparse`, which only skips a missing field, not an empty one.
     user.email = email || undefined;

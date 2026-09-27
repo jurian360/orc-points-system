@@ -50,6 +50,16 @@ const RallySchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  // The highest `Stage.cardId` handed out in this rally, advanced with `$inc`
+  // (ensureStageCardId in app/lib/appCards.ts) so two stages numbered at the
+  // same moment can never get the same card number. Unset until the first one
+  // is assigned, and seeded from the stages' own numbers then, so a rally that
+  // predates it — or a duplicate, whose stages keep their numbers — carries on
+  // from where it was.
+  cardIdSeq: {
+    type: Number,
+    min: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

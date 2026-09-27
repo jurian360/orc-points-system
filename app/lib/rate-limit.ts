@@ -33,12 +33,20 @@ export function rateLimit(key: string, limit: number, windowMs: number): RateLim
   if (!bucket || now > bucket.resetAt) {
     if (buckets.size >= MAX_TRACKED_KEYS) {
       evictExpired(now);
-      // Still full of live entries: we are under a distributed flood. Fail
-      // closed rather than letting the map grow.
+      // Still full of live entries: a flood of distinct clients. Drop the
+      // oldest bucket (a Map iterates in insertion order) rather than refusing
+      // the newcomer. Refusing used to answer 429 to *every* new client — every
+      // official trying to sign in included — until the window ran out, which
+      // made filling the map the cheapest way to take the app down. Dropping
+      // the oldest gives that bucket's owner a fresh count at worst, and only
+      // after ten thousand other clients have come in behind it.
       if (buckets.size >= MAX_TRACKED_KEYS) {
-        return { ok: false, retryAfter: Math.ceil(windowMs / 1000) };
+        const oldest = buckets.keys().next().value;
+        if (oldest !== undefined) buckets.delete(oldest);
       }
     }
+    // Delete first so a re-created bucket moves to the back of the order.
+    buckets.delete(key);
     buckets.set(key, { count: 1, resetAt: now + windowMs });
     return { ok: true, retryAfter: 0 };
   }

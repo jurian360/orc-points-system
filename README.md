@@ -100,10 +100,12 @@ Then generate the two secrets:
 
 ```bash
 node scripts/generate-secret.mjs            # prints SESSION_SECRET=...
-node scripts/hash-password.mjs 'your-password'   # prints ADMIN_PASSWORD_HASH=...
+node scripts/hash-password.mjs                   # asks for the password, prints ADMIN_PASSWORD_HASH=...
 ```
 
-`hash-password.mjs` requires at least 12 characters. The plaintext password is
+`hash-password.mjs` asks for the password twice without echoing it, and requires
+at least 12 characters. It deliberately does not take it on the command line,
+where it would land in your shell history. The plaintext password is
 never stored — only its scrypt hash goes into the environment.
 
 That credential is the **recovery admin**: the account you sign in with when
@@ -185,7 +187,7 @@ project root, or the dev server was started before the file existed. Restart
 
 **Login returns "Server error"** — `ADMIN_PASSWORD_HASH` (or the older
 `APP_PASSWORD_HASH`) is missing or not in `<saltHex>:<hashHex>` form. Re-run
-`node scripts/hash-password.mjs '...'` and copy the whole line's value.
+`node scripts/hash-password.mjs` and copy the whole line's value.
 
 **Nobody can sign in any more** — sign in with `ADMIN_USERNAME` and the password
 behind `ADMIN_PASSWORD_HASH`, then reset the accounts on the **Users** page. If

@@ -17,13 +17,14 @@ import 'server-only';
 // accounts existed — is still accepted as that credential, so an existing
 // deployment keeps working after this ships and can move to ADMIN_* at leisure.
 
+import { createHash } from 'node:crypto';
 import mongoose from 'mongoose';
 
 import dbConnect from './mongodb';
 import { User } from '../models';
 import { ENV_ADMIN_SUBJECT, type SessionUser } from './session';
 import { normalizeUsername, type Role } from './roles';
-import { verifyPassword } from './passwords';
+import { burnPasswordTime, verifyPassword } from './passwords';
 
 const DEFAULT_ENV_ADMIN_USERNAME = 'admin';
 
@@ -45,6 +46,21 @@ export function envAdmin(): EnvAdmin | null {
   );
 
   return { username, passwordHash };
+}
+
+// A fingerprint of the environment admin's password hash, carried in its
+// session (the `cred` claim). A database account signs its other sessions out
+// through `passwordChangedAt`; the environment admin has no document to hold
+// one, so without this a session stolen from it stayed a full admin session
+// for the rest of its 24 hours after ops replaced ADMIN_PASSWORD_HASH. Now a
+// new hash is a new fingerprint and every earlier session stops matching.
+//
+// A SHA-256 of the stored scrypt value, cut to 128 bits: it identifies which
+// hash signed the session in, and says nothing that helps guess the password —
+// the hash itself is already salted and slow, and the token it goes into is
+// signed, never readable to anyone who does not already hold the cookie.
+export function envAdminCredential(passwordHash: string): string {
+  return createHash('sha256').update(passwordHash).digest('hex').slice(0, 32);
 }
 
 // Is this username the environment admin's? Used to keep a `User` document from
@@ -88,6 +104,9 @@ export interface AuthenticatedUser {
   role: Role;
   // '' for the environment admin, which has no document to hold one.
   email: string;
+  // The environment admin's `envAdminCredential`, put into its session at
+  // login. Absent for a database account.
+  credential?: string;
 }
 
 // Check a username and password against the environment admin and then the
@@ -108,7 +127,13 @@ export async function authenticate(
   const admin = envAdmin();
   if (admin && admin.username === normalized) {
     if (await verifyPassword(password, admin.passwordHash)) {
-      return { sub: ENV_ADMIN_SUBJECT, username: admin.username, role: 'admin', email: '' };
+      return {
+        sub: ENV_ADMIN_SUBJECT,
+        username: admin.username,
+        role: 'admin',
+        email: '',
+        credential: envAdminCredential(admin.passwordHash),
+      };
     }
     return null;
   }
@@ -120,7 +145,16 @@ export async function authenticate(
   // A real document, not `.lean()`, because a successful login writes the
   // last-login fields back onto it.
   const user = await User.findOne({ username: normalized });
-  if (!user) return null;
+  if (!user) {
+    // Spend the scrypt time a real account's check costs, so "no such user"
+    // and "wrong password" take as long as each other. Only here: every other
+    // way out of this function has already run exactly one scrypt, and burning
+    // one more for those too (as the login route used to, for every failure)
+    // made a wrong password on a real account twice as slow as an unknown
+    // username — the very difference the burn exists to hide.
+    await burnPasswordTime(password);
+    return null;
+  }
 
   if (!(await verifyPassword(password, user.passwordHash))) return null;
 
@@ -148,11 +182,16 @@ export async function authenticate(
 // change signs the account's other sessions out).
 export async function currentUser(session: SessionUser): Promise<AuthenticatedUser | null> {
   // The environment admin has no document to re-read. Its credential lives in
-  // the environment, so a session for it is as fresh as the deployment is.
+  // the environment, so the session has to have been signed in with the hash
+  // the environment holds now: replacing ADMIN_PASSWORD_HASH signs every
+  // earlier session out, the way `passwordChangedAt` does for a user. A session
+  // from before the fingerprint existed has none and signs in again once.
   if (session.sub === ENV_ADMIN_SUBJECT) {
     const admin = envAdmin();
     if (!admin || admin.username !== session.username) return null;
-    return { sub: ENV_ADMIN_SUBJECT, username: admin.username, role: 'admin', email: '' };
+    const credential = envAdminCredential(admin.passwordHash);
+    if (session.credential !== credential) return null;
+    return { sub: ENV_ADMIN_SUBJECT, username: admin.username, role: 'admin', email: '', credential };
   }
 
   if (!mongoose.Types.ObjectId.isValid(session.sub)) return null;

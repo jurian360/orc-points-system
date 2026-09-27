@@ -47,10 +47,21 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
   },
+  // Without `preload`: that flag only means something once the domain has
+  // been submitted to hstspreload.org, and submitting it would pin HTTPS on
+  // every subdomain of it — including sites this app does not own. The header
+  // still covers this host and anything under it.
   {
     key: "Strict-Transport-Security",
-    value: "max-age=63072000; includeSubDomains; preload",
+    value: "max-age=63072000; includeSubDomains",
   },
+  // A page opened from this app (or that opens it) gets no handle on its
+  // window, which closes reverse tab-nabbing and cross-window leaks.
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  // Other sites cannot embed this app's responses — its JSON included — as an
+  // image, script or other subresource. Same-origin pages are unaffected, and
+  // so is the Android app: it is a native HTTP client, not a browser page.
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
 ];
 
 const nextConfig: NextConfig = {

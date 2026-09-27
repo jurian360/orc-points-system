@@ -64,6 +64,12 @@ export async function POST(request: NextRequest) {
       return invalid;
     }
 
+    // A deactivated account cannot sign in, so it cannot reset its way back
+    // in either — not even with a link mailed before it was deactivated. The
+    // same answer as a dead link, the way the login route answers a
+    // deactivated account like a wrong password.
+    if (user.active === false) return invalid;
+
     user.passwordHash = await hashPassword(password);
     // Signs the account's other sessions out, exactly like a self-service or
     // an admin-driven password change: the point of a reset is usually that

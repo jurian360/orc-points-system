@@ -5,6 +5,7 @@ import dbConnect from '../../lib/mongodb';
 import { Rally, Route, Stage } from '../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../lib/api-guard';
 import {
+  MAX_STAGES,
   MERK_ROWS_PER_CARD,
   ORC_ROWS_PER_CARD,
   parseName,
@@ -75,6 +76,16 @@ export async function POST(request: NextRequest) {
     const rally = await Rally.findById(rallyId);
     if (!rally) {
       return NextResponse.json({ error: 'Rally not found' }, { status: 404 });
+    }
+
+    // Every stage re-scores the whole rally, so their number is bounded (see
+    // MAX_STAGES). Read before the insert, so two requests at once can go one
+    // over — harmless at this size, and not worth a transaction.
+    if ((await Stage.countDocuments({ rallyId })) >= MAX_STAGES) {
+      return NextResponse.json(
+        { error: `A rally can hold at most ${MAX_STAGES} stages` },
+        { status: 400 }
+      );
     }
 
     // A rally either has no routes — every stage is in the one implicit leg — or
