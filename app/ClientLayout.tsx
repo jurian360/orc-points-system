@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AuthProvider, useAuth } from './components/AuthContext';
 import { ROLE_LABELS } from './lib/roles';
-import { PAGE_CONTAINER } from './lib/layout';
+import { PAGE_CONTAINER } from './lib/pageContainer';
 
 const NAV_LINK_CLASS =
   'block text-white hover:text-blue-200 px-3 py-2 rounded-md text-sm font-medium';

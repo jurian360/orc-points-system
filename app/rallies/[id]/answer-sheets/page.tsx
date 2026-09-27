@@ -7,7 +7,7 @@ import AnswerSheetForm from '../../../components/AnswerSheetForm';
 import ClassificationBadge from '../../../components/ClassificationBadge';
 import { crewLabel, type ClassificationValue } from '../../../lib/participants';
 import type { ScoreKeyRow } from '../../../lib/scoring';
-import { PAGE_CONTAINER } from '../../../lib/layout';
+import { PAGE_CONTAINER } from '../../../lib/pageContainer';
 
 interface Rally {
   _id: string;

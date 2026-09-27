@@ -8,7 +8,7 @@ import type { AnswerSheetInitialData } from '../../../../../components/AnswerShe
 import type { StageTimeConfig, TimeKeyRow } from '../../../../../lib/timeScoring';
 import type { ClassificationValue } from '../../../../../lib/participants';
 import type { ScoreKeyRow } from '../../../../../lib/scoring';
-import { PAGE_CONTAINER } from '../../../../../lib/layout';
+import { PAGE_CONTAINER } from '../../../../../lib/pageContainer';
 
 interface Stage {
   _id: string;

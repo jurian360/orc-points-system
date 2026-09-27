@@ -7,7 +7,7 @@ import StageForm, {
   type StageFormInitialData,
   type StageFormPayload,
 } from '../../../../../components/StageForm';
-import { PAGE_CONTAINER } from '../../../../../lib/layout';
+import { PAGE_CONTAINER } from '../../../../../lib/pageContainer';
 import { stageLegPosition, type RallyRoute } from '../../../../../lib/routes';
 
 // The stage as the form is seeded with it. It is the form's own type rather than

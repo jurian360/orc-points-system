@@ -651,7 +651,7 @@ came in outside their window — instead of opening 56 cards.
 - **It is a grid, not a page of tables**, and it is laid out as one: the grid
   scrolls inside itself in both directions with the crew columns and the two
   header rows frozen. It does *not* get a width of its own — the dashboard, its
-  header and all four tabs share `PAGE_CONTAINER` (`app/lib/layout.ts`), so
+  header and all four tabs share `PAGE_CONTAINER` (`app/lib/pageContainer.ts`), so
   switching to this tab does not re-flow the page; a grid wider than that
   scrolls, which is what it does at any width anyway. On a real rally it is 56 crews long and a dozen controls
   wide, and neither the name of a crew nor the name of a control may scroll out
@@ -1088,7 +1088,7 @@ app/
                   rally's public results page)
   components/     client components (forms, grids, card views, auth context)
   lib/            scoring, mongodb, session, validation, body, rate-limit, env,
-                  layout (PAGE_CONTAINER, the one page width of the app),
+                  pageContainer (PAGE_CONTAINER, the one page width of the app),
                   missingSheets (a stage a crew handed no card in for, scored as
                   the blank card it stands for, shared client + server),
                   standings (finished / DNF / DNS: the three groups a result
@@ -1261,7 +1261,7 @@ Do not regress them.**
 - Styling is Tailwind utility classes inline; no component library.
 - **One page width.** Every full-page view — the top navigation, the rally
   list, the dashboard and its four tabs, the stage, key and card pages —
-  wraps its content in `PAGE_CONTAINER` (`app/lib/layout.ts`), so the page
+  wraps its content in `PAGE_CONTAINER` (`app/lib/pageContainer.ts`), so the page
   edges do not move when an official switches a tab or opens a stage. A grid
   too wide for it scrolls inside itself; it does not widen the page. Forms
   are the exception and keep their own narrow `max-w-*`.
@@ -1271,6 +1271,12 @@ Do not regress them.**
 
 ## Gotchas
 
+- **Everything under `app/` is routing, `app/lib` and `app/components`
+  included.** A file named after one of Next's special files — `layout`,
+  `page`, `route`, `loading`, `error`, `template`, `default`, `not-found` — is
+  read as that file for a `/lib` or `/components` segment, whatever it
+  exports. Next 15.5's route type check fails the build on it, which is why
+  `PAGE_CONTAINER` lives in `pageContainer.ts` and not `layout.ts`.
 - A role is checked in three places and they must agree: `app/lib/roles.ts` (the
   table), `middleware.ts` (which *pages* a role may open) and the route guards
   (what it may actually do). Adding an admin-only page means adding it to

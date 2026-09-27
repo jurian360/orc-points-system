@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 
 import QrCode from '../../../components/QrCode';
-import { PAGE_CONTAINER } from '../../../lib/layout';
+import { PAGE_CONTAINER } from '../../../lib/pageContainer';
 
 // Turn a rally's public results page on or off, and print the QR code that
 // points at it — one code for the whole rally, unlike the per-participant

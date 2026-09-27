@@ -6,7 +6,7 @@ import Link from 'next/link';
 import ClassificationBadge from '../../../../../components/ClassificationBadge';
 import QrCode from '../../../../../components/QrCode';
 import { crewLabel, type ClassificationValue } from '../../../../../lib/participants';
-import { PAGE_CONTAINER } from '../../../../../lib/layout';
+import { PAGE_CONTAINER } from '../../../../../lib/pageContainer';
 
 // The printable sheet of QR codes for one stage: one code per participant,
 // each standing for that crew's card for this stage.
