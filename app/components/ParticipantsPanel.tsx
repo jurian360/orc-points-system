@@ -311,9 +311,16 @@ const ParticipantsPanel: React.FC<ParticipantsPanelProps> = ({
                   </td>
                   <td className="px-6 py-2 whitespace-nowrap text-right">
                     <div className="flex justify-end space-x-4">
-                      {readOnly ? (
-                        <span className="text-gray-400 text-base">—</span>
-                      ) : (
+                      {/* Every stage's card of this crew, each with its own Edit
+                          Answers — for a data-entry account too, since typing and
+                          correcting sheets is exactly their job. */}
+                      <Link
+                        href={`/rallies/${rallyId}/participants/${eq}`}
+                        className="text-blue-600 hover:text-blue-900 font-medium text-base"
+                      >
+                        Sheets
+                      </Link>
+                      {!readOnly && (
                         <>
                           <button
                             onClick={() => setEditing({ mode: 'edit', eq })}
