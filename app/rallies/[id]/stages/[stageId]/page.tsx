@@ -6,7 +6,7 @@ import StageKeyCard from '../../../../components/StageKeyCard';
 import { useAuth } from '../../../../components/AuthContext';
 import type { StageMerkKeyRow, StageScoreKeyRow } from '../../../../components/StageKeyCard';
 import type { StageTimeConfig, TimeKeyRow } from '../../../../lib/timeScoring';
-import { PAGE_CONTAINER } from '../../../../lib/layout';
+import { PAGE_CONTAINER } from '../../../../lib/pageContainer';
 import { stageLegPosition, type LegPosition, type RallyRoute } from '../../../../lib/routes';
 
 interface Stage {

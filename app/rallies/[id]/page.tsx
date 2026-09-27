@@ -16,7 +16,7 @@ import {
   STATUS_TITLE,
   type StandingsStatus,
 } from '../../lib/standings';
-import { PAGE_CONTAINER } from '../../lib/layout';
+import { PAGE_CONTAINER } from '../../lib/pageContainer';
 import { groupStagesByRoute } from '../../lib/routes';
 
 interface Rally {

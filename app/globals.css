@@ -29,7 +29,7 @@ body {
 
 /*
  * The page itself must never scroll sideways — see PAGE_CONTAINER's comment
- * in app/lib/layout.ts. The wide grids (a controlekaart, the WPT overview)
+ * in app/lib/pageContainer.ts. The wide grids (a controlekaart, the WPT overview)
  * are already wrapped in their own `overflow-x-auto` container so *they*
  * scroll instead; this is the backstop for the rest of the page, so that
  * something briefly wider than the viewport (an overlong username in the

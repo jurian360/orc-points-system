@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import StageForm, { type StageFormPayload } from '../../../../components/StageForm';
-import { PAGE_CONTAINER } from '../../../../lib/layout';
+import { PAGE_CONTAINER } from '../../../../lib/pageContainer';
 import type { RallyRoute } from '../../../../lib/routes';
 
 export default function NewStagePage({ params }: { params: Promise<{ id: string }> }) {

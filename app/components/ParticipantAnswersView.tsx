@@ -13,7 +13,7 @@ import ClassificationBadge from './ClassificationBadge';
 import ParticipantDetailsForm from './ParticipantDetailsForm';
 import { useAuth } from './AuthContext';
 import { crewLabel, type ClassificationValue } from '../lib/participants';
-import { PAGE_CONTAINER } from '../lib/layout';
+import { PAGE_CONTAINER } from '../lib/pageContainer';
 
 interface Rally {
   _id: string;

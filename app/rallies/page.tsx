@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '../components/AuthContext';
 import { copyRallyName } from '../lib/rallyCodes';
-import { PAGE_CONTAINER } from '../lib/layout';
+import { PAGE_CONTAINER } from '../lib/pageContainer';
 
 interface Rally {
   _id: string;

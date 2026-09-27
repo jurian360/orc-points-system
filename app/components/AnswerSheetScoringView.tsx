@@ -7,7 +7,7 @@ import ControlekaartCard, { sumStrafp } from './ControlekaartCard';
 import type { MerkScoreRow, TimePenaltyRow } from './ControlekaartCard';
 import ClassificationBadge from './ClassificationBadge';
 import { crewLabel, type ClassificationValue } from '../lib/participants';
-import { PAGE_CONTAINER } from '../lib/layout';
+import { PAGE_CONTAINER } from '../lib/pageContainer';
 
 interface Stage {
   _id: string;
