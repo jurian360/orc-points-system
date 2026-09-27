@@ -104,8 +104,8 @@ Rally ──< Stage ──< AnswerSheet
   to a 409, same as the sheets. `PUT /api/rallies/[id]/participants/[eq]` upserts
   because a participant usually exists as sheets before anybody types their name;
   `POST /api/rallies/[id]/participants` only creates, so a taken EQ warns instead
-  of overwriting another crew. Deleting a participant removes the record *and*
-  their sheets in that rally. `POST .../participants/import` writes a whole entry
+  of overwriting another crew. Deleting a participant removes the record, their
+  sheets in that rally *and* their QR codes. `POST .../participants/import` writes a whole entry
   list in one `bulkWrite` of upserts — see the import section below.
 - `User` — `{ username, role, passwordHash, passwordChangedAt }`, an official's
   account. It hangs off nothing: an account owns no rally data, so deleting one
@@ -928,9 +928,17 @@ local Room database and talks to this app exactly twice.
   is a 400 telling the crew to update the app and scan again (an app from before
   it sent one); a wrong code or a mismatch is the same 404 as an unknown card.
   The scan returns the code as `code`, so the app stores what this app has.
-- **A card is handed in once.** `CardAccess.submittedAt` is set on success and a
+- **A card is handed in once.** `CardAccess.submittedAt` is the lock and a
   second submission is a 409, so somebody holding a crew's code cannot write
-  over their sheet after they handed in. *Reopen* on the
+  over their sheet after they handed in. The lock is **claimed before the sheet
+  is written**, in one `findOneAndUpdate` on `{_id, submittedAt: null}`: reading
+  the flag and setting it after the write let concurrent submissions all pass
+  the check and all write, the last one winning. A write that fails releases the
+  claim (matched on its own timestamp, so it cannot undo a later one) so the
+  phone can retry, and a duplicate-key race with an official creating the same
+  sheet is a 503 "try again", not a 409 — the app reads a 409 as "already handed
+  in". The crew also has to be on the entry list (a `Participant`), exactly as
+  for an official's sheet: a code a deleted crew left behind is a 404. *Reopen* on the
   QR page clears the lock; *New code* replaces the code, which invalidates the
   sheet that carried the old one. The scan answers with the same lock as
   `ingeleverd`, so the app can say so before the crew types the card; neither
@@ -1170,7 +1178,10 @@ Browse via `localhost` — the session cookie is always `Secure`.
 Do not regress them.**
 
 - Every API route starts with a guard from `app/lib/api-guard.ts` and reads its
-  body with `readBody()` (256 KB cap, object-only JSON). The guard is
+  body with `readBody()` (256 KB cap, object-only JSON). The cap is counted on
+  the stream as it is read (`app/lib/body.ts`), never after `request.text()`:
+  a chunked body has no Content-Length to check up front, and buffering it whole
+  first is a way to run the container out of memory. The guard is
   `requireSession()` for a read and for writing an **answer sheet**,
   `requireRallyAdmin()` for **everything else that writes** — a rally, its
   routes, a stage or its key, the entry list, the imports, the access codes, the
@@ -1279,7 +1290,8 @@ Do not regress them.**
   too wide for it scrolls inside itself; it does not widen the page. Forms
   are the exception and keep their own narrow `max-w-*`.
 - Deleting cascades: deleting a rally removes its stages, sheets, participants
-  and QR codes; deleting a stage removes its sheets and its QR codes. Keep that
+  and QR codes; deleting a stage removes its sheets and its QR codes; deleting a
+  participant removes their sheets and their QR codes. Keep that
   behaviour when touching those routes.
 
 ## Gotchas

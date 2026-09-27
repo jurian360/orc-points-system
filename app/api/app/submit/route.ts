@@ -3,13 +3,13 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 
 import dbConnect from '../../../lib/mongodb';
-import { AnswerSheet, CardAccess } from '../../../models';
+import { AnswerSheet, CardAccess, Participant } from '../../../models';
 import { readBody } from '../../../lib/api-guard';
 import { clientIp, rateLimit } from '../../../lib/rate-limit';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../../../lib/scoring';
 import { rescoreParticipants } from '../../../lib/rescore';
 import { parseAppCardRows, parseEq } from '../../../lib/validation';
-import { parseAppCode, parseCardId, resolveCard } from '../../../lib/appCards';
+import { parseAppCode, parseCardId, resolveCard, type ResolvedCard } from '../../../lib/appCards';
 import { parseRallyCode } from '../../../lib/rallyCodes';
 
 // A finalised card, handed in from the Android app.
@@ -103,67 +103,107 @@ export async function POST(request: NextRequest) {
 
     const { rally, stage, access } = card;
 
-    if (access.submittedAt) {
+    // A sheet belongs to a crew on the entry list, exactly as for an official's
+    // sheet and a time import. Deleting a participant takes their codes with
+    // them now, but a code left behind by a deletion from before that — or one
+    // whose participant was removed in the database — must not put a crew back
+    // in the standings. Same answer as any card that does not resolve.
+    if (!(await Participant.exists({ rallyId: rally._id, eq }))) {
+      return NextResponse.json({ error: 'Unknown card' }, { status: 404 });
+    }
+
+    // Claim the hand-in lock *before* writing anything, in one atomic update.
+    // Checking `access.submittedAt` on the document read above and setting it
+    // after the write let any number of concurrent submissions all pass the
+    // check and all write the sheet, the last one winning. Now exactly one
+    // request can move the code from unused to spent; every other one gets the
+    // 409. `claimedAt` identifies this claim, so releasing it below cannot undo
+    // a later one.
+    const claimedAt = new Date();
+    const claimed = await CardAccess.findOneAndUpdate(
+      { _id: access._id, submittedAt: null },
+      { $set: { submittedAt: claimedAt } },
+      { new: true }
+    );
+    if (!claimed) {
       return NextResponse.json(
         { error: 'This card has already been handed in' },
         { status: 409 }
       );
     }
 
-    const existing = await AnswerSheet.findOne({ stageId: stage._id, eq });
+    try {
+      await storeCard(rally, stage, eq, rows);
+    } catch (error) {
+      // Nothing was handed in after all, so the code is released and the phone
+      // can send the card again.
+      await CardAccess.updateOne(
+        { _id: access._id, submittedAt: claimedAt },
+        { $set: { submittedAt: null } }
+      );
 
-    // A card that carries no merk column must not blank the letters an official
-    // already typed there, so the merk rows are only written when they arrived.
-    const merkScores = rows.merkScores ?? existing?.merkScores ?? [];
-    const merkPenalty = calculateMerkPenalty(stage.merkScoreKey, merkScores).totalPenalty;
-    // The time part is a chain across the rally and is added by the re-scoring
-    // below, exactly as it is when an official saves a sheet.
-    const totalPenalty = calculateTotalPenalty(stage.scoreKey, rows.answers) + merkPenalty;
-
-    if (existing) {
-      // The sheet may already exist because a control's times were imported for
-      // this crew before they handed in. Their WPT's stay; only the letters and
-      // the totals derived from them are written.
-      existing.answers = rows.answers;
-      existing.merkScores = merkScores;
-      existing.merkPenalty = merkPenalty;
-      existing.totalPenalty = totalPenalty;
-      existing.submittedAt = new Date();
-      await existing.save();
-    } else {
-      await AnswerSheet.create({
-        eq,
-        rallyId: rally._id,
-        stageId: stage._id,
-        answers: rows.answers,
-        timePenalties: [],
-        merkScores,
-        merkPenalty,
-        totalPenalty,
-      });
+      // The unique {stageId, eq} index: an official or a time import created
+      // this crew's sheet in the moment between the lookup and the create. Not
+      // a hand-in that already happened — the 409 would tell the app it was —
+      // so the phone is asked to try again, and the retry updates that sheet.
+      if (error instanceof Error && 'code' in error && error.code === 11000) {
+        return NextResponse.json(
+          { error: 'Could not store this card just now. Try again in a moment.' },
+          { status: 503 }
+        );
+      }
+      throw error;
     }
-
-    // Writing a sheet moves this participant's whole time chain, so their rally
-    // is re-scored before the standings are read again.
-    await rescoreParticipants(rally._id, [eq]);
-
-    // Only now is the code spent: a submission that failed to store should be
-    // retryable from the phone.
-    access.submittedAt = new Date();
-    await access.save();
 
     return NextResponse.json({ ok: true, rallycode: rally.code, kaartid: stage.cardId, equipenr: eq });
   } catch (error) {
-    // The unique {stageId, eq} index is the real guard against two phones
-    // handing in the same card at once.
-    if (error instanceof Error && 'code' in error && error.code === 11000) {
-      return NextResponse.json(
-        { error: 'This card has already been handed in' },
-        { status: 409 }
-      );
-    }
-
     console.error('Failed to store a card handed in from the app:', error);
     return NextResponse.json({ error: 'Could not store this card' }, { status: 500 });
   }
+}
+
+// Write the letters of a card onto the crew's sheet for the stage and re-score
+// their rally. Called only while this request holds the card's hand-in lock.
+async function storeCard(
+  rally: ResolvedCard['rally'],
+  stage: ResolvedCard['stage'],
+  eq: number,
+  rows: NonNullable<ReturnType<typeof parseAppCardRows>>
+): Promise<void> {
+  const existing = await AnswerSheet.findOne({ stageId: stage._id, eq });
+
+  // A card that carries no merk column must not blank the letters an official
+  // already typed there, so the merk rows are only written when they arrived.
+  const merkScores = rows.merkScores ?? existing?.merkScores ?? [];
+  const merkPenalty = calculateMerkPenalty(stage.merkScoreKey, merkScores).totalPenalty;
+  // The time part is a chain across the rally and is added by the re-scoring
+  // below, exactly as it is when an official saves a sheet.
+  const totalPenalty = calculateTotalPenalty(stage.scoreKey, rows.answers) + merkPenalty;
+
+  if (existing) {
+    // The sheet may already exist because a control's times were imported for
+    // this crew before they handed in. Their WPT's stay; only the letters and
+    // the totals derived from them are written.
+    existing.answers = rows.answers;
+    existing.merkScores = merkScores;
+    existing.merkPenalty = merkPenalty;
+    existing.totalPenalty = totalPenalty;
+    existing.submittedAt = new Date();
+    await existing.save();
+  } else {
+    await AnswerSheet.create({
+      eq,
+      rallyId: rally._id,
+      stageId: stage._id,
+      answers: rows.answers,
+      timePenalties: [],
+      merkScores,
+      merkPenalty,
+      totalPenalty,
+    });
+  }
+
+  // Writing a sheet moves this participant's whole time chain, so their rally
+  // is re-scored before the standings are read again.
+  await rescoreParticipants(rally._id, [eq]);
 }

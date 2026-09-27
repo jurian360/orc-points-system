@@ -2,7 +2,7 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../../lib/mongodb';
-import { AnswerSheet, Participant, Rally } from '../../../../../models';
+import { AnswerSheet, CardAccess, Participant, Rally } from '../../../../../models';
 import { readBody, requireSession, requireRallyAdmin } from '../../../../../lib/api-guard';
 import { CLASSIFICATION_LIST } from '../../../../../lib/participants';
 import {
@@ -177,9 +177,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'Rally not found' }, { status: 404 });
     }
 
+    // The crew's QR codes go with them: a code must not outlive what it stands
+    // for, and a printed one left live would let the app hand a card back in and
+    // put a removed crew back in the standings.
     const [sheetResult, participantResult] = await Promise.all([
       AnswerSheet.deleteMany({ rallyId: id, eq }),
       Participant.deleteOne({ rallyId: id, eq }),
+      CardAccess.deleteMany({ rallyId: id, eq }),
     ]);
 
     // Neither sheets nor a record: this EQ was never part of the rally.
