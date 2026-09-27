@@ -90,12 +90,21 @@ export interface SessionUser {
   // compares it with the user's `passwordChangedAt`, so changing a password
   // signs the account's other sessions out.
   issuedAt: number;
+  // Only on the environment admin's session: a fingerprint of the password
+  // hash it signed in with (see `envAdminCredential` in app/lib/users.ts). The
+  // recovery admin has no `passwordChangedAt` to compare `issuedAt` with, so
+  // this is what makes replacing ADMIN_PASSWORD_HASH sign its sessions out.
+  credential?: string;
 }
+
+// A fingerprint is 32 hex characters; anything else in the claim is not ours.
+const CREDENTIAL_PATTERN = /^[0-9a-f]{32}$/;
 
 export async function createSessionToken(user: {
   sub: string;
   username: string;
   role: Role;
+  credential?: string;
 }): Promise<string> {
   // The nonce makes each session individually identifiable, which is what a
   // future revocation list would key on.
@@ -106,6 +115,7 @@ export async function createSessionToken(user: {
     sub: user.sub,
     usr: user.username,
     role: user.role,
+    ...(user.credential ? { cred: user.credential } : {}),
   };
 
   const payload = toBase64Url(new TextEncoder().encode(JSON.stringify(claims)));
@@ -152,18 +162,27 @@ export async function readSessionToken(
     return null;
   }
 
-  const { iat, sub, usr, role } = claims;
+  const { iat, sub, usr, role, cred } = claims;
   if (typeof iat !== 'number' || !Number.isFinite(iat)) return null;
   if (typeof sub !== 'string' || !sub) return null;
   if (typeof usr !== 'string' || !usr) return null;
   if (!isRole(role)) return null;
+  if (cred !== undefined && (typeof cred !== 'string' || !CREDENTIAL_PATTERN.test(cred))) {
+    return null;
+  }
 
   // Expiry is enforced here, server-side. The cookie's maxAge is only a hint to
   // the browser and says nothing about a replayed or exported cookie value.
   const age = Date.now() - iat;
   if (age < 0 || age >= MAX_AGE_MS) return null;
 
-  return { sub, username: usr, role, issuedAt: iat };
+  return {
+    sub,
+    username: usr,
+    role,
+    issuedAt: iat,
+    ...(typeof cred === 'string' ? { credential: cred } : {}),
+  };
 }
 
 export const SESSION_COOKIE = 'session';

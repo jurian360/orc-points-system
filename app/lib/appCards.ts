@@ -133,13 +133,45 @@ export async function ensureStageCardId(stage: {
 }): Promise<number> {
   if (stage.cardId) return stage.cardId;
 
+  // "The highest number + 1", read and then written, gave two stages printed
+  // at the same moment the same number — and a submission is checked against
+  // `{rally, cardId}`, so one stage's cards would silently land on the other's
+  // sheets. The number now comes from the rally's own counter:
+  //
+  //  * `$max` first raises the counter to the highest number the stages
+  //    already carry. Idempotent and never lowering, so any number of
+  //    requests doing it at once agree, and a rally from before the counter
+  //    existed carries on from its stages;
+  //  * `$inc` then hands out the next number atomically — two requests get
+  //    two numbers.
   const highest = await Stage.findOne({ rallyId: stage.rallyId })
     .sort({ cardId: -1 })
     .select('cardId');
+  await Rally.updateOne(
+    { _id: stage.rallyId },
+    { $max: { cardIdSeq: highest?.cardId || 0 } }
+  );
+  const rally = await Rally.findOneAndUpdate(
+    { _id: stage.rallyId },
+    { $inc: { cardIdSeq: 1 } },
+    { new: true, projection: { cardIdSeq: 1 } }
+  );
+  if (!rally) throw new Error('Rally of this stage not found');
 
-  stage.cardId = (highest?.cardId || 0) + 1;
-  await stage.save();
-  return stage.cardId as number;
+  // Only a stage that still has no number takes this one: the same stage
+  // numbered by two requests at once keeps the first number, which may already
+  // be printed, and the other is left unused — a gap, never a collision.
+  const assigned = await Stage.findOneAndUpdate(
+    { _id: stage._id, cardId: null },
+    { $set: { cardId: rally.cardIdSeq } },
+    { new: true, projection: { cardId: 1 } }
+  );
+  const cardId = assigned
+    ? (assigned.cardId as number)
+    : ((await Stage.findById(stage._id).select('cardId'))?.cardId as number);
+
+  stage.cardId = cardId;
+  return cardId;
 }
 
 // --- Card access codes -----------------------------------------------------

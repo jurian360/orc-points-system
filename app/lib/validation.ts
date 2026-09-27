@@ -79,6 +79,11 @@ export const MAX_IMPORT_TIMES = 100;
 // making the running order and the printed result sheet arbitrarily wide.
 export const MAX_ROUTES = 20;
 
+// Stages of a rally. A real event has a handful; every stage added re-scores
+// the whole rally and widens the printed result sheet by four columns, so the
+// cap is generous headroom that still keeps both bounded.
+export const MAX_STAGES = 100;
+
 // Clamp any value to a bounded string. Objects and arrays collapse to a safe
 // placeholder rather than being passed through.
 function str(value: unknown): string {
@@ -381,19 +386,35 @@ export function parseAnswerRows(value: unknown, maxRows: number = MAX_ANSWER_ROW
 // penalty of a time row are derived from the stage's time key server-side (see
 // app/lib/rescore.ts), so accepting them here would let a sheet claim a total it
 // did not earn.
+//
+// A time column has exactly TIME_ROWS rows, numbered 1..10 (start, the GTC's,
+// finish). A row numbered outside that, or a second copy of a row, is not part
+// of any card: it used to be stored as junk the re-score then ignored, and now
+// it is dropped here, the first one of each number being the one kept.
 export function parseTimePenalties(value: unknown) {
-  return rows(value, MAX_TIME_ROWS).map((row) => {
-    const r = (row ?? {}) as Record<string, unknown>;
-    return {
-      rowNumber: num(r.rowNumber),
-      ipt: '',
-      wpt: str(r.wpt),
-      plusMinus: '',
-      strafp: 0,
-      outOfWindow: false,
-      missing: false,
-    };
-  });
+  const seen = new Set<number>();
+  return rows(value, MAX_TIME_ROWS)
+    .map((row) => {
+      const r = (row ?? {}) as Record<string, unknown>;
+      return {
+        rowNumber: num(r.rowNumber),
+        ipt: '',
+        wpt: str(r.wpt),
+        plusMinus: '',
+        strafp: 0,
+        outOfWindow: false,
+        missing: false,
+      };
+    })
+    .filter((row) => {
+      const valid =
+        Number.isInteger(row.rowNumber) &&
+        row.rowNumber >= 1 &&
+        row.rowNumber <= TIME_ROWS &&
+        !seen.has(row.rowNumber);
+      if (valid) seen.add(row.rowNumber);
+      return valid;
+    });
 }
 
 // Only the letter is taken from the client: the merk column is scored against

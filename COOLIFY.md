@@ -4,9 +4,10 @@ This is a Next.js 15 app (App Router) that stores data in MongoDB via Mongoose.
 
 ## 1. Create the MongoDB database
 
-You do **not** need to create collections manually — Mongoose creates the
-`quizzes` and `participantanswers` collections automatically on first write.
-You only need a running MongoDB instance.
+You do **not** need to create collections manually — Mongoose creates them
+(`rallies`, `routes`, `stages`, `answersheets`, `participants`, `cardaccesses`,
+`users`) and their indexes automatically on first use. You only need a running
+MongoDB instance.
 
 Two options in Coolify:
 
@@ -14,6 +15,15 @@ Two options in Coolify:
   *+ New Resource* → *Databases* → *MongoDB*. Coolify generates an internal
   hostname and credentials.
 - **External MongoDB**: e.g. MongoDB Atlas — use its connection string.
+
+**Keep a Coolify-managed MongoDB off the internet.** Leave *Make it publicly
+available* **off** on the database resource: the app reaches it over Coolify's
+internal network by its container hostname, so a public port only gives the
+rest of the internet a login prompt for the database. Changing the root
+password later is done *inside* MongoDB (`db.changeUserPassword(...)` in the
+resource's Terminal) — the password field on the resource only takes effect
+when the database is first created — and then copied into that field so
+Coolify's own backups keep working.
 
 ## 2. Deploy the app
 
@@ -35,9 +45,16 @@ development only. See `.env.example` for the full list.
 | `MONGODB_URI`       | yes      | Full MongoDB connection string, **including a database name**.           |
 | `SESSION_SECRET`    | yes      | >= 32 chars. Signs session cookies. `node scripts/generate-secret.mjs`   |
 | `ADMIN_USERNAME`      | no       | Username of the recovery admin. Defaults to `admin`.                     |
-| `ADMIN_PASSWORD_HASH` | yes      | scrypt hash of its password. `node scripts/hash-password.mjs '...'`      |
+| `ADMIN_PASSWORD_HASH` | yes      | scrypt hash of its password. `node scripts/hash-password.mjs` (prompts)      |
 | `APP_PASSWORD_HASH`   | no       | The pre-accounts shared password. Read as `ADMIN_PASSWORD_HASH` when that one is unset. |
 | `TRUSTED_PROXY_COUNT` | no       | Reverse proxies in front of the app, default `1` (Coolify's Traefik). Set `2` when a CDN such as Cloudflare sits in front of Traefik. See below. |
+| `POSTMARK_SERVER_TOKEN` | for *forgot password* | Server API token of the Postmark server reset emails are sent through. |
+| `POSTMARK_FROM_EMAIL`   | for *forgot password* | The From address; must be a verified sender or domain in that Postmark server. |
+| `APP_BASE_URL`          | for *forgot password* | The app's public URL, no trailing slash (e.g. `https://tel.sarkonline.com`). The reset link is built from it, never from a request header. |
+
+Without the three *forgot password* variables the app runs normally and the
+feature fails closed: a request still answers "if an account exists, an email
+is on its way", and the reason it was not sent is only logged.
 
 **`TRUSTED_PROXY_COUNT` decides who the rate limits see.** Every limit — login,
 password reset, the app's scan and hand-in, the API as a whole — is keyed on
@@ -84,7 +101,7 @@ Its password is stored as a scrypt hash; the plaintext exists nowhere in the
 repository or the environment. To set or rotate it:
 
 ```bash
-node scripts/hash-password.mjs 'your-new-password'
+node scripts/hash-password.mjs      # asks for it twice, hidden
 # -> ADMIN_PASSWORD_HASH=<saltHex>:<hashHex>
 ```
 
@@ -98,7 +115,7 @@ a **Users** page to add the real accounts on.
 ## 5. Verify
 
 After deploy, open the app URL. You should see the login screen. Log in, create
-a quiz, and confirm data persists (a restart should keep your quizzes).
+a rally, and confirm data persists (a restart should keep your rallies).
 
 ## Security notes
 
@@ -114,20 +131,25 @@ findings and rationale):
   origin-checked.
 - Pages and API routes are both protected at the edge by `middleware.ts`, and
   every route handler re-checks the session independently.
-- CSP (nonce-based), HSTS, `X-Frame-Options`, and `nosniff` are set on all
-  responses.
+- A CSP, HSTS (without `preload`), `X-Frame-Options`, `nosniff`,
+  `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy` are set on all
+  responses (`next.config.ts`). The CSP's `script-src` keeps `'unsafe-inline'`
+  rather than a nonce — the comment in `next.config.ts` explains why.
 
-Still required from an operator — these cannot be fixed in code:
+Operator actions — these cannot be fixed in code:
 
 1. **Rotate the MongoDB password.** The previous credentials were committed in
    `.env.local` and must be treated as compromised. The file is no longer
-   tracked, but it remains in git history.
+   tracked, but it remains in git history. *Done 2026-09-27 (issue #65): the
+   root password was changed and the app moved to its own `readWrite` user.*
 2. **Purge the credentials from git history**, coordinating with anyone holding
-   a clone:
+   a clone — optional now that the credentials in it no longer work:
    ```bash
    git filter-repo --path .env.local --invert-paths
    git push --force-with-lease origin --all
    ```
+   GitHub keeps the `refs/pull/*` of every merged pull request, which a force
+   push does not touch; removing those takes a request to GitHub Support.
 3. **Rotate the application password** — the previous one was hardcoded in the
    source and documented in this file, so it is public to everyone with repo
    access.

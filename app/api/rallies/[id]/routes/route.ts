@@ -137,14 +137,33 @@ export async function POST(
     );
     const route = await Route.create({ rallyId: id, name, order: highest + 1 });
 
+    // The count above was read before this insert, so two requests at once can
+    // both have passed it. Counted again now that this route exists: the one
+    // that went over the limit takes its own route back out. It holds no stages
+    // — a rally that already had routes gives a new one none.
+    if ((await Route.countDocuments({ rallyId: id })) > MAX_ROUTES) {
+      await Route.deleteOne({ _id: route._id });
+      return NextResponse.json(
+        { error: `A rally can hold at most ${MAX_ROUTES} routes` },
+        { status: 400 }
+      );
+    }
+
     // The first route is the leg the rally's stages were already typed as, so
-    // they all move into it. Guarded on there being no route before this one,
-    // which is what makes "every stage is unassigned" true — no `$exists` filter
-    // is needed, and none may be used: `sanitizeFilter` (app/lib/mongodb.ts)
-    // wraps any operator that reaches a filter in `$eq`.
+    // they all move into it. Only the stages that are in no route yet: with a
+    // filter on the rally alone, two requests creating the "first" route at the
+    // same moment each moved every stage, and the last one took them all from
+    // the other. On `routeId: null` the first request takes them and the second
+    // finds none, which is what running them one after the other would have
+    // done. `null` matches a missing field without an operator — none may be
+    // used here: `sanitizeFilter` (app/lib/mongodb.ts) wraps any operator that
+    // reaches a filter in `$eq`.
     let assignedStages = 0;
     if (existing.length === 0) {
-      const assigned = await Stage.updateMany({ rallyId: id }, { $set: { routeId: route._id } });
+      const assigned = await Stage.updateMany(
+        { rallyId: id, routeId: null },
+        { $set: { routeId: route._id } }
+      );
       assignedStages = assigned.modifiedCount || 0;
     }
 

@@ -1,0 +1,13 @@
+# Keeps the pinned base image in the Dockerfile current. The image is pinned to
+# a digest so a build is reproducible; this is what still brings in Node and
+# Alpine security patches, as a pull request to review and merge.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    # Stay on Node 22: a major version is a migration, not a patch.
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]

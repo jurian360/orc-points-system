@@ -131,7 +131,11 @@ Rally ──< Stage ──< AnswerSheet
   shared with the browser so the form and the server agree). `Stage.cardId`, and
   the code of a rally that pre-dates this, are generated on first use
   (`app/lib/appCards.ts`), so an older rally gets one the moment its first QR
-  code is printed. Both `POST /api/rallies` and `PUT /api/rallies/[id]` map the
+  code is printed. A `cardId` comes from the rally's own counter
+  (`Rally.cardIdSeq`: `$max` to the highest number its stages carry, then
+  `$inc`), never from "highest + 1" read and then written — two stages numbered
+  at once got the same number that way, and a submission checked against
+  `{rally, cardId}` then landed on the wrong stage's sheets. Both `POST /api/rallies` and `PUT /api/rallies/[id]` map the
   unique index's `11000` to a 409: two rallies answering to one code would make
   a submission ambiguous. A `PUT` that sends no `code` keeps the stored one —
   a rally without a code cannot be scanned into the app at all.
@@ -211,7 +215,9 @@ uses: `routes.length === 0` means "render exactly what you rendered before", not
   path, not 403.
 - **A rally has one of two shapes and never a third**: no routes at all, or
   routes with every stage in one of them. Creating the **first** route takes
-  every stage the rally already has (that leg is what its stages were typed as);
+  every stage the rally already has (that leg is what its stages were typed as)
+  — the ones on `routeId: null`, so two "first" routes created at once end as
+  if one had come after the other, not with the second taking the stages back;
   a stage created while routes exist has to name one (400 otherwise); and
   **a route that still holds stages cannot be deleted** — 409, naming them.
   Deleting a stage takes its answer sheets with it, and a mis-click on a
@@ -1004,7 +1010,11 @@ guard is; a hidden button only spares an official a 403.
   forgotten their password. A `User` may not take its username: two accounts
   answering to one name would make a login ambiguous. `APP_PASSWORD_HASH` — the
   shared password this app had before accounts — is still read as its
-  credential, so a deployment that predates this keeps working.
+  credential, so a deployment that predates this keeps working. With no
+  `passwordChangedAt` to compare with, its session carries a fingerprint of the
+  hash it signed in with instead (the `cred` claim, `envAdminCredential`):
+  replacing `ADMIN_PASSWORD_HASH` signs every earlier recovery-admin session
+  out on its next request.
 - **The user routes will not strand the app**: the last admin cannot be deleted
   or demoted, and nobody can delete or demote themselves. Deleting an account
   cascades nothing — the sheets it typed belong to the rally, not to the
@@ -1013,7 +1023,13 @@ guard is; a hidden button only spares an official a 403.
   `timingSafeEqual`), used by the login, the user routes and
   `scripts/hash-password.mjs`. A login for an unknown username spends the same
   scrypt time as a real one (`burnPasswordTime`), so the response time does not
-  list which accounts exist, and every failure answers one message.
+  list which accounts exist, and every failure answers one message. **Exactly
+  one scrypt on every path**: the burn lives inside `authenticate`, on the
+  no-such-user branch only. Burning for every failure — as the login route once
+  did — made a wrong password on a real account twice as slow as an unknown
+  username, which is the difference the burn is there to hide.
+  `hash-password.mjs` asks for the password (hidden) rather than taking it as
+  an argument, which would leave it in the shell history.
 - **A `User` carries an optional email**, `sparse`-unique so two accounts
   cannot claim one address while an account added before this existed simply
   has none until an official (or the account itself, on `/account`) fills one
@@ -1053,7 +1069,15 @@ the same reason `/login` is: a visitor asking for this has none yet.
   the login route's "one message for every failure" rule extended to email
   enumeration. A send failure, a missing Postmark or `APP_BASE_URL`
   configuration, and a database error all land in the same generic response;
-  only `console.error` sees which. Rate limited per IP, like login.
+  only `console.error` sees which. Rate limited per IP, like login. **The
+  lookup is the only thing on the response path**: the token write and the send
+  run after the answer (`issueResetLink`), because a database save only for an
+  address that has an account made that answer measurably slower. A link less
+  than five minutes old is not replaced (`RESET_LINK_COOLDOWN_MS`) — every
+  request used to kill the previous link, so anyone who knew an official's
+  address could keep invalidating the one they were about to click. A
+  deactivated account gets no link, and `reset-password` refuses one mailed
+  before it was deactivated.
 - **The reset link's domain comes from `APP_BASE_URL`, never from a request
   header.** `middleware.ts`'s CSRF check trusts `x-forwarded-host` because
   Coolify's proxy sets it and a browser cannot forge it cross-origin — but that
@@ -1072,7 +1096,9 @@ the same reason `/login` is: a visitor asking for this has none yet.
 - **Every other way a password changes clears a pending token too**: an admin
   resetting it on `/users`, and an account changing its own on `/account`. A
   reset link still sitting unread in an inbox must not go on working once the
-  password it targeted has already changed through some other door.
+  password it targeted has already changed through some other door. **So does
+  changing the email**, on `/users` or on `/account`: a link mailed to the old
+  address — a typo, or a mailbox somebody else now reads — dies with it.
 - **Email is sent through Postmark's plain HTTP API** (`app/lib/email.ts`), no
   SDK dependency — the same trade-off `app/lib/qrcode.ts` and
   `app/lib/spreadsheet.ts` make for their own formats, since the whole surface
@@ -1302,6 +1328,16 @@ Do not regress them.**
   read as that file for a `/lib` or `/components` segment, whatever it
   exports. Next 15.5's route type check fails the build on it, which is why
   `PAGE_CONTAINER` lives in `pageContainer.ts` and not `layout.ts`.
+- **`middleware.ts`'s matcher skips static files by name at the root only**
+  (`[^/]+\.png$` and friends). It used to skip *any* path ending in an image
+  extension, so `/rallies/<id>.png` got past the session check, the role gate
+  and the rate limit. An asset served from a subdirectory of `public/` needs
+  that directory named in the matcher, never a return to `.*\.png$`.
+- **A filter operator is stripped by `sanitizeFilter`**, globally on
+  (`app/lib/mongodb.ts`): `{ $ne: false }`, `{ $exists: false }` and the like in
+  a filter silently become an equality on an object. Use `null` for "missing"
+  (`routeId: null`), filter in code (`user.active !== false`), or wrap a value
+  you built yourself in `mongoose.trusted()` — never one from a request.
 - A role is checked in three places and they must agree: `app/lib/roles.ts` (the
   table), `middleware.ts` (which *pages* a role may open) and the route guards
   (what it may actually do). Adding an admin-only page means adding it to
@@ -1347,6 +1383,3 @@ Do not regress them.**
   on every request. `X-Real-IP` is only the fallback when there is no
   `X-Forwarded-For` at all, because a proxy that trusts forwarded headers passes
   a client's `X-Real-IP` through untouched.
-- `COOLIFY.md` still mentions the pre-refactor `quizzes` /
-  `participantanswers` collections; the live collections are `rallies`,
-  `stages`, `answersheets`.

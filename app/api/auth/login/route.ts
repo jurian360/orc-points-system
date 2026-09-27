@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { clientIp, rateLimit } from '../../../lib/rate-limit';
 import { readBody } from '../../../lib/api-guard';
-import { burnPasswordTime } from '../../../lib/passwords';
 import { authenticate } from '../../../lib/users';
 import { MAX_PASSWORD_LENGTH, MAX_USERNAME_LENGTH, normalizeUsername } from '../../../lib/roles';
 import {
@@ -62,12 +61,10 @@ export async function POST(request: NextRequest) {
   try {
     const user = await authenticate(normalizeUsername(username), password, clientIp(request));
 
-    if (!user) {
-      // Spend the same scrypt time a real account costs, so the response time
-      // does not separate "no such user" from "wrong password".
-      await burnPasswordTime(password);
-      return invalid;
-    }
+    // Every way to a null — no such user, wrong password, a deactivated
+    // account — has spent exactly one scrypt inside `authenticate`, so the
+    // response time does not say which it was.
+    if (!user) return invalid;
 
     const cookieStore = await cookies();
     cookieStore.set(SESSION_COOKIE, await createSessionToken(user), {

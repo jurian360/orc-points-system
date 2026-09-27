@@ -66,6 +66,13 @@ export async function PUT(
       if (email === null) {
         return NextResponse.json({ error: `Invalid email. ${EMAIL_RULE}` }, { status: 400 });
       }
+      // A reset link already mailed to the old address stops working with it:
+      // correcting a mistyped or stale address is exactly the moment somebody
+      // else may be holding a link to this account.
+      if ((user.email ?? '') !== email) {
+        user.resetTokenHash = null;
+        user.resetTokenExpiresAt = null;
+      }
       // '' stores as undefined, never as an empty string: the unique index is
       // `sparse`, which only skips a missing field, not an empty one — two
       // accounts both saved with '' would collide on it.

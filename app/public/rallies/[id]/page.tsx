@@ -86,7 +86,7 @@ export default function PublicRallyResultsPage({
     if (!rallyId) return;
 
     try {
-      const response = await fetch(`/api/public/rallies/${rallyId}/results`);
+      const response = await fetch(`/api/public/rallies/${encodeURIComponent(rallyId)}/results`);
       // A rally that does not exist and one whose public page is off answer
       // the same 404 — see the API route — so this reads the same either way.
       if (!response.ok) {

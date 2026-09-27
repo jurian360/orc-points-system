@@ -18,6 +18,8 @@
 // Bounds. A rally entry list is tens of rows; these are what keeps a malformed
 // or hostile file from exhausting the tab's memory.
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
+// What a single part of the workbook may inflate to (see `readInflated`).
+export const MAX_INFLATED_BYTES = 50 * 1024 * 1024;
 export const MAX_ROWS = 5000;
 export const MAX_COLUMNS = 200;
 
@@ -101,7 +103,35 @@ async function readZipEntry(buffer: ArrayBuffer, entry: ZipEntry): Promise<strin
   }
 
   const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return new Response(stream).text();
+  return readInflated(stream);
+}
+
+// Inflate an entry without ever holding more than MAX_INFLATED_BYTES of it.
+//
+// MAX_FILE_BYTES caps the file as picked, which is *compressed*: deflate reaches
+// about 1000:1, so a crafted 5 MB workbook could otherwise inflate to gigabytes
+// and take the tab down with it. The output is counted as it streams and the
+// read is abandoned the moment it passes the cap. An honest entry list — tens
+// of rows, a few hundred KB of XML — is nowhere near it.
+async function readInflated(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let total = 0;
+  let text = '';
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    total += value.byteLength;
+    if (total > MAX_INFLATED_BYTES) {
+      await reader.cancel().catch(() => {});
+      throw new SpreadsheetError('This workbook is too large to read.');
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+
+  return text + decoder.decode();
 }
 
 // --- XLSX -----------------------------------------------------------------

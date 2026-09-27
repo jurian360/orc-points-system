@@ -163,7 +163,15 @@ export const config = {
      * Everything except Next.js internals and static assets. Auth API routes
      * and /login are allow-listed inside the middleware above rather than here,
      * so this exclusion list stays limited to things that are never protected.
+     *
+     * The asset exclusion is anchored to a single root-level path segment on
+     * purpose: every file in public/ (and app/icon.png, app/favicon.ico) is
+     * served from the root. An unanchored `.*\.png$` also matched a dynamic
+     * route segment — /rallies/<id>.png — and skipped the session check, the
+     * role gate and the rate limit for it. If assets ever move into a
+     * subdirectory of public/, name that directory here rather than going
+     * back to `.*`.
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico$|[^/]+\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };
