@@ -52,18 +52,46 @@ export function rateLimit(key: string, limit: number, windowMs: number): RateLim
   return { ok: true, retryAfter: 0 };
 }
 
+// How many reverse proxies stand in front of the app. Coolify's Traefik is one;
+// a CDN in front of it (Cloudflare, say) makes two. Read per call, not at module
+// scope, like every other setting (see app/lib/env.ts), and anything that is not
+// a sane whole number falls back to the one proxy Coolify always has.
+const DEFAULT_TRUSTED_PROXY_COUNT = 1;
+const MAX_TRUSTED_PROXY_COUNT = 10;
+
+function trustedProxyCount(): number {
+  const configured = Number(process.env.TRUSTED_PROXY_COUNT);
+  return Number.isInteger(configured) && configured >= 1 && configured <= MAX_TRUSTED_PROXY_COUNT
+    ? configured
+    : DEFAULT_TRUSTED_PROXY_COUNT;
+}
+
 // Resolve the client IP for rate-limit keying.
 //
-// x-forwarded-for is only trustworthy because the app sits behind Coolify's
-// reverse proxy, which sets it. If this app is ever exposed directly, this
-// header becomes attacker-controlled and the limiter becomes bypassable by
-// rotating the header value.
+// A proxy *appends* the address it was connected from to whatever
+// X-Forwarded-For the request arrived with; it does not replace it. So only the
+// entries the proxies wrote can be trusted, and those are the ones on the
+// right: with one proxy, the right-most entry is the client it saw, and
+// everything to the left of it is whatever the client chose to send. Reading
+// the left-most entry, as this used to, let anyone rotate the header and get a
+// fresh bucket on every request — login brute-force limit included.
+//
+// Counted from the right, with more than one proxy, the entry `count` places
+// from the end is the address the outermost proxy saw. A chain shorter than
+// that did not pass through every proxy, so its first entry is the best there is.
+//
+// X-Real-IP is only the fallback for a request with no X-Forwarded-For at all
+// (the app reached directly, as in development): a proxy that trusts its
+// forwarded headers passes a client's own X-Real-IP straight through.
 export function clientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {
-    // Left-most entry is the original client as recorded by the first proxy.
-    const first = forwarded.split(',')[0].trim();
-    if (first) return first.slice(0, 64);
+    const chain = forwarded
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const client = chain[Math.max(0, chain.length - trustedProxyCount())];
+    if (client) return client.slice(0, 64);
   }
-  return request.headers.get('x-real-ip')?.slice(0, 64) || 'unknown';
+  return request.headers.get('x-real-ip')?.trim().slice(0, 64) || 'unknown';
 }

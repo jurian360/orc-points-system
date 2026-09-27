@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "mongodb": "^6.16.0",
-    "mongoose": "^8.14.1",
+    "mongoose": "^8.24.4",
     "next": "15.5.26",
     "react": "19.1.9",
     "react-dom": "19.1.9",

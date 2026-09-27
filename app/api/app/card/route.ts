@@ -83,7 +83,10 @@ export async function GET(request: NextRequest) {
       .join(' / ');
 
     return NextResponse.json({
-      // What the app stores and sends back when the card is handed in.
+      // What the app stores and sends back when the card is handed in. `code`
+      // is the credential the hand-in is checked against; it is the code the
+      // crew scanned, normalised, so the phone keeps exactly what this app has.
+      code: access.code,
       rallycode: rallyCode,
       equipenr: access.eq,
       equipeid: access.eq,
