@@ -61,6 +61,18 @@ const nextConfig: NextConfig = {
   // Drop the `X-Powered-By: Next.js` version fingerprint.
   poweredByHeader: false,
 
+  experimental: {
+    // Because middleware.ts exists, Next buffers every request body so the
+    // middleware could read it and the route handler still can — up to this
+    // size, cutting off the rest (default 10 MB). That buffer is held whether or
+    // not anything reads it, so it is the real per-request memory ceiling,
+    // on the public app endpoints as much as anywhere. No payload here is more
+    // than readBody()'s 256 KB (app/lib/body.ts), so 1 MB is headroom, not a
+    // limit anyone meets: a larger body is cut off here and refused there with
+    // a 413.
+    middlewareClientMaxBodySize: "1mb",
+  },
+
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
