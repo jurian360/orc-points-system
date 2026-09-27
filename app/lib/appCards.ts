@@ -212,24 +212,30 @@ export interface ResolvedCard {
   access: CardAccessDocument;
 }
 
-// Find the card a finalised submission belongs to. The app sends back only what
-// it was given — the rally code, the stage's card number and the EQ — so the
-// lookup is by those, and it fails rather than guessing when any of the three
-// does not match. An access code has to exist for the card: a submission for a
-// {rally, stage, eq} nobody ever printed a QR for is not a submission.
+// Find the card a finalised submission belongs to. **The access code is the
+// credential**, exactly as it is for the scan: the card is looked up by it and
+// by nothing else. The rally code, the stage's card number and the EQ the app
+// sends back are public — printed on the sheet, shown on the public results,
+// numbered 1, 2, 3 — so they are only a consistency check here: they have to
+// name the card the code stands for, or the phone is handing in against a card
+// it was not issued. Any mismatch fails rather than guessing, and a code whose
+// stage or rally is gone fails closed, as the scan does.
 export async function resolveCard(
+  code: string,
   rallyCode: string,
   cardId: number,
   eq: number
 ): Promise<ResolvedCard | null> {
-  const rally = await Rally.findOne({ code: rallyCode });
-  if (!rally) return null;
+  const access = await CardAccess.findOne({ code });
+  if (!access || access.eq !== eq) return null;
 
-  const stage = await Stage.findOne({ rallyId: rally._id, cardId });
-  if (!stage) return null;
+  const [rally, stage] = await Promise.all([
+    Rally.findById(access.rallyId),
+    Stage.findById(access.stageId),
+  ]);
+  if (!rally || !stage) return null;
 
-  const access = await CardAccess.findOne({ stageId: stage._id, eq });
-  if (!access) return null;
+  if (rally.code !== rallyCode || stage.cardId !== cardId) return null;
 
   return { rally, stage, eq, access };
 }

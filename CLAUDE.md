@@ -51,7 +51,7 @@ in code and UI — do not "translate" them:
 | **Recovery admin** | The admin configured in the deployment environment (`ADMIN_USERNAME` + `ADMIN_PASSWORD_HASH`). No database record, so it cannot be deleted or demoted: the way back in when every admin has forgotten their password. |
 | **App code** | The 8-character code behind the QR a participant scans. It stands for exactly one card — one `{rally, stage, eq}` — and is the crew's only credential. |
 | **Rally code** | A rally's short public identifier (`Rally.code`), e.g. `SARKNAJAAR`. Officials name it when they create the rally; the app shows it and sends it back with a finalised card. |
-| **Card number** | A stage's `cardId`: its stable number within the rally, which a submission is resolved by. Unlike the place in the running order, it does not move when a stage is deleted. |
+| **Card number** | A stage's `cardId`: its stable number within the rally, which a submission is checked against. Unlike the place in the running order, it does not move when a stage is deleted. |
 
 ## Data model (`app/models/index.ts`)
 
@@ -124,8 +124,9 @@ Rally ──< Stage ──< AnswerSheet
   index stays `{stage, eq}` only; widening it to include `part` is a real
   migration on a live collection, deliberately not done. See *Second answer
   card*.
-- `Rally.code` and `Stage.cardId` are what a submission from the app is resolved
-  by. A rally gets its code when an official creates it — they type it, starting
+- `Rally.code` and `Stage.cardId` are what a submission from the app is checked
+  against: it is resolved by its access code, and these have to name the card
+  that code stands for. A rally gets its code when an official creates it — they type it, starting
   from a suggestion derived from the name (`app/lib/rallyCodes.ts`, pure and
   shared with the browser so the form and the server agree). `Stage.cardId`, and
   the code of a rally that pre-dates this, are generated on first use
@@ -918,17 +919,26 @@ local Room database and talks to this app exactly twice.
   the whole credential. Both are rate limited per IP, an unknown code is a 404
   whether it is malformed or simply wrong, and a submission has to resolve to a
   `{rally, stage, eq}` an official actually printed a code for.
+- **A hand-in carries the code, and is looked up by it.** `POST /api/app/submit`
+  resolves the card by `code` (`resolveCard` in `app/lib/appCards.ts`) and only
+  *checks* the `rallyCode` / `cardId` / `eqNumber` that come with it against the
+  card that code stands for. Those three are public — the rally code is on the
+  public results, card numbers run 1, 2, 3, EQ's 1..100 — and resolving by them
+  alone once let anybody hand in every crew's card. A body with no `code` at all
+  is a 400 telling the crew to update the app and scan again (an app from before
+  it sent one); a wrong code or a mismatch is the same 404 as an unknown card.
+  The scan returns the code as `code`, so the app stores what this app has.
 - **A card is handed in once.** `CardAccess.submittedAt` is set on success and a
-  second submission is a 409, so somebody who guesses a rally code and an EQ
-  number cannot write over a crew's sheet after they handed in. *Reopen* on the
+  second submission is a 409, so somebody holding a crew's code cannot write
+  over their sheet after they handed in. *Reopen* on the
   QR page clears the lock; *New code* replaces the code, which invalidates the
   sheet that carried the old one. The scan answers with the same lock as
   `ingeleverd`, so the app can say so before the crew types the card; neither
   the flag nor a 409 locks the card in the app, because *Reopen* is what makes
   a second hand-in legitimate.
-- **The scan answers with more than the identifiers.** Beside the four values a
-  submission is resolved by (`rallycode`, `kaartid`, `equipenr`, plus `kaartnr`
-  for the running order), it carries `rallynaam`, `kaartnaam`, `equipenaam` and
+- **The scan answers with more than the identifiers.** Beside the code and the
+  values a submission is checked against (`rallycode`, `kaartid`, `equipenr`,
+  plus `kaartnr` for the running order), it carries `rallynaam`, `kaartnaam`, `equipenaam` and
   `klasse` — which card this is, in words. The app shows them when a code is
   scanned and above the grid, so keep them filled: a stage without a name or a
   rally without its entry list makes the app's card header thinner, not wrong.
@@ -1149,6 +1159,9 @@ Environment (`.env.local`, see `.env.example` and `README.md`): `MONGODB_URI`,
 Forgot password additionally needs `POSTMARK_SERVER_TOKEN`, `POSTMARK_FROM_EMAIL`
 and `APP_BASE_URL`; without them the feature simply fails closed (logged, never
 surfaced — see *Forgot password* above), so it is not required to run the app.
+`TRUSTED_PROXY_COUNT` (default `1`) is how many proxies stand in front of the
+app; the rate limits read the client IP from `X-Forwarded-For` by it (see the
+gotcha below and `COOLIFY.md`).
 Browse via `localhost` — the session cookie is always `Secure`.
 
 ## Conventions and invariants
@@ -1315,6 +1328,13 @@ Do not regress them.**
   correct.
 - The rate limiter is in-memory and per-process; it is only correct for the
   single-container deployment. Scaling out needs a shared store.
+- **`clientIp()` reads `X-Forwarded-For` from the right, never from the left.**
+  A proxy appends the address it saw; everything left of the entries the
+  `TRUSTED_PROXY_COUNT` proxies wrote is the client's own text. Taking the
+  left-most entry let a client rotate the header for a fresh rate-limit bucket
+  on every request. `X-Real-IP` is only the fallback when there is no
+  `X-Forwarded-For` at all, because a proxy that trusts forwarded headers passes
+  a client's `X-Real-IP` through untouched.
 - `COOLIFY.md` still mentions the pre-refactor `quizzes` /
   `participantanswers` collections; the live collections are `rallies`,
   `stages`, `answersheets`.

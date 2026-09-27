@@ -37,6 +37,17 @@ development only. See `.env.example` for the full list.
 | `ADMIN_USERNAME`      | no       | Username of the recovery admin. Defaults to `admin`.                     |
 | `ADMIN_PASSWORD_HASH` | yes      | scrypt hash of its password. `node scripts/hash-password.mjs '...'`      |
 | `APP_PASSWORD_HASH`   | no       | The pre-accounts shared password. Read as `ADMIN_PASSWORD_HASH` when that one is unset. |
+| `TRUSTED_PROXY_COUNT` | no       | Reverse proxies in front of the app, default `1` (Coolify's Traefik). Set `2` when a CDN such as Cloudflare sits in front of Traefik. See below. |
+
+**`TRUSTED_PROXY_COUNT` decides who the rate limits see.** Every limit — login,
+password reset, the app's scan and hand-in, the API as a whole — is keyed on
+the client's IP, read from `X-Forwarded-For` counted from the right, because a
+proxy appends the address it saw and the entries to the left of that are
+whatever the client sent. Too low a number and a client can pick its own
+address again; too high and every visitor shares the proxy's bucket, so one
+busy official locks the rest out. With Traefik alone, `1` is right. Check it
+once after a deploy: the last login IP on `/users` should be your own address,
+not a `10.x`/`172.x` one.
 
 Example `MONGODB_URI` (Coolify-managed MongoDB, note the `/orc-points-system`
 database name):

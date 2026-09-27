@@ -9,7 +9,7 @@ import { clientIp, rateLimit } from '../../../lib/rate-limit';
 import { calculateMerkPenalty, calculateTotalPenalty } from '../../../lib/scoring';
 import { rescoreParticipants } from '../../../lib/rescore';
 import { parseAppCardRows, parseEq } from '../../../lib/validation';
-import { parseCardId, resolveCard } from '../../../lib/appCards';
+import { parseAppCode, parseCardId, resolveCard } from '../../../lib/appCards';
 import { parseRallyCode } from '../../../lib/rallyCodes';
 
 // A finalised card, handed in from the Android app.
@@ -17,12 +17,14 @@ import { parseRallyCode } from '../../../lib/rallyCodes';
 // **This route is public**, for the same reason the lookup is: the participant
 // has no session. What it accepts is therefore narrow:
 //
-//  * the card has to resolve to a {rally, stage, eq} an official printed a QR
-//    code for — `resolveCard` refuses anything else;
+//  * the submission has to carry the access code the crew scanned. The code is
+//    the credential here exactly as it is for the scan; the rally code, card
+//    number and EQ that come with it are public, so `resolveCard` only checks
+//    that they name the card the code stands for. Without this, anybody who read
+//    a rally code off the public results could hand in every crew's card;
 //  * the code has to be unused. A card is handed in once; a second submission
-//    is refused until an official reopens it from the QR page. That is what
-//    keeps somebody who guesses a rally code and an EQ number from writing over
-//    a crew's sheet after they handed in.
+//    is refused until an official reopens it from the QR page, and *New code*
+//    retires the old code altogether.
 //
 // Nothing about the scoring is taken from the phone: the app sends letters, the
 // server grades them, exactly as it does for a sheet an official types.
@@ -48,6 +50,22 @@ export async function POST(request: NextRequest) {
   if (!parsed.ok) return parsed.response;
 
   const body = parsed.body;
+
+  // A version of the app from before it sent the code back sends none at all.
+  // That is a phone to update, not a wrong guess, so it gets an answer the crew
+  // can act on. A code that is there but wrong gets the same 404 as an unknown
+  // card below — never which of the four values did not match.
+  if (body.code === undefined || body.code === null || body.code === '') {
+    return NextResponse.json(
+      { error: 'This card carries no access code. Update the app and scan the card again.' },
+      { status: 400 }
+    );
+  }
+
+  const code = parseAppCode(body.code);
+  if (!code) {
+    return NextResponse.json({ error: 'Unknown card' }, { status: 404 });
+  }
 
   const rallyCode = parseRallyCode(body.rallyCode);
   if (!rallyCode) {
@@ -78,7 +96,7 @@ export async function POST(request: NextRequest) {
   try {
     await dbConnect();
 
-    const card = await resolveCard(rallyCode, cardId, eq);
+    const card = await resolveCard(code, rallyCode, cardId, eq);
     if (!card) {
       return NextResponse.json({ error: 'Unknown card' }, { status: 404 });
     }
