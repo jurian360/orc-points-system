@@ -62,12 +62,19 @@ export default function NewStagePage({ params }: { params: Promise<{ id: string 
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create stage');
+        // The API's own message says what was wrong (a missing route, a stage
+        // limit); a generic one leaves the official guessing.
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || 'Failed to create stage');
       }
 
       router.push(`/rallies/${rallyId}`);
     } catch (err) {
-      setError('Failed to create stage. Please try again.');
+      setError(
+        err instanceof Error && err.message !== 'Failed to create stage'
+          ? err.message
+          : 'Failed to create stage. Please try again.'
+      );
       console.error(err);
       setSubmitting(false);
     }
