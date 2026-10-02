@@ -7,6 +7,8 @@ import {
   calculateRowPenalty,
   calculateTotalPenalty,
   hasOrderError,
+  isMerkLetterRow,
+  normalizeDiversenCount,
   PENALTY_PER_ERROR,
   type MerkKeyRow,
   type ScoreKeyRow,
@@ -96,6 +98,7 @@ export interface AnswerSheetInitialData {
   answers?: { rowNumber: number; selectedAnswers?: string[]; strafp?: number }[];
   timePenalties?: { rowNumber: number; wpt?: string }[];
   merkScores?: { rowNumber: number; merk?: string; strafp?: number }[];
+  diversenCount?: number;
 }
 
 interface AnswerSheetFormProps {
@@ -111,6 +114,7 @@ interface AnswerSheetFormProps {
       strafp: number;
     }[];
     merkScores: { rowNumber: number; merk: string }[];
+    diversenCount: number;
   }) => void;
   stages: Stage[];
   // Every sheet already entered for this rally; used to carry the participant's
@@ -426,6 +430,14 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     });
   };
 
+  // Merk row 6 is the Diversen row: a count of 30-point fines, not a letter
+  // (app/lib/scoring.ts). Kept as the typed text so a cell can be emptied;
+  // only digits get in.
+  const [diversenInput, setDiversenInput] = useState<string>(() =>
+    initialData?.diversenCount ? String(initialData.diversenCount) : ''
+  );
+  const diversenCount = normalizeDiversenCount(diversenInput);
+
   const handleMerkChange = (rowIndex: number, value: string) => {
     setMerkScores((prev) => {
       const next = [...prev];
@@ -498,8 +510,8 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
   // the server scores it with.
   const merkResult = useMemo(() => {
     const stage = stages.find((candidate) => candidate._id === stageId);
-    return calculateMerkPenalty(stage?.merkScoreKey, merkScores);
-  }, [stages, stageId, merkScores]);
+    return calculateMerkPenalty(stage?.merkScoreKey, merkScores, diversenCount);
+  }, [stages, stageId, merkScores, diversenCount]);
 
   // The scored rows by row number: the result also covers key rows the sheet
   // has no letter on, so the grid cannot read them off by index.
@@ -618,10 +630,13 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
 
     // Only the letters are sent; the server scores the column against the merk
     // key, exactly as the preview above does.
-    const processedMerkScores = merkScores.map((row) => ({
-      rowNumber: row.rowNumber,
-      merk: row.merk.trim().toUpperCase(),
-    }));
+    // The Diversen row carries no letter; its count is sent on its own.
+    const processedMerkScores = merkScores
+      .filter((row) => isMerkLetterRow(row.rowNumber))
+      .map((row) => ({
+        rowNumber: row.rowNumber,
+        merk: row.merk.trim().toUpperCase(),
+      }));
 
     onSubmit({
       eq: Number(eq),
@@ -629,6 +644,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
       answers: processedAnswers,
       timePenalties: processedTimePenalties,
       merkScores: processedMerkScores,
+      diversenCount,
     });
   };
 
@@ -1028,6 +1044,49 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
               </thead>
               <tbody>
                 {merkScores.map((row, rowIndex) => {
+                  if (!isMerkLetterRow(row.rowNumber)) {
+                    // The Diversen row: how many 30-point fines, typed as a
+                    // number. It stays in the merk grid so the arrow keys and
+                    // Enter move through it like any other merk cell.
+                    return (
+                      <tr
+                        key={row.rowNumber}
+                        className={merkResult.diversenPenalty ? 'bg-red-50' : 'bg-orange-50'}
+                      >
+                        <td className="py-0.5 px-1 border-b border-r border-gray-300 font-bold text-sm text-gray-800 text-center">
+                          {row.rowNumber}
+                        </td>
+                        <td className="py-0.5 px-0.5 border-b border-r border-gray-300 text-center whitespace-nowrap">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={2}
+                            className="w-10 h-8 p-0.5 border border-gray-400 rounded text-center text-sm font-bold focus:border-orange-500 focus:ring-1 focus:ring-orange-200 text-gray-700"
+                            value={diversenInput}
+                            data-grid="merk"
+                            data-row={rowIndex}
+                            data-col={0}
+                            onKeyDown={handleCellKeyDown}
+                            onChange={(e) => setDiversenInput(e.target.value.replace(/\D/g, ''))}
+                            aria-label="Diversen: number of 30-point fines"
+                          />
+                          <span
+                            className="ml-1 text-[10px] font-semibold text-gray-700"
+                            title={`Each one costs ${PENALTY_PER_ERROR} points, added to Diversen`}
+                          >
+                            Diversen ×{PENALTY_PER_ERROR}
+                          </span>
+                        </td>
+                        <td
+                          className={`py-0.5 px-0.5 border-b border-gray-300 text-center text-sm font-bold ${
+                            merkResult.diversenPenalty ? 'text-red-700' : 'text-gray-900'
+                          }`}
+                        >
+                          {merkResult.diversenPenalty}
+                        </td>
+                      </tr>
+                    );
+                  }
                   const scored = merkRowByNumber.get(row.rowNumber);
                   return (
                     <tr
@@ -1144,6 +1203,15 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
               )}
             {merkResult.capped && (
               <p className="text-gray-600">Capped at the stage maximum of {merkResult.maxPenalty}.</p>
+            )}
+            {merkResult.diversenCount > 0 && (
+              <p className="text-red-700 font-semibold">
+                Diversen: {merkResult.diversenCount} × {PENALTY_PER_ERROR} ={' '}
+                {merkResult.diversenPenalty}
+                {merkResult.maxPenalty > 0 && (
+                  <span className="text-gray-500 font-normal"> · not capped</span>
+                )}
+              </p>
             )}
           </div>
 

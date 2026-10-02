@@ -348,7 +348,8 @@ const AnswerSheetSchema = new mongoose.Schema({
       default: false
     }
   }],
-  // Merk rows, 6 of them. Officials type only the `merk` letter the participant
+  // Merk rows, 6 of them (12 with a second card), of which row 6 is the
+  // Diversen row and holds no letter — see `diversenCount`. Officials type only the `merk` letter the participant
   // wrote; `strafp` is computed server-side from the stage's merk key, like the
   // time rows. The column is scored vertically, so a row's `strafp` is the 30
   // points that row's letter cost as a double or as a false merk — or, on a row
@@ -363,6 +364,15 @@ const AnswerSheetSchema = new mongoose.Schema({
       default: 0
     }
   }],
+  // The count an official wrote on merk row 6, the Diversen row: how many
+  // 30-point fines the crew got (app/lib/scoring.ts). Its points are part of
+  // `merkPenalty`, added after the merk cap. 0 on every sheet from before the
+  // row existed, which is what the default gives them.
+  diversenCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   submittedAt: {
     type: Date,
     default: Date.now,

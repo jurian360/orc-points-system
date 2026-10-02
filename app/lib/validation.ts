@@ -10,6 +10,7 @@ import {
   type StageTimeConfig,
 } from './timeScoring';
 import { isClassification, type ClassificationValue } from './participants';
+import { MAX_DIVERSEN_COUNT } from './scoring';
 import {
   isRole,
   isValidEmail,
@@ -434,6 +435,19 @@ export function parseMerkScores(value: unknown, maxRows: number = MAX_MERK_ROWS)
       strafp: 0,
     };
   });
+}
+
+// The count written on a sheet's Diversen row (merk row 6, see
+// app/lib/scoring.ts): how many 30-point fines the crew got. A blank cell is 0;
+// anything that is not a whole number 0..MAX_DIVERSEN_COUNT is null, so the
+// route refuses it rather than guessing what an official meant.
+export const DIVERSEN_COUNT_ERROR = `Diversen must be a whole number from 0 to ${MAX_DIVERSEN_COUNT}`;
+
+export function parseDiversenCount(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return 0;
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
+  if (value < 0 || value > MAX_DIVERSEN_COUNT) return null;
+  return value;
 }
 
 // --- Cards handed in by the Android app ------------------------------------

@@ -43,6 +43,7 @@ interface AnswerSheet {
   answers: AnswerRow[];
   timePenalties?: TimePenaltyRow[];
   merkScores?: MerkScoreRow[];
+  diversenCount?: number;
   totalPenalty: number;
   timePenalty?: number;
   disqualified?: boolean;
@@ -261,7 +262,8 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
       merkRows,
       orcPenalty: calculateTotalPenalty(stage.scoreKey, sheet.answers),
       tijdTotal: sumStrafp(timeRows),
-      diversenTotal: calculateMerkPenalty(stage.merkScoreKey, merkRows).totalPenalty,
+      diversenTotal: calculateMerkPenalty(stage.merkScoreKey, merkRows, sheet.diversenCount)
+        .totalPenalty,
     };
   });
 
@@ -539,6 +541,7 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
                   timePenalties={sheet.timePenalties}
                   merkScoreKey={stage.merkScoreKey}
                   merkScores={sheet.merkScores}
+                  diversenCount={sheet.diversenCount}
                   disqualified={sheet.disqualified}
                 />
               </div>

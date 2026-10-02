@@ -175,7 +175,13 @@ async function storeCard(
   // A card that carries no merk column must not blank the letters an official
   // already typed there, so the merk rows are only written when they arrived.
   const merkScores = rows.merkScores ?? existing?.merkScores ?? [];
-  const merkPenalty = calculateMerkPenalty(stage.merkScoreKey, merkScores).totalPenalty;
+  // The app has no Diversen row: a fine an official already wrote on the sheet
+  // stays where it is.
+  const merkPenalty = calculateMerkPenalty(
+    stage.merkScoreKey,
+    merkScores,
+    existing?.diversenCount
+  ).totalPenalty;
   // The time part is a chain across the rally and is added by the re-scoring
   // below, exactly as it is when an official saves a sheet.
   const totalPenalty = calculateTotalPenalty(stage.scoreKey, rows.answers) + merkPenalty;

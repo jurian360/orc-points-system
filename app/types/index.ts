@@ -112,6 +112,9 @@ export interface AnswerSheet {
   answers: AnswerSheetRow[];
   timePenalties?: TimePenaltyRow[];
   merkScores?: MerkScoreRow[];
+  // The count on merk row 6, the Diversen row: 30 points each, part of
+  // `merkPenalty` (see app/lib/scoring.ts).
+  diversenCount?: number;
   totalPenalty: number;
   timePenalty?: number;
   merkPenalty?: number;
@@ -244,6 +247,7 @@ export interface AnswerSheetFormData {
   answers: AnswerSheetRow[];
   timePenalties?: TimePenaltyRow[];
   merkScores?: MerkScoreRow[];
+  diversenCount?: number;
 }
 
 // --- QR codes for the participants' app ------------------------------------
