@@ -100,11 +100,18 @@ export default function EditStagePage({
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to update stage');
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || 'Failed to update stage');
+      }
 
       router.push(`/rallies/${rallyId}`);
     } catch (err) {
-      setError('Failed to update stage. Please try again.');
+      setError(
+        err instanceof Error && err.message !== 'Failed to update stage'
+          ? err.message
+          : 'Failed to update stage. Please try again.'
+      );
       console.error(err);
       setSubmitting(false);
     }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { RallyRoute } from '../lib/routes';
 import { maxMerkPenalty, PENALTY_PER_ERROR } from '../lib/scoring';
 import {
@@ -119,6 +119,16 @@ const StageForm: React.FC<StageFormProps> = ({
   const [routeId, setRouteId] = useState<string>(
     initialData?.routeId || (routes.length > 0 ? routes[routes.length - 1]._id : '')
   );
+  // The pages fetch the routes after the form has mounted, so the initial state
+  // above usually sees none. Pick the default once they arrive: otherwise the
+  // select *shows* its first option while the state stays '', and the stage is
+  // posted with no route — which the API refuses on a rally that has routes.
+  useEffect(() => {
+    if (routes.length === 0) return;
+    setRouteId((current) =>
+      routes.some((route) => route._id === current) ? current : routes[routes.length - 1]._id
+    );
+  }, [routes]);
 
   // A crew that runs out of ORC rows mid-stage switches to a second card,
   // carrying its own merk section too — see "Second answer card" in
