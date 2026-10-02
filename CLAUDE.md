@@ -45,7 +45,7 @@ in code and UI — do not "translate" them:
 | **GTC** | "Geheime Tijds Controle" — a secret time control, rows 2-9 of the time column. Participants do not know its ideal time beforehand. A stage uses as many as it needs (2, 4, ...); a row without an IPT 0 is not a checkpoint. |
 | **Delta** | How many minutes a participant is off their own schedule. It runs from the start of the rally to the last stage. |
 | **Merk** | Marker/sign rows, 6 rows, one letter each. Scored *vertically* against the stage's merk key, which holds the correct letters and the letters it rules out. |
-| **Diversen** | The merk part of a sheet's penalty, the third line of TOTAAL STRAFPUNTEN next to ORC's and Tijd. |
+| **Diversen** | The merk part of a sheet's penalty, the third line of TOTAAL STRAFPUNTEN next to ORC's and Tijd. Also the name of merk row 6, where an official writes a count of 30-point fines (see *Merk scoring rules*). |
 | **Admin** | An official who runs the rally: stages, answer keys, entry list, imports, QR codes and the accounts. |
 | **Data entry** | An official who types control cards (ORC's, tijd, merk) and reads the standings — nothing else. |
 | **Recovery admin** | The admin configured in the deployment environment (`ADMIN_USERNAME` + `ADMIN_PASSWORD_HASH`). No database record, so it cannot be deleted or demoted: the way back in when every admin has forgotten their password. |
@@ -492,6 +492,24 @@ The column total is capped at the sum of the key rows' `maxPenalty` when that su
 is > 0 (the merk check has no rows of its own to cap). A sheet with no merk rows
 is an untyped column, not an unscored one: every letter of the key counts as
 missing, the same as the blank card it stands for.
+
+**Row 6 is the Diversen row, not a letter row.** An official writes a number
+there: how many 30-point fines the crew got for something the letters do not
+cover, so 1 costs 30, 2 costs 60, 4 costs 120. The count is stored on the sheet
+as `diversenCount` (whole number 0-99, `parseDiversenCount`), not in a merk
+row, and `calculateMerkPenalty` adds `count × 30` to the merk penalty **after**
+the cap: the cap is on the letters, and a fine is always charged in full.
+`DIVERSEN_ROW` / `isMerkLetterRow` in `app/lib/scoring.ts` are the rule; every
+merk function drops row 6 from the key and from the sheet before reading them,
+so a letter an older key or card still holds there is never scored, and a
+re-score drops it from the stored rows. The key arrays keep their 6 / 12 rows
+(row 6 saved blank by `StageForm`), so rows 7-12 of a second card keep their
+numbers, and a second card has **no** Diversen row of its own — one count per
+sheet. `maxMerkPenalty` leaves the fine out: it has no maximum. The Android app
+has no Diversen row; a card handed in through it keeps the count an official
+already wrote on the sheet. Views render row 6 from `diversenCount`
+(`AnswerSheetForm`, `ControlekaartCard`, `StageForm`, `StageKeyCard`), because
+`calculateMerkPenalty`'s `rows` are the letter rows only.
 
 The merk penalty is the **Diversen** line of TOTAAL STRAFPUNTEN and **is** part
 of `totalPenalty` and of the standings. It is stored on the sheet as
@@ -1259,7 +1277,8 @@ Do not regress them.**
   `fetch`; there are no Server Components reading the DB yet. Route params
   arrive as `Promise` (Next 15) — `await`/resolve them.
 - Fixed grid sizes: **30 answer rows × 4 letter columns, 10 time rows (start,
-  8 GTC's, finish), 6 merk rows × 1 correct + 1 false letter** — except the
+  8 GTC's, finish), 6 merk rows × 1 correct + 1 false letter** (row 6 being
+  the Diversen count, not a letter) — except the
   30 and the 6 are per-*card*, not per-stage: a `usesSecondCard` stage runs
   60 ORC rows and 12 merk rows (see *Second answer card*). The 10 time rows
   never change; time is fixed controls, not rows that run out. If you change

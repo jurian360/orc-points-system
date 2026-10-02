@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { RallyRoute } from '../lib/routes';
-import { maxMerkPenalty, PENALTY_PER_ERROR } from '../lib/scoring';
+import { isMerkLetterRow, maxMerkPenalty, PENALTY_PER_ERROR } from '../lib/scoring';
 import {
   DEFAULT_TIME_CONFIG,
   finishOutOfWindowCost,
@@ -449,12 +449,18 @@ const StageForm: React.FC<StageFormProps> = ({
       maxPenalty: row.maxPenalty || 0,
     }));
 
-    const processedMerkScoreKey = merkScoreKey.map((row) => ({
-      rowNumber: row.rowNumber,
-      merk: (row.merk || '').trim().toUpperCase(),
-      falseMerk: (row.falseMerk || '').trim().toUpperCase(),
-      maxPenalty: row.maxPenalty || 0,
-    }));
+    // Row 6 is the Diversen row, a count on the card rather than a letter of
+    // the key, so it is saved blank — whatever an older key held there.
+    const processedMerkScoreKey = merkScoreKey.map((row) =>
+      isMerkLetterRow(row.rowNumber)
+        ? {
+            rowNumber: row.rowNumber,
+            merk: (row.merk || '').trim().toUpperCase(),
+            falseMerk: (row.falseMerk || '').trim().toUpperCase(),
+            maxPenalty: row.maxPenalty || 0,
+          }
+        : { rowNumber: row.rowNumber, merk: '', falseMerk: '', maxPenalty: 0 }
+    );
 
     onSubmit({
       name: stageName,
@@ -945,8 +951,9 @@ const StageForm: React.FC<StageFormProps> = ({
             for the row they are typed on. Every key letter given too few or too many times costs{' '}
             {PENALTY_PER_ERROR} points, once, and so does every false letter the participant wrote,
             however often they wrote it. A letter in neither list never costs anything. Leave a
-            field blank to use fewer than {merkScoreKey.length}. Max Penalty caps the column as a
-            whole (their sum); 0 is no cap.
+            field blank to use fewer letters. Max Penalty caps the column as a whole (their sum);
+            0 is no cap. Row 6 is <span className="font-semibold">Diversen</span>: the official
+            writes a number on the card, and each one costs {PENALTY_PER_ERROR} points, never capped.
           </p>
           <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto">
             <table className="min-w-full border-collapse">
@@ -967,7 +974,21 @@ const StageForm: React.FC<StageFormProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {merkScoreKey.map((row, rowIndex) => (
+                {merkScoreKey.map((row, rowIndex) =>
+                  !isMerkLetterRow(row.rowNumber) ? (
+                    <tr key={row.rowNumber} className="bg-orange-50">
+                      <td className="py-2 px-1 border-b border-r border-gray-300 font-medium text-base text-gray-800 text-center">
+                        {row.rowNumber}
+                      </td>
+                      <td
+                        colSpan={2}
+                        className="py-2 px-2 border-b border-gray-300 text-sm text-gray-700"
+                      >
+                        <span className="font-semibold">Diversen</span> — a number typed on each
+                        card, {PENALTY_PER_ERROR} points each
+                      </td>
+                    </tr>
+                  ) : (
                   <tr
                     key={row.rowNumber}
                     className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
@@ -1008,7 +1029,8 @@ const StageForm: React.FC<StageFormProps> = ({
                       />
                     </td>
                   </tr>
-                ))}
+                  )
+                )}
               </tbody>
             </table>
           </div>

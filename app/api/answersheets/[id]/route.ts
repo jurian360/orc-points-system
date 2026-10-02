@@ -12,6 +12,8 @@ import {
   parseAnswerRows,
   parseEq,
   parseMerkScores,
+  parseDiversenCount,
+  DIVERSEN_COUNT_ERROR,
   parseTimePenalties,
 } from '../../../lib/validation';
 import mongoose from 'mongoose';
@@ -66,6 +68,15 @@ export async function PUT(
         { error: 'eq must be an integer between 1 and 100' },
         { status: 400 }
       );
+    }
+  }
+
+  // Like the merk letters, only written when the client sent it.
+  let diversenCount: number | null = null;
+  if (body.diversenCount !== undefined) {
+    diversenCount = parseDiversenCount(body.diversenCount);
+    if (diversenCount === null) {
+      return NextResponse.json({ error: DIVERSEN_COUNT_ERROR }, { status: 400 });
     }
   }
 
@@ -125,9 +136,11 @@ export async function PUT(
       // Only the letters survive the parse; the rescore below scores the column.
       sheet.merkScores = parseMerkScores(body.merkScores, merkCap);
     }
+    if (diversenCount !== null) sheet.diversenCount = diversenCount;
     const merkPenalty = calculateMerkPenalty(
       stage ? stage.merkScoreKey : [],
-      sheet.merkScores
+      sheet.merkScores,
+      sheet.diversenCount
     ).totalPenalty;
     sheet.merkPenalty = merkPenalty;
     // ORC's + merk; rescoreParticipants adds the time part below.

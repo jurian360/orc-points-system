@@ -1,5 +1,10 @@
 import React from 'react';
-import { calculateMerkPenalty, calculateTotalPenalty } from '../lib/scoring';
+import {
+  calculateMerkPenalty,
+  calculateTotalPenalty,
+  DIVERSEN_ROW,
+  PENALTY_PER_ERROR,
+} from '../lib/scoring';
 import type { AnswerRow, MerkKeyRow, ScoreKeyRow } from '../lib/scoring';
 import { timeRowLabel } from '../lib/timeScoring';
 import OrcAnswerGrid from './OrcAnswerGrid';
@@ -39,6 +44,8 @@ interface ControlekaartCardProps {
   // so the card always agrees with itself.
   merkScoreKey?: MerkKeyRow[];
   merkScores?: MerkScoreRow[];
+  // The count on merk row 6, the Diversen row (app/lib/scoring.ts).
+  diversenCount?: number;
   disqualified?: boolean;
 }
 
@@ -55,6 +62,7 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
   timePenalties,
   merkScoreKey,
   merkScores,
+  diversenCount,
   disqualified = false,
 }) => {
   const timeRows = timePenalties || [];
@@ -66,9 +74,15 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
   // of the rally), so it is summed from the rows the server stored.
   const orcPenalty = calculateTotalPenalty(scoreKey, answers);
   const tijdTotal = sumStrafp(timeRows);
-  const merkResult = calculateMerkPenalty(merkScoreKey, merkScores);
-  const merkRows = merkResult.rows;
+  const merkResult = calculateMerkPenalty(merkScoreKey, merkScores, diversenCount);
   const diversenTotal = merkResult.totalPenalty;
+  // The scored rows are the letter rows only; the Diversen row is put back in
+  // its place on the card, row 6, whenever the column is shown at all.
+  const merkRows: ((typeof merkResult.rows)[number] | 'diversen')[] = [...merkResult.rows];
+  if (merkRows.length > 0 || merkResult.diversenCount > 0) {
+    const at = merkResult.rows.findIndex((row) => row.rowNumber > DIVERSEN_ROW);
+    merkRows.splice(at === -1 ? merkRows.length : at, 0, 'diversen');
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start p-4">
@@ -158,7 +172,30 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {merkRows.map((row, index) => (
+                {merkRows.map((row, index) =>
+                  row === 'diversen' ? (
+                    <tr
+                      key="diversen"
+                      className={merkResult.diversenPenalty ? 'bg-red-50' : 'bg-orange-50'}
+                    >
+                      <td className="py-1.5 px-1 border-b border-r border-gray-300 font-bold text-base text-gray-800 text-center">
+                        {DIVERSEN_ROW}
+                      </td>
+                      <td className="py-1.5 px-2 border-b border-r border-gray-300 text-base text-gray-800">
+                        <span className="font-bold">{merkResult.diversenCount}</span>
+                        <span className="ml-2 text-sm font-semibold text-gray-700">
+                          Diversen ×{PENALTY_PER_ERROR}
+                        </span>
+                      </td>
+                      <td
+                        className={`py-1.5 px-1 border-b border-gray-300 text-center text-base font-bold ${
+                          merkResult.diversenPenalty ? 'text-red-700' : 'text-gray-900'
+                        }`}
+                      >
+                        {merkResult.diversenPenalty}
+                      </td>
+                    </tr>
+                  ) : (
                   <tr
                     key={row.rowNumber}
                     className={
@@ -212,7 +249,8 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                       {row.strafp || 0}
                     </td>
                   </tr>
-                ))}
+                  )
+                )}
               </tbody>
             </table>
           </div>
@@ -261,6 +299,12 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
             )}
           {merkResult.capped && (
             <p className="text-gray-600">Capped at the stage maximum of {merkResult.maxPenalty}.</p>
+          )}
+          {merkResult.diversenCount > 0 && (
+            <p className="text-red-700 font-semibold">
+              Diversen: {merkResult.diversenCount} × {PENALTY_PER_ERROR} —{' '}
+              {merkResult.diversenPenalty} points
+            </p>
           )}
         </div>
 

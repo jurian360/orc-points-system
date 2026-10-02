@@ -13,6 +13,8 @@ import {
   parseEq,
   parseEqParam,
   parseMerkScores,
+  parseDiversenCount,
+  DIVERSEN_COUNT_ERROR,
   parseTimePenalties,
 } from '../../lib/validation';
 import mongoose from 'mongoose';
@@ -97,6 +99,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const diversenCount = parseDiversenCount(body.diversenCount);
+  if (diversenCount === null) {
+    return NextResponse.json({ error: DIVERSEN_COUNT_ERROR }, { status: 400 });
+  }
+
   try {
     await dbConnect();
 
@@ -143,7 +150,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const merkPenalty = calculateMerkPenalty(stage.merkScoreKey, merkScores).totalPenalty;
+    const merkPenalty = calculateMerkPenalty(
+      stage.merkScoreKey,
+      merkScores,
+      diversenCount
+    ).totalPenalty;
 
     const answerSheet = new AnswerSheet({
       eq,
@@ -152,6 +163,7 @@ export async function POST(request: NextRequest) {
       answers,
       timePenalties: parseTimePenalties(body.timePenalties),
       merkScores,
+      diversenCount,
       merkPenalty,
       // ORC's + merk; rescoreParticipants adds the time part below.
       totalPenalty: calculateTotalPenalty(stage.scoreKey, answers) + merkPenalty,

@@ -116,6 +116,7 @@ export default function EditAnswerSheetPage({
     answers: { rowNumber: number; selectedAnswers: string[]; strafp: number }[];
     timePenalties: { rowNumber: number; wpt: string }[];
     merkScores: { rowNumber: number; merk: string }[];
+    diversenCount: number;
   }) => {
     setSubmitting(true);
     setError(null);
@@ -129,6 +130,7 @@ export default function EditAnswerSheetPage({
           answers: answerSheet.answers,
           timePenalties: answerSheet.timePenalties,
           merkScores: answerSheet.merkScores,
+          diversenCount: answerSheet.diversenCount,
         }),
       });
 
@@ -211,6 +213,7 @@ export default function EditAnswerSheetPage({
                 answers: sheet.answers,
                 timePenalties: sheet.timePenalties,
                 merkScores: sheet.merkScores,
+                diversenCount: sheet.diversenCount,
               }}
               isEditing
             />
