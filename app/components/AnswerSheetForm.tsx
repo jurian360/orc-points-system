@@ -748,6 +748,34 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
     </thead>
   );
 
+  // The strafpunten of one ORC column added up, under its last row like the
+  // paper card. The two subtotals add up to the ORC's line of TOTAAL STRAFPUNTEN.
+  const answerSubtotal = (rows: AnswerRow[]) => {
+    const subtotal = rows.reduce(
+      (total, row) => total + (orcRowScores.get(row.rowNumber)?.strafp || 0),
+      0
+    );
+    return (
+      <tfoot>
+        <tr className="bg-green-100">
+          <td
+            colSpan={1 + LETTER_COLUMNS}
+            className="py-1 px-2 border-r border-gray-300 text-right text-[10px] font-bold text-gray-800"
+          >
+            SUBTOTAAL {columnRange(rows)}
+          </td>
+          <td
+            className={`py-1 px-1 text-center text-sm font-bold ${
+              subtotal ? 'text-red-700' : 'text-gray-900'
+            }`}
+          >
+            {subtotal}
+          </td>
+        </tr>
+      </tfoot>
+    );
+  };
+
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="w-full mx-auto">
       {/* Header — controlekaart style (compact, single row) */}
@@ -885,6 +913,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
               <tbody>
                 {leftRows.map((row, i) => renderAnswerRow(row, row.rowNumber - 1, 'orc-left', i))}
               </tbody>
+              {answerSubtotal(leftRows)}
             </table>
           </div>
         </div>
@@ -900,6 +929,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
               <tbody>
                 {rightRows.map((row, i) => renderAnswerRow(row, row.rowNumber - 1, 'orc-right', i))}
               </tbody>
+              {answerSubtotal(rightRows)}
             </table>
           </div>
 
