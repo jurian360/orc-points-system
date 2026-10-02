@@ -225,8 +225,11 @@ export async function currentUser(session: SessionUser): Promise<AuthenticatedUs
 // the environment's recovery account. An inactive admin cannot sign in, so it
 // is not counted as the safety net either: `{ $ne: false }` reads a document
 // with `active` unset (an account from before this field existed) as active,
-// the same default the schema gives it.
+// the same default the schema gives it. `mongoose.trusted` is what keeps the
+// `$ne` alive past the global `sanitizeFilter` (app/lib/mongodb.ts), which
+// otherwise turns it into an equality on an object and fails the Boolean cast;
+// it is safe because the operator is a constant here, never a value off the wire.
 export async function adminCount(): Promise<number> {
   await dbConnect();
-  return User.countDocuments({ role: 'admin', active: { $ne: false } });
+  return User.countDocuments({ role: 'admin', active: mongoose.trusted({ $ne: false }) });
 }
