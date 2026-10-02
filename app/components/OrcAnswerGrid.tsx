@@ -132,6 +132,39 @@ const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
     );
   };
 
+  // The strafpunten of one column added up, under its last row like the paper
+  // card. The rows are the key's, so the two subtotals add up to the ORC's
+  // total exactly as calculateTotalPenalty computes it.
+  const answerSubtotal = (rows: ScoreKeyRow[]) => {
+    const subtotal = rows.reduce(
+      (total, row) => total + calculateRowPenalty(row, findParticipantAnswer(row.rowNumber)),
+      0
+    );
+    return (
+      <tfoot>
+        <tr className="bg-purple-100">
+          <td
+            colSpan={5}
+            className="py-2 px-2 border-2 border-gray-300 text-right font-bold text-sm text-gray-800"
+          >
+            Subtotaal {columnRange(rows)}
+          </td>
+          <td className="py-1.5 px-1 border-2 border-gray-300 text-center">
+            <div
+              className={`px-2 py-1 rounded-md shadow-sm border font-bold text-sm text-center ${
+                subtotal > 0
+                  ? 'bg-red-100 text-red-800 border-red-300'
+                  : 'bg-green-100 text-green-800 border-green-300'
+              }`}
+            >
+              {subtotal}
+            </div>
+          </td>
+        </tr>
+      </tfoot>
+    );
+  };
+
   if (sortedRows.length === 0) {
     return (
       <p className="text-base text-gray-600">This stage has no answer key rows to compare against.</p>
@@ -149,6 +182,7 @@ const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
           <table className="min-w-full border-collapse">
             {answerHeader}
             <tbody>{leftRows.map((row) => renderAnswerRow(row))}</tbody>
+            {answerSubtotal(leftRows)}
           </table>
         </div>
       </div>
@@ -163,6 +197,7 @@ const OrcAnswerGrid: React.FC<OrcAnswerGridProps> = ({ scoreKey, answers }) => {
             <table className="min-w-full border-collapse">
               {answerHeader}
               <tbody>{rightRows.map((row) => renderAnswerRow(row))}</tbody>
+              {answerSubtotal(rightRows)}
             </table>
           </div>
         </div>
