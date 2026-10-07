@@ -39,10 +39,76 @@ import type { RallyRoute } from '../lib/routes';
 // row, the delta carried into the next stage — is computed server-side, exactly
 // as it is when an official types the time on the card.
 
+// Where the wizard reads a rally from and writes the times to. The default is
+// the server; the offline workspace (app/offline) passes one backed by the copy
+// of the rally in the browser (app/lib/offline/store.ts `applyTimeImport`),
+// which applies the same rules and answers in the same shape.
+export interface TimeImportSource {
+  loadRallies: () => Promise<Rally[]>;
+  loadRally: (
+    rallyId: string
+  ) => Promise<{ stages: Stage[]; participants: Participant[]; routes: RallyRoute[] }>;
+  // The EQ's that already have a sheet for the stage.
+  loadStageSheetEqs: (stageId: string) => Promise<number[]>;
+  importTimes: (
+    stageId: string,
+    body: { rowNumber: number; times: { eq: number; wpt: string }[]; createMissingSheets: boolean }
+  ) => Promise<{
+    total?: number;
+    updated?: number;
+    created?: number;
+    skipped?: number;
+    ignored?: number;
+  }>;
+  // No links to the online pages of the rally: the workspace has its own.
+  offline?: boolean;
+}
+
+const serverSource: TimeImportSource = {
+  loadRallies: async () => {
+    const response = await fetch('/api/rallies');
+    if (!response.ok) throw new Error('Failed to fetch rallies');
+    return response.json();
+  },
+  loadRally: async (rallyId) => {
+    const [stagesRes, participantsRes, routesRes] = await Promise.all([
+      fetch(`/api/stages?rallyId=${rallyId}`),
+      fetch(`/api/rallies/${rallyId}/participants`),
+      fetch(`/api/rallies/${rallyId}/routes`),
+    ]);
+    if (!stagesRes.ok) throw new Error('Failed to fetch stages');
+    if (!participantsRes.ok) throw new Error('Failed to fetch participants');
+
+    return {
+      stages: await stagesRes.json(),
+      participants: await participantsRes.json(),
+      routes: routesRes.ok ? (await routesRes.json()).routes || [] : [],
+    };
+  },
+  loadStageSheetEqs: async (stageId) => {
+    const response = await fetch(`/api/answersheets?stageId=${stageId}`);
+    if (!response.ok) throw new Error('Failed to fetch answer sheets');
+    const data = await response.json();
+    return data.map((entry: { eq: number }) => entry.eq);
+  },
+  importTimes: async (stageId, body) => {
+    const response = await fetch(`/api/stages/${stageId}/times/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Failed to import the times');
+    return data;
+  },
+};
+
 interface TimeImportWizardProps {
   // Pre-selected when the wizard is opened from a rally or a stage.
   initialRallyId?: string;
   initialStageId?: string;
+  source?: TimeImportSource;
 }
 
 interface ImportResult {
@@ -61,6 +127,7 @@ const stepClass = (enabled: boolean) =>
 const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
   initialRallyId,
   initialStageId,
+  source = serverSource,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -96,16 +163,14 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
   useEffect(() => {
     const loadRallies = async () => {
       try {
-        const response = await fetch('/api/rallies');
-        if (!response.ok) throw new Error('Failed to fetch rallies');
-        setRallies(await response.json());
+        setRallies(await source.loadRallies());
       } catch (err) {
         setError('Failed to load the rallies.');
         console.error(err);
       }
     };
     loadRallies();
-  }, []);
+  }, [source]);
 
   useEffect(() => {
     if (!rallyId) {
@@ -118,17 +183,10 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
     const loadRally = async () => {
       setLoadingRally(true);
       try {
-        const [stagesRes, participantsRes, routesRes] = await Promise.all([
-          fetch(`/api/stages?rallyId=${rallyId}`),
-          fetch(`/api/rallies/${rallyId}/participants`),
-          fetch(`/api/rallies/${rallyId}/routes`),
-        ]);
-        if (!stagesRes.ok) throw new Error('Failed to fetch stages');
-        if (!participantsRes.ok) throw new Error('Failed to fetch participants');
-
-        setStages(await stagesRes.json());
-        setParticipants(await participantsRes.json());
-        setRoutes(routesRes.ok ? (await routesRes.json()).routes || [] : []);
+        const loaded = await source.loadRally(rallyId);
+        setStages(loaded.stages);
+        setParticipants(loaded.participants);
+        setRoutes(loaded.routes);
         setError(null);
       } catch (err) {
         setStages([]);
@@ -141,7 +199,7 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
       }
     };
     loadRally();
-  }, [rallyId]);
+  }, [rallyId, source]);
 
   // Which participants already have a sheet for this stage decides whether a
   // line updates a card or writes a new one.
@@ -152,10 +210,7 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
     }
     setLoadingStage(true);
     try {
-      const response = await fetch(`/api/answersheets?stageId=${stageId}`);
-      if (!response.ok) throw new Error('Failed to fetch answer sheets');
-      const data = await response.json();
-      setSheetEqs(data.map((entry: { eq: number }) => entry.eq));
+      setSheetEqs(await source.loadStageSheetEqs(stageId));
     } catch (err) {
       setSheetEqs([]);
       setError('Failed to load the answer sheets of this stage.');
@@ -163,7 +218,7 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
     } finally {
       setLoadingStage(false);
     }
-  }, [stageId]);
+  }, [stageId, source]);
 
   useEffect(() => {
     loadSheets();
@@ -293,14 +348,11 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
     setImporting(true);
     setError(null);
     try {
-      const response = await fetch(`/api/stages/${stage._id}/times/import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rowNumber, times: payload, createMissingSheets }),
+      const data = await source.importTimes(stage._id, {
+        rowNumber,
+        times: payload,
+        createMissingSheets,
       });
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Failed to import the times');
 
       setResult({
         total: data.total ?? payload.length,
@@ -345,23 +397,30 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
             {result.ignored > 0 &&
               ` ${result.ignored} line${result.ignored === 1 ? '' : 's'} for crews not in the entry list ignored.`}
           </p>
-          <p className="mt-1">
-            The standings have been re-scored.{' '}
-            <Link href={`/rallies/${rallyId}`} className="underline font-medium">
-              Back to the rally
-            </Link>
-            {stage && (
-              <>
-                {' · '}
-                <Link
-                  href={`/rallies/${rallyId}/stages/${stage._id}`}
-                  className="underline font-medium"
-                >
-                  View the stage
-                </Link>
-              </>
-            )}
-          </p>
+          {source.offline ? (
+            <p className="mt-1">
+              The standings in this workspace have been re-scored. The times are uploaded with
+              the cards once there is a connection.
+            </p>
+          ) : (
+            <p className="mt-1">
+              The standings have been re-scored.{' '}
+              <Link href={`/rallies/${rallyId}`} className="underline font-medium">
+                Back to the rally
+              </Link>
+              {stage && (
+                <>
+                  {' · '}
+                  <Link
+                    href={`/rallies/${rallyId}/stages/${stage._id}`}
+                    className="underline font-medium"
+                  >
+                    View the stage
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
         </div>
       )}
 

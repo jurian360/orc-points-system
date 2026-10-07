@@ -80,6 +80,11 @@ export const MAX_IMPORT_TIMES = 100;
 // making the running order and the printed result sheet arbitrarily wide.
 export const MAX_ROUTES = 20;
 
+// Sheets per upload from the offline workspace (app/api/rallies/[id]/sync). A
+// card is a few KB of JSON, so this keeps a request well inside readBody()'s
+// 256 KB; the workspace sends a longer queue as several requests.
+export const MAX_SYNC_SHEETS = 25;
+
 // Stages of a rally. A real event has a handful; every stage added re-scores
 // the whole rally and widens the printed result sheet by four columns, so the
 // cap is generous headroom that still keeps both bounded.

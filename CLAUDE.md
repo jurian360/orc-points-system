@@ -147,7 +147,15 @@ Rally ──< Stage ──< AnswerSheet
   Standings read this field.
   Re-scoring goes through `app/lib/rescore.ts` (`rescoreRally` /
   `rescoreParticipants`, one `bulkWrite`) because the time part is a chain — see
-  the scoring rules below.
+  the scoring rules below. The computation itself is the pure
+  `scoreRallySheets` (`app/lib/rallyScoring.ts`), shared with the offline
+  workspace; `rescore.ts` is only the read and the write around it.
+- `AnswerSheet.revision` counts the edits an official (or a crew, through the
+  app) made to what is *typed* on a card — letters, a WPT, merk letters, the
+  Diversen count. Every such write `$inc`s it; **a re-score never does**,
+  because a derived number is not an edit. A sheet from before the field reads
+  as 0 and is matched as `null` in a filter (what a missing field equals). It is
+  what an offline upload is checked against — see *Offline mode*.
 - `Route` — `{ rallyId, name, order, createdAt }`, a sequential leg of a rally.
   **Unique index `{rallyId, name}`** (the printed per-route rankings are headed
   with it); the `11000` is mapped to a 409, like the rally code. `order` is an
@@ -1162,6 +1170,79 @@ the same reason `/login` is: a visitor asking for this has none yet.
   `POSTMARK_FROM_EMAIL` are read lazily inside the function that sends, like
   every other secret (`app/lib/env.ts`).
 
+## Offline mode (`app/offline`, `app/lib/offline/`)
+
+Officials sometimes score where there is no connection, usually on one laptop.
+A rally is taken into the field on its dashboard (*Make Available Offline*),
+worked on in the **offline workspace** at `/offline`, and uploaded on its own
+once there is a connection again. It covers typing and correcting cards, the
+time import, the standings and the printed result sheets; everything else
+(stages and keys, the entry list, QR codes, accounts) needs the server.
+
+- **One static page, not the existing pages offline.** Every other page is a
+  dynamic route whose HTML carries its own ids, which a service worker cannot
+  serve for an id it never cached — and a card typed offline has no server
+  `_id` at all. `/offline` has no params, so it is prerendered, cached whole and
+  does its own navigation between tabs (Cards, Standings, Print, Import Times,
+  Upload). It reuses the online components rather than copying them:
+  `AnswerSheetForm`, `ControlekaartCard`, `StandingsTable` (shared with the
+  dashboard's Standings tab), `StandingsPrintView` (shared with
+  `/rallies/[id]/standings/print`) and `TimeImportWizard`, which takes a
+  `source` — the server by default, the copy in the browser here.
+- **Scored with the server's own functions.** `scoreRallySheets`
+  (`app/lib/rallyScoring.ts`) and `buildStandings` (`app/lib/standingsBuild.ts`)
+  are the pure cores of `rescore.ts` and `computeRallyStandings`, lifted out so
+  the server and the browser run one implementation. The workspace stores only
+  the typed fields of a card and scores the whole rally in memory on every
+  change, so the copy in the browser holds no total that could disagree with its
+  own letters. **If you change how a sheet or the standings are computed, change
+  it there** — never in `rescore.ts` or `standingsQuery.ts` around them.
+- **The copy lives in IndexedDB** (`app/lib/offline/db.ts`, no library): the
+  snapshot `GET /api/rallies/[id]/offline` returns (stages with keys in running
+  order, routes, entry list, every sheet with its `revision`, the role of who
+  downloaded it), and one record per card keyed `stageId:eq`. A card changed
+  here is `dirty`; downloading the rally again keeps dirty cards and replaces
+  the rest. `app/lib/offline/store.ts` is every operation on it.
+- **The upload is state, not a log.** `POST /api/rallies/[id]/sync` takes up to
+  `MAX_SYNC_SHEETS` whole cards — `{stageId, eq, baseRevision, deleted?, typed
+  fields}` — and per card the server's copy decides: no sheet and `baseRevision`
+  null creates it; a `revision` still equal to `baseRevision` replaces it (a
+  conditional update on `{_id, revision}`, so a write in between is not lost);
+  a server copy whose typed fields already equal what was sent is `saved`
+  without a write (`typedSheetContent`, `app/lib/sheetContent.ts` — a request
+  whose answer was lost and is sent again); **anything else is a conflict** and
+  the server's sheet comes back. The workspace shows both cards and the official
+  chooses (*Keep Mine* rebases onto the server's revision, *Use Server's* drops
+  the local one). Conflicts are real: the Android app and officials at HQ keep
+  writing while the laptop is offline. The route re-validates every card exactly
+  as the answer-sheet routes do (stage of this rally, crew on the entry list,
+  typed fields only) and calls `rescoreParticipants` once for the whole upload.
+- **The guard is `requireSession()`**: the upload writes answer sheets only,
+  which is a data-entry official's right. An offline time import therefore
+  arrives as sheet writes; the workspace shows the import only when the role
+  that downloaded the rally may `manage:rally`, as the online app does — a
+  courtesy; the control is that nothing but sheets can be written.
+- **The service worker** (`public/sw.js`, hand-written, no library) caches
+  `/offline` and every asset its HTML and stylesheets name, serves
+  `/_next/static/` cache-first, answers any other navigation that fails with a
+  redirect to `/offline`, and **never touches `/api/`** — offline data comes from
+  IndexedDB only. It is registered in production builds only
+  (`app/lib/offline/useOfflineSync.ts`). **A cache step must never cost the
+  online app a request**: every cache read and write in it falls back to the
+  network, because a cache that refuses writes (a full disk, a quota) once
+  broke every script under its control.
+- **`/offline`, `/sw.js` and `/manifest.webmanifest` are public paths** in
+  `middleware.ts`. They hold no data, and the session — 24 hours from login,
+  fixed — can run out during a long day in the field; a browser also refuses a
+  service-worker script answered with a redirect. `app/manifest.ts` makes the
+  app installable, opening on `/offline`.
+- **Uploading is automatic.** The navigation's `useOfflineSync` uploads on load
+  and on the browser's `online` event, without waiting for the auth context: a
+  page opened offline checked the session then, failed, and keeps saying
+  "signed out" after the connection is back. A session that really ran out
+  answers 401; the cards stay queued and the Upload tab says to log in.
+  Logging out warns about cards not uploaded yet and never discards them.
+
 ## Layout
 
 ```
@@ -1180,6 +1261,8 @@ app/
                   rallies/[id]/duplicate to copy a rally's stages and keys,
                   rallies/[id]/public-results to turn a rally's public results
                   page on or off,
+                  rallies/[id]/offline (the snapshot a device works on offline)
+                  + rallies/[id]/sync (the cards it changed, uploaded),
                   stages/[id]/times/import for the times of one control,
                   stages/[id]/access-codes for the QR codes of one stage,
                   app/card + app/submit, the two public endpoints of the
@@ -1194,7 +1277,12 @@ app/
                   standings (finished / DNF / DNS: the three groups a result
                   sheet ranks, shared client + server),
                   standingsQuery (computeRallyStandings — one rally's ranked
-                  standings, shared by the dashboard route and the public one),
+                  standings, shared by the dashboard route and the public one)
+                  + standingsBuild (its pure core, shared with the browser),
+                  rallyScoring (scoring a rally's sheets, the pure core of
+                  rescore, shared with the browser), sheetContent (what was
+                  typed on a card, comparable), offline/ (the offline
+                  workspace's IndexedDB store, upload and service-worker hook),
                   routes (the legs of a rally: the running order, the leg
                   boundaries and a crew's totals per route, shared client +
                   server) + rallyOrder (that order read out of the database),
@@ -1219,6 +1307,7 @@ app/
                   rallies/[id]/public-results: turn the public results page on
                   or off and print its QR code, admin only)
   public/rallies/[id]/  the public results page itself — no session, no app nav
+  offline/        the offline workspace — one static page over IndexedDB
   time-import/    the time import wizard (rally -> stage -> control -> file)
   users/          the accounts page (admin only)
   account/        your own account: role, email and password
@@ -1227,6 +1316,7 @@ app/
   forbidden/      where middleware sends an official who lacks the role
   types/          shared TS interfaces
 middleware.ts     auth + rate limit + CSRF at the edge
+public/sw.js      the offline workspace's service worker
 scripts/          generate-secret.mjs, hash-password.mjs
 ```
 
@@ -1404,7 +1494,11 @@ Do not regress them.**
 
 - A card handed in from the app is a sheet write like any other, so it
   re-scores that participant's rally. If you add another way for a card to
-  arrive, it has to call `rescoreParticipants` too.
+  arrive, it has to call `rescoreParticipants` too — **and `$inc` the sheet's
+  `revision`**, or an offline copy of that card uploads over the change
+  without a conflict. Every write of a typed field bumps it (POST/PUT
+  answersheets, the time import, the app's submit, the offline sync); the
+  re-score must not.
 - Deleting a stage or a rally deletes its `CardAccess` records too, so the
   printed QR codes stop working with it. The lookup fails closed on a code whose
   stage is gone in any case, but a code should not outlive what it stands for.

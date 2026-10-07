@@ -16,9 +16,8 @@ import 'server-only';
 import mongoose from 'mongoose';
 
 import { AnswerSheet } from '../models';
-import { calculateMerkPenalty, calculateTotalPenalty, scoreAnswerRows } from './scoring';
 import { loadRunningOrder } from './rallyOrder';
-import { scoreRallyTimes, type RallyStageTimeInput, type TimeEntryRow } from './timeScoring';
+import { scoreRallySheets } from './rallyScoring';
 
 interface RescoreOptions {
   // Limit the work to these participants. Omit to rescore the whole rally,
@@ -51,93 +50,16 @@ export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {
   const sheets = await AnswerSheet.find(query);
   if (sheets.length === 0) return;
 
-  const stageById = new Map(stages.map((stage: any) => [String(stage._id), stage]));
-  const stageInputs: RallyStageTimeInput[] = stages.map((stage: any) => ({
-    stageId: String(stage._id),
-    routeId: stage.routeId ? String(stage.routeId) : null,
-    timeScoreKey: stage.timeScoreKey,
-    timeConfig: stage.timeConfig,
+  // The computation itself is pure and shared with the offline workspace
+  // (app/lib/rallyScoring.ts); this is only the read and the write around it.
+  const operations = scoreRallySheets(stages, sheets as any[]).map(({ sheet, score }) => ({
+    updateOne: {
+      filter: { _id: sheet._id },
+      // `revision` is deliberately not touched: it counts the edits an
+      // official made, and a re-score is not one (see "Offline mode").
+      update: { $set: score },
+    },
   }));
-
-  // Group by participant: the time chain runs per participant across stages.
-  const byParticipant = new Map<number, any[]>();
-  for (const sheet of sheets) {
-    const group = byParticipant.get(sheet.eq) || [];
-    group.push(sheet);
-    byParticipant.set(sheet.eq, group);
-  }
-
-  const operations: any[] = [];
-
-  for (const [eq, participantSheets] of byParticipant) {
-    const entriesByStage = new Map<string, TimeEntryRow[]>(
-      participantSheets.map((sheet) => [
-        String(sheet.stageId),
-        (sheet.timePenalties || []) as TimeEntryRow[],
-      ])
-    );
-
-    const timeResults = scoreRallyTimes(stageInputs, eq, entriesByStage);
-
-    for (const sheet of participantSheets) {
-      const stage = stageById.get(String(sheet.stageId));
-      const timeResult = timeResults.get(String(sheet.stageId));
-
-      const orcPenalty = stage ? calculateTotalPenalty(stage.scoreKey, sheet.answers) : 0;
-      const timePenalty = timeResult ? timeResult.totalPenalty : 0;
-      // The merk column is scored against the stage's merk key, vertically: an
-      // untyped column costs every letter of the key, exactly like a blank card.
-      // The Diversen fine on row 6 is added on top of it.
-      const merkResult = calculateMerkPenalty(
-        stage?.merkScoreKey,
-        sheet.merkScores,
-        sheet.diversenCount
-      );
-
-      operations.push({
-        updateOne: {
-          filter: { _id: sheet._id },
-          update: {
-            $set: {
-              // The officials' letters are kept; the strafpunten of a row are
-              // derived from the stage key, exactly as the time and merk rows
-              // are — nothing on a sheet claims a penalty of its own.
-              answers: scoreAnswerRows(stage?.scoreKey, sheet.answers),
-              // The stored rows keep the officials' WPT and add the derived
-              // ideal time, +/- and penalty of every row.
-              timePenalties: timeResult
-                ? timeResult.rows.map((row) => ({
-                    rowNumber: row.rowNumber,
-                    ipt: row.ipt,
-                    wpt: row.wpt,
-                    plusMinus: row.plusMinus,
-                    strafp: row.strafp,
-                    outOfWindow: row.outOfWindow,
-                    missing: row.missing,
-                    free: row.free,
-                  }))
-                : sheet.timePenalties,
-              timePenalty,
-              // The officials' letters are kept; only the derived penalty of a
-              // row — the 30 points it made a double — is (re)written. The rows
-              // are the letter rows only, so a letter left on the Diversen row
-              // from before it was one is dropped here.
-              merkScores: merkResult.rows.map((row) => ({
-                rowNumber: row.rowNumber,
-                merk: row.merk,
-                strafp: row.strafp,
-              })),
-              merkPenalty: merkResult.totalPenalty,
-              disqualified: timeResult ? timeResult.disqualified : false,
-              startDelta: timeResult ? timeResult.startDelta : 0,
-              endDelta: timeResult ? timeResult.endDelta : 0,
-              totalPenalty: orcPenalty + timePenalty + merkResult.totalPenalty,
-            },
-          },
-        },
-      });
-    }
-  }
 
   if (operations.length > 0) {
     await AnswerSheet.bulkWrite(operations);

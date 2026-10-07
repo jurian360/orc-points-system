@@ -3,21 +3,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import ClassificationBadge from '../../components/ClassificationBadge';
 import ParticipantsPanel from '../../components/ParticipantsPanel';
 import RallyTimesPanel from '../../components/RallyTimesPanel';
 import RouteManagerPanel, { type ManagedRoute } from '../../components/RouteManagerPanel';
+import StandingsTable, { type StandingsTableEntry } from '../../components/StandingsTable';
 import { useAuth } from '../../components/AuthContext';
-import { crewLabel, CLASSIFICATIONS, type ClassificationValue } from '../../lib/participants';
+import { crewLabel, CLASSIFICATIONS } from '../../lib/participants';
 import { copyRallyName } from '../../lib/rallyCodes';
-import {
-  isRanked,
-  STATUS_LABEL,
-  STATUS_TITLE,
-  type StandingsStatus,
-} from '../../lib/standings';
 import { PAGE_CONTAINER } from '../../lib/pageContainer';
 import { groupStagesByRoute } from '../../lib/routes';
+import { downloadRally, getOfflineRally } from '../../lib/offline/store';
 
 interface Rally {
   _id: string;
@@ -37,28 +32,7 @@ interface Stage {
   createdAt: string;
 }
 
-interface StandingsEntry {
-  eq: number;
-  classification: ClassificationValue;
-  driverName: string;
-  navigatorName: string;
-  totalPenalty: number;
-  // The two parts of totalPenalty, so the table can show where the points
-  // came from: the ORC's (letters), the Tijd (time) and the Diversen (merk)
-  // penalty.
-  orcPenalty: number;
-  timePenalty: number;
-  merkPenalty: number;
-  sheetsSubmitted: number;
-  // The stages this crew has no sheet for. Each one is charged the maximum that
-  // stage can cost, and those points are already in the totals above.
-  missingSheets: number;
-  disqualified: boolean;
-  // Finished, did not finish, did not start (app/lib/standings.ts). Only a
-  // finished crew has a place; the other two are ranked behind the field.
-  status: StandingsStatus;
-  rank: number;
-}
+type StandingsEntry = StandingsTableEntry;
 
 // The dashboard shows four long lists — the stages, the standings, the entry
 // list and the WPT overview. Stacked they run to thousands of pixels on a real
@@ -101,6 +75,11 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
   const [rescoring, setRescoring] = useState(false);
   const [rescoreMessage, setRescoreMessage] = useState<string | null>(null);
   const [duplicating, setDuplicating] = useState(false);
+  // The copy of this rally kept on this device for the offline workspace
+  // (app/offline): when it was downloaded, or null when there is none.
+  const [offlineCopyAt, setOfflineCopyAt] = useState<string | null>(null);
+  const [downloadingOffline, setDownloadingOffline] = useState(false);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const getParams = async () => {
@@ -256,6 +235,33 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
       alert(err instanceof Error ? err.message : 'Failed to duplicate rally. Please try again.');
       console.error(err);
       setDuplicating(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!rallyId) return;
+    getOfflineRally(rallyId)
+      .then((copy) => setOfflineCopyAt(copy?.downloadedAt ?? null))
+      .catch(() => setOfflineCopyAt(null));
+  }, [rallyId]);
+
+  // Every official can take a rally into the field: the copy holds what a
+  // data-entry account reads anyway, and what comes back is answer sheets.
+  const handleDownloadOffline = async () => {
+    setDownloadingOffline(true);
+    setOfflineMessage(null);
+    try {
+      const copy = await downloadRally(rallyId);
+      setOfflineCopyAt(copy.downloadedAt);
+      setOfflineMessage(
+        'Downloaded to this device. Open it under Offline in the menu — that works without a connection too.'
+      );
+    } catch (err) {
+      setOfflineMessage(
+        err instanceof Error ? err.message : 'Failed to download the rally. Please try again.'
+      );
+    } finally {
+      setDownloadingOffline(false);
     }
   };
 
@@ -509,6 +515,22 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   Import Times
                 </Link>
               )}
+              <button
+                onClick={handleDownloadOffline}
+                disabled={downloadingOffline}
+                title={
+                  offlineCopyAt
+                    ? `On this device since ${formatDate(offlineCopyAt)} — download it again to bring it up to date`
+                    : 'Keep a copy on this device to type cards and read the standings without a connection'
+                }
+                className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 font-medium border border-gray-300 disabled:opacity-60"
+              >
+                {downloadingOffline
+                  ? 'Downloading…'
+                  : offlineCopyAt
+                    ? 'Update Offline Copy'
+                    : 'Make Available Offline'}
+              </button>
               <Link
                 href={`/rallies/${rally._id}/answer-sheets`}
                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium shadow-sm"
@@ -552,6 +574,17 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
       <div className={`${PAGE_CONTAINER} py-6`}>
         {/* Feedback from a rally-wide action (Recalculate Scores) — shown above
             whichever tab is open, since a recalculation touches all of them. */}
+        {offlineMessage && (
+          <p className="mb-4 px-4 py-2 bg-blue-50 border border-blue-200 rounded-md text-sm font-medium text-blue-900">
+            {offlineMessage}{' '}
+            {offlineCopyAt && (
+              <Link href={`/offline?rally=${rally._id}`} className="underline">
+                Open the offline workspace
+              </Link>
+            )}
+          </p>
+        )}
+
         {rescoreMessage && (
           <p className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-md text-sm font-medium text-amber-900">
             {rescoreMessage}
@@ -742,173 +775,30 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                 </Link>
               </div>
             </div>
-            {standings.length === 0 ? (
-              <div className="p-8 text-center">
-                <p className="text-lg text-gray-600">
-                  No answer sheets submitted yet. Standings will appear once participants have
-                  sheets.
-                </p>
-              </div>
-            ) : visibleStandings.length === 0 ? (
-              <div className="p-8 text-center">
-                <p className="text-lg text-gray-600">No participant matches this filter.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                        Rank
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                        EQ
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                        Class
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                        Driver / Navigator
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                        Sheets
-                      </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                        ORC&apos;s
-                      </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                        Tijd
-                      </th>
-                      <th
-                        className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider"
-                        title="The merk column of every sheet"
-                      >
-                        Diversen
-                      </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                        Total
-                      </th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {visibleStandings.map((entry) => (
-                      <tr
-                        key={entry.eq}
-                        className={
-                          entry.status === 'dns'
-                            ? 'bg-gray-100'
-                            : entry.status === 'dnf'
-                              ? 'bg-red-50'
-                              : entry.rank === 1
-                                ? 'bg-yellow-50'
-                                : 'hover:bg-gray-50'
-                        }
-                      >
-                        {/* A crew who did not finish, and one who never started,
-                            have no place: they are behind the field because the
-                            table has to put them somewhere, not because they
-                            came 32nd. The status is shown instead of a number. */}
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          {isRanked(entry.status) ? (
-                            <span className="text-base font-bold text-gray-900">
-                              {entry.rank}
-                              {entry.rank === 1 && (
-                                <span className="ml-2" title="Winner">🏆</span>
-                              )}
-                            </span>
-                          ) : (
-                            <span
-                              className={`px-2 py-0.5 rounded text-sm font-bold ${
-                                entry.status === 'dns'
-                                  ? 'bg-gray-200 text-gray-700'
-                                  : 'bg-red-100 text-red-800'
-                              }`}
-                              title={STATUS_TITLE[entry.status]}
-                            >
-                              {STATUS_LABEL[entry.status]}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          <Link
-                            href={`/rallies/${rally._id}/participants/${entry.eq}`}
-                            className="text-base font-bold text-blue-600 hover:underline"
-                          >
-                            {entry.eq}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          <ClassificationBadge classification={entry.classification} />
-                        </td>
-                        <td className="px-4 py-2">
-                          <span className="text-base text-gray-800">
-                            {crewLabel(entry) || <span className="text-gray-400">—</span>}
-                          </span>
-                        </td>
-                        {/* A crew short of a card is marked here: the stages
-                            they have no sheet for are in their total as blank
-                            cards, which is why their points can be high without
-                            a typed card behind them. */}
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          <span
-                            className={`text-base ${
-                              entry.missingSheets > 0
-                                ? 'font-semibold text-amber-700'
-                                : 'text-gray-600'
-                            }`}
-                            title={
-                              entry.missingSheets > 0
-                                ? `${entry.missingSheets} stage${
-                                    entry.missingSheets === 1 ? '' : 's'
-                                  } without a sheet — scored as a blank card`
-                                : undefined
-                            }
-                          >
-                            {entry.sheetsSubmitted}
-                            {totalStages > 0 ? ` / ${totalStages}` : ''}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-right">
-                          <span className="text-base text-gray-600">{entry.orcPenalty}</span>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-right">
-                          <span className="text-base text-gray-600">{entry.timePenalty}</span>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-right">
-                          <span className="text-base text-gray-600">{entry.merkPenalty}</span>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-right">
-                          <span className="text-base font-bold text-red-600">
-                            {entry.totalPenalty}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-right">
-                          <div className="flex justify-end space-x-4">
-                            <Link
-                              href={`/rallies/${rally._id}/participants/${entry.eq}`}
-                              className="text-blue-600 hover:text-blue-900 font-medium text-base"
-                            >
-                              Sheets
-                            </Link>
-                            {isAdmin && (
-                              <button
-                                onClick={() => handleDeleteParticipant(entry.eq)}
-                                className="text-red-600 hover:text-red-900 font-medium text-base"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <StandingsTable
+              entries={visibleStandings}
+              hasStandings={standings.length > 0}
+              totalStages={totalStages}
+              eqHref={(eq) => `/rallies/${rally._id}/participants/${eq}`}
+              renderActions={(entry) => (
+                <>
+                  <Link
+                    href={`/rallies/${rally._id}/participants/${entry.eq}`}
+                    className="text-blue-600 hover:text-blue-900 font-medium text-base"
+                  >
+                    Sheets
+                  </Link>
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleDeleteParticipant(entry.eq)}
+                      className="text-red-600 hover:text-red-900 font-medium text-base"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </>
+              )}
+            />
           </div>
         )}
       </div>
