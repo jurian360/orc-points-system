@@ -818,10 +818,16 @@ on a rally ridden in routes.
   roughly that width, so what an official sees is what comes out of the printer.
 - The page size and orientation, the break between two sheets and the header row
   that repeats when a sheet runs over one page are the `@page` / `break-after`
-  rules Tailwind has no utility for. They live in a `<style>` on that page only
-  — the QR sheet prints on the browser's own default page and stays that way. It
-  is the one full-page view that does not use `PAGE_CONTAINER`: its width is the
-  paper.
+  rules Tailwind has no utility for. They are `PRINT_STYLES` in
+  `app/components/StandingsSheet.tsx`, rendered in a `<style>` by each page
+  that prints a result sheet (this one and the public results page) and never
+  in globals.css — the QR sheet prints on the browser's own default page and
+  stays that way. It is the one full-page view that does not use
+  `PAGE_CONTAINER`: its width is the paper.
+- **One sheet is one component**: `StandingsSheet` renders a sheet (heading,
+  table, footnotes) and this page only decides *which* sheets to hand it. The
+  public results page prints the same component, so the PDF a crew saves and
+  the officials' paper cannot drift apart.
 - **The app's navigation is not on the paper.** `ClientLayout` marks the nav
   `print:hidden`, so a printed sheet starts at its own heading instead of at the
   app's header and menu — for the QR sheet as much as for the results. Anything
@@ -860,6 +866,21 @@ opens the link, reads the current standings with **no account at all**.
   letter — only the ORC's / Tijd / Diversen / Totaal a crew's sheets add up
   into, rally-wide and per stage, the same numbers the print sheet shows and
   nothing a sheet's own rows would reveal.
+- **The place and the EQ are frozen** while the table scrolls sideways, so a
+  reader halfway along the per-stage numbers still sees whose row it is. Same
+  rules as `RallyTimesPanel`: the table is `border-separate` (a sticky cell
+  loses collapsed borders), the two columns have exact widths (`STICKY_PLACE`
+  / `STICKY_EQ` — the EQ is frozen at the place column's width), and a frozen
+  cell repeats its row's background so nothing shows through.
+- **Download PDF prints the officials' own result sheet** —
+  `StandingsSheet`, the Algemeen klassement, or with a class picked that
+  class's sheet numbered 1, 2, 3 within it, as the officials' Print button does
+  from a filtered standings tab. It is the browser's print dialog ("Save as
+  PDF"), not a PDF library — the same no-dependency trade-off as
+  `app/lib/qrcode.ts`. The screen view is `print:hidden` and the sheet
+  `hidden print:block`; the page title is swapped while printing because the
+  browser names the saved file after it. Per-stage columns, no route grouping:
+  the public API sends no `routeId`.
 - **The computation is shared, not reimplemented.** `computeRallyStandings` in
   `app/lib/standingsQuery.ts` is what `GET /api/rallies/[id]/standings` (the
   dashboard, session-gated) and `GET /api/public/rallies/[id]/results` (this
