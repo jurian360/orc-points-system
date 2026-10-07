@@ -280,13 +280,25 @@ keeps `rescoreRally` and a re-saved sheet — the same computation — from
 disagreeing.
 
 The order rule (rule 4) reads the letters left to right, ignores the ones that
-are not in the key, and asks whether what is left is a **subsequence** of the
-key — for the key `BAC`, `BC` and `AC` are in order, `CA` and `AB` are not. It
-never fires when it cannot tell: a key of one letter has no order, and **one
-correct letter given is never out of order**. So on the key `NW`: `WN` costs 30
-for the order, `N` alone costs 30 for the missing `W` and nothing more, and on
-the key `BAC` both `CA` and `AB` cost 60 — 30 for the missing letter and 30 for
-the order, because two letters do show an order.
+are not in the key, and asks whether the **key can be read out of them in
+order** — the key trimmed to the letters that were given, each at most as often
+as it was given, has to be a **subsequence** of what was written. For the key
+`BAC`, `BC` and `AC` are in order, `CA` and `AB` are not. It is the key that has
+to fit into the card, not the card into the key: a surplus letter is already
+charged by rule 2 and never costs the order too. It never fires when it cannot
+tell: a key of one letter has no order, and **one correct letter given — however
+often — is never out of order**. So on the key `NW`: `WN` costs 30 for the
+order, `N` alone costs 30 for the missing `W` and nothing more, and on the key
+`BAC` both `CA` and `AB` cost 60 — 30 for the missing letter and 30 for the
+order, because two letters do show an order. On the ordered key `UZ`:
+
+| Given | Costs | Why |
+| --- | --- | --- |
+| `UUZ` | 30 | extra `U` — the `U`-then-`Z` is there to read |
+| `UZUZ`, `ZUZU`, `UUZZ` | 60 | extra `U` and extra `Z`, in order |
+| `ZU` | 30 | order |
+| `ZZUU` | 90 | extra `U`, extra `Z` and the order |
+| `UU` | 60 | missing `Z` and extra `U` — one letter has no order |
 
 Sheet total = ORC's rows + the stage's time penalty + the stage's merk penalty.
 Rally total = sum of a participant's sheet totals **plus a blank card for every

@@ -66,28 +66,46 @@ export function answerVariants(scoreKeyRow: ScoreKeyRow | undefined): string[][]
 // measured against one accepted answer?
 //
 // Only the letters that are in the key say anything about the order, so false
-// and unknown letters are ignored. The given letters are in order exactly when
-// they are a *subsequence* of the key: for the key BAC, "BC" and "AC" are in
-// order, "CA" and "AB" are not.
+// and unknown letters are ignored. The row is in order when the key's letters
+// can be read, in the key's order, out of what was written — the key being
+// trimmed to the letters the participant gave, each at most as often as they
+// gave it. For the key BAC, "BC" and "AC" are in order, "CA" and "AB" are not.
+//
+// It is the key that has to fit into the card, not the card into the key: a
+// surplus letter is already charged as a double (rule 2), and must not cost the
+// order as well. So on the key UZ, "UUZ", "UZUZ" and "ZUZU" are in order (the
+// U-then-Z is there to read), while "ZU" and "ZZUU" are not.
 //
 // Two things never cost an order penalty:
 //   - a key of fewer than two letters — there is no order to keep;
-//   - fewer than two correct letters given — a single letter cannot be out of
-//     order, so a participant who wrote only "N" of the key "NW" pays for the
-//     missing W and nothing more.
+//   - one correct letter given, however often — a single letter cannot be out
+//     of order, so a participant who wrote only "N" of the key "NW" pays for
+//     the missing W and nothing more, and "UU" on the key UZ pays for the
+//     missing Z and the doubled U, not for an order.
 function variantOrderError(key: string[], selected: string[]): boolean {
   if (key.length < 2) return false;
 
   const given = selected.filter((answer) => answer && key.includes(answer));
-  if (given.length < 2) return false;
 
-  // Greedy subsequence match: every given letter has to appear in the rest of
-  // the key, after the letter before it.
-  let keyIndex = 0;
-  for (const letter of given) {
-    while (keyIndex < key.length && key[keyIndex] !== letter) keyIndex++;
-    if (keyIndex === key.length) return true;
-    keyIndex++;
+  // The key's letters that were given, in the key's order: each letter as
+  // often as the key asks for it, but no more often than it was written.
+  const available = new Map<string, number>();
+  given.forEach((letter) => available.set(letter, (available.get(letter) || 0) + 1));
+  const expected = key.filter((letter) => {
+    const remaining = available.get(letter) || 0;
+    if (remaining === 0) return false;
+    available.set(letter, remaining - 1);
+    return true;
+  });
+  if (new Set(expected).size < 2) return false;
+
+  // Greedy subsequence match: every expected letter has to appear in the rest
+  // of what was written, after the letter before it.
+  let givenIndex = 0;
+  for (const letter of expected) {
+    while (givenIndex < given.length && given[givenIndex] !== letter) givenIndex++;
+    if (givenIndex === given.length) return true;
+    givenIndex++;
   }
 
   return false;
