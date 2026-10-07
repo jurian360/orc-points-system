@@ -1,8 +1,14 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 
 import ClassificationBadge from '../../../components/ClassificationBadge';
+import StandingsSheet, {
+  formatPrintedOn,
+  PRINT_STYLES,
+  type Sheet,
+} from '../../../components/StandingsSheet';
 import { isRanked, STATUS_LABEL, STATUS_TITLE, type StandingsStatus } from '../../../lib/standings';
 import { CLASSIFICATIONS, type ClassificationValue } from '../../../lib/participants';
 
@@ -25,6 +31,27 @@ import { CLASSIFICATIONS, type ClassificationValue } from '../../../lib/particip
 // Unlike the print page, this does not group the per-stage columns by route
 // on a rally ridden in legs — the stages are shown in running order either
 // way, which is what a phone screen has room for.
+//
+// **Download PDF** prints the officials' own result sheet
+// (app/components/StandingsSheet.tsx, the one /rallies/[id]/standings/print
+// lays out): the Algemeen klassement, or — with a class picked in the filter —
+// that class's sheet with its own 1, 2, 3, exactly as the officials' Print
+// button does from a filtered standings tab. It goes through the browser's
+// print dialog, whose "Save as PDF" is the download: no PDF library, the same
+// trade-off app/lib/qrcode.ts makes, and the paper cannot drift from the
+// officials' because it is their rendering. The screen view is `print:hidden`
+// and the sheet is `hidden print:block`, so neither shows up in the other.
+//
+// On a phone the table scrolls sideways, so the place and the EQ are frozen
+// on the left: a reader halfway along the per-stage numbers still sees whose
+// row it is. The table is `border-separate` for that — a sticky cell loses
+// collapsed borders — and the two frozen columns have exact widths, the EQ's
+// `left` being the place column's width.
+
+// The two frozen columns. Their widths are exact because the EQ column is
+// frozen at `left-16`, the place column's width — change one, change the other.
+const STICKY_PLACE = 'sticky left-0 z-10 w-16 min-w-16 px-2';
+const STICKY_EQ = 'sticky left-16 z-10 w-14 min-w-14 px-3 border-r border-gray-300';
 
 interface PublicStage {
   _id: string;
@@ -125,6 +152,59 @@ export default function PublicRallyResultsPage({
   const showStages = Boolean(data && data.totalStages > 1);
   const stages = data?.stages ?? [];
 
+  // What Download PDF prints: the officials' Algemeen klassement, ranked on the
+  // rally rank, or — with a class picked — that class's own sheet, numbered
+  // 1, 2, 3 within it the way the officials' per-class sheet is. Filtering
+  // keeps the API's order, so the place is the position in what is left.
+  const printSheet = useMemo<Sheet>(
+    () =>
+      classFilter
+        ? {
+            key: classFilter,
+            title: `Klasse ${classFilter}`,
+            showClass: false,
+            kind: 'rally',
+            entries: visibleStandings.map((entry, index) => ({ ...entry, placing: index + 1 })),
+          }
+        : {
+            key: 'combined',
+            title: 'Algemeen klassement',
+            showClass: true,
+            kind: 'rally',
+            entries: visibleStandings.map((entry) => ({ ...entry, placing: entry.rank })),
+          },
+    [classFilter, visibleStandings]
+  );
+
+  const [printedOn, setPrintedOn] = useState(() => formatPrintedOn(new Date()));
+
+  const downloadPdf = () => {
+    if (!data) return;
+    // The browser names the saved PDF after the page title.
+    const previousTitle = document.title;
+    document.title = `${data.rally.name} - Uitslag ${printSheet.title}`;
+    const restore = () => {
+      document.title = previousTitle;
+      window.removeEventListener('afterprint', restore);
+    };
+    window.addEventListener('afterprint', restore);
+    // Rendered before the dialog opens, so the sheet's corner says when it was
+    // saved rather than when the page was opened.
+    flushSync(() => setPrintedOn(formatPrintedOn(new Date())));
+    window.print();
+  };
+
+  // A row's own background, repeated on its two frozen cells: a sticky cell
+  // has to be opaque, or the numbers scrolling under it show through.
+  const rowBackground = (entry: PublicStandingsEntry) =>
+    entry.status === 'dns'
+      ? 'bg-gray-100'
+      : entry.status === 'dnf'
+        ? 'bg-red-50'
+        : entry.rank === 1
+          ? 'bg-yellow-50'
+          : 'bg-white';
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -144,8 +224,25 @@ export default function PublicRallyResultsPage({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-blue-600 shadow-md">
+    <div className="min-h-screen bg-gray-50 print:bg-white">
+      <style dangerouslySetInnerHTML={{ __html: PRINT_STYLES }} />
+
+      {/* Paper only: the officials' result sheet, what Download PDF saves */}
+      {printSheet.entries.length > 0 && (
+        <div className="hidden print:block">
+          <StandingsSheet
+            rally={data.rally}
+            sheet={printSheet}
+            stages={stages}
+            routeGroups={[]}
+            showStages={showStages}
+            showRoutes={false}
+            printedOn={printedOn}
+          />
+        </div>
+      )}
+
+      <header className="bg-blue-600 shadow-md print:hidden">
         <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6 py-5">
           <div className="flex items-center gap-2.5 text-white">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -167,7 +264,7 @@ export default function PublicRallyResultsPage({
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6 py-6">
+      <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6 py-6 print:hidden">
         <p className="text-gray-600 text-sm mb-4">
           Total penalty points (ORC&apos;s + Tijd + Diversen) over every stage — lowest wins. A
           crew with no card for the last stage, or outside its finish window, is a DNF; a crew
@@ -175,23 +272,48 @@ export default function PublicRallyResultsPage({
           {showStages && ' Scroll the table sideways for the numbers per stage.'}
         </p>
 
-        <div className="flex items-center gap-2 mb-4">
-          <label htmlFor="class-filter" className="text-sm font-medium text-gray-700">
-            Classification:
-          </label>
-          <select
-            id="class-filter"
-            value={classFilter}
-            onChange={(event) => setClassFilter(event.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <label htmlFor="class-filter" className="text-sm font-medium text-gray-700">
+              Classification:
+            </label>
+            <select
+              id="class-filter"
+              value={classFilter}
+              onChange={(event) => setClassFilter(event.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All classes</option>
+              {CLASSIFICATIONS.map((value) => (
+                <option key={value} value={value}>
+                  Class {value}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={downloadPdf}
+            disabled={printSheet.entries.length === 0}
+            title="Opens the print dialog — choose Save as PDF"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
-            <option value="">All classes</option>
-            {CLASSIFICATIONS.map((value) => (
-              <option key={value} value={value}>
-                Class {value}
-              </option>
-            ))}
-          </select>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"
+              />
+            </svg>
+            Download PDF
+          </button>
         </div>
 
         <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
@@ -205,20 +327,20 @@ export default function PublicRallyResultsPage({
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-100">
+              <table className="min-w-full border-separate border-spacing-0">
+                <thead className="bg-gray-100 [&_th]:border-b [&_th]:border-b-gray-200">
                   {showStages ? (
                     <>
                       <tr>
                         <th
                           rowSpan={2}
-                          className="px-3 py-2.5 text-left align-bottom text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                          className={`${STICKY_PLACE} bg-gray-100 py-2.5 text-left align-bottom text-xs font-semibold text-gray-700 uppercase tracking-wider`}
                         >
                           #
                         </th>
                         <th
                           rowSpan={2}
-                          className="px-3 py-2.5 text-left align-bottom text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                          className={`${STICKY_EQ} bg-gray-100 py-2.5 text-left align-bottom text-xs font-semibold text-gray-700 uppercase tracking-wider`}
                         >
                           EQ
                         </th>
@@ -289,10 +411,14 @@ export default function PublicRallyResultsPage({
                     </>
                   ) : (
                     <tr>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th
+                        className={`${STICKY_PLACE} bg-gray-100 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider`}
+                      >
                         #
                       </th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th
+                        className={`${STICKY_EQ} bg-gray-100 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider`}
+                      >
                         EQ
                       </th>
                       <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
@@ -319,21 +445,10 @@ export default function PublicRallyResultsPage({
                     </tr>
                   )}
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white [&>tr>td]:border-b [&>tr>td]:border-b-gray-200 [&>tr:last-child>td]:border-b-0">
                   {visibleStandings.map((entry) => (
-                    <tr
-                      key={entry.eq}
-                      className={
-                        entry.status === 'dns'
-                          ? 'bg-gray-100'
-                          : entry.status === 'dnf'
-                            ? 'bg-red-50'
-                            : entry.rank === 1
-                              ? 'bg-yellow-50'
-                              : undefined
-                      }
-                    >
-                      <td className="px-3 py-2 whitespace-nowrap">
+                    <tr key={entry.eq} className={rowBackground(entry)}>
+                      <td className={`${STICKY_PLACE} ${rowBackground(entry)} py-2 whitespace-nowrap`}>
                         {isRanked(entry.status) ? (
                           <span className="text-sm font-bold text-gray-900">
                             {entry.rank}
@@ -356,7 +471,9 @@ export default function PublicRallyResultsPage({
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm font-bold text-gray-900">
+                      <td
+                        className={`${STICKY_EQ} ${rowBackground(entry)} py-2 whitespace-nowrap text-sm font-bold text-gray-900`}
+                      >
                         {entry.eq}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">
