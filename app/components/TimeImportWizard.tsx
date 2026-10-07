@@ -31,8 +31,8 @@ import type { RallyRoute } from '../lib/routes';
 // Four steps, because the file itself says nothing about where it belongs:
 // which rally, which stage, which of the ten time rows, and only then the file
 // and its columns. The rally has to have its entry list first — a time is
-// imported for a crew, and a control export naming an EQ this rally does not
-// know is a mismatch rather than a new participant.
+// imported for a crew, and a line of the export for an EQ this rally has not
+// entered is ignored rather than turned into a new participant.
 //
 // The file is read in the browser (app/lib/spreadsheet.ts); only `{eq, wpt}`
 // per crew is sent. Everything the time is worth — the +/-, the penalty of the
@@ -50,6 +50,7 @@ interface ImportResult {
   updated: number;
   created: number;
   skipped: number;
+  ignored: number;
   rowLabel: string;
   stageName: string;
 }
@@ -264,7 +265,8 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
     () => ({
       update: rows.filter((row) => row.outcome === 'update').length,
       create: rows.filter((row) => row.outcome === 'create').length,
-      skip: rows.filter((row) => row.outcome === 'skip').length,
+      skip: rows.filter((row) => row.outcome === 'skip' && !row.notEntered).length,
+      notEntered: rows.filter((row) => row.notEntered).length,
       error: rows.filter((row) => row.outcome === 'error').length,
     }),
     [rows]
@@ -305,6 +307,7 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
         updated: data.updated ?? 0,
         created: data.created ?? 0,
         skipped: data.skipped ?? 0,
+        ignored: counts.notEntered + (data.ignored ?? 0),
         rowLabel: timeRowLabel(rowNumber),
         stageName: stage.name,
       });
@@ -339,6 +342,8 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
             {result.stageName} — {result.updated} sheet
             {result.updated === 1 ? '' : 's'} updated, {result.created} created.
             {result.skipped > 0 && ` ${result.skipped} skipped.`}
+            {result.ignored > 0 &&
+              ` ${result.ignored} line${result.ignored === 1 ? '' : 's'} for crews not in the entry list ignored.`}
           </p>
           <p className="mt-1">
             The standings have been re-scored.{' '}
@@ -365,7 +370,8 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
         <h2 className="text-xl font-semibold text-gray-800 mb-1">1. Rally</h2>
         <p className="text-gray-600 text-base mb-3">
           The rally the control belongs to. Its participants have to be imported first — a time
-          is only imported for a crew that is in the entry list.
+          is only imported for a crew that is in the entry list, and a line of the file for any
+          other EQ is ignored.
         </p>
         <select
           id="time-import-rally"
@@ -645,6 +651,11 @@ const TimeImportWizard: React.FC<TimeImportWizardProps> = ({
                   )}
                   {counts.skip > 0 && (
                     <span className="text-base text-gray-600">{counts.skip} line(s) skipped</span>
+                  )}
+                  {counts.notEntered > 0 && (
+                    <span className="text-base text-gray-600">
+                      {counts.notEntered} line(s) ignored — not in the entry list
+                    </span>
                   )}
                   {counts.error > 0 && (
                     <span className="text-base font-semibold text-red-700">
