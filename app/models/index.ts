@@ -412,6 +412,18 @@ const AnswerSheetSchema = new mongoose.Schema({
   endDelta: {
     type: Number,
     default: 0
+  },
+  // How many times an official changed what is on the card — the letters, a
+  // WPT, the merk letters or the Diversen count — since it was created. It is
+  // what the offline workspace's upload is checked against: a card it holds a
+  // copy of was changed by somebody else meanwhile when the two numbers differ
+  // (see "Offline mode" in CLAUDE.md). Every write of a typed field `$inc`s it;
+  // a re-score never does, because a derived number is not an edit. A sheet from
+  // before this field reads as 0 — and is matched as `null` in a filter, which
+  // is what a missing field equals.
+  revision: {
+    type: Number,
+    default: 0
   }
 });
 

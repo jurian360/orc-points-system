@@ -6,7 +6,21 @@ import { clientIp, rateLimit } from './app/lib/rate-limit';
 
 // Paths reachable without a session. Everything else the matcher covers
 // requires a valid, signed, unexpired session cookie.
-const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password'];
+//
+// `/offline`, `/sw.js` and `/manifest.webmanifest` are the offline workspace's
+// shell (see "Offline mode" in CLAUDE.md). They hold no rally data — that lives
+// in the device's IndexedDB, downloaded through session-guarded routes — and
+// they have to open without a session: the session is a fixed 24 hours from
+// login and runs out during a long day without a connection, and a browser
+// refuses a service-worker script that is answered with a redirect to /login.
+const PUBLIC_PATHS = [
+  '/login',
+  '/forgot-password',
+  '/reset-password',
+  '/offline',
+  '/sw.js',
+  '/manifest.webmanifest',
+];
 const PUBLIC_API_PREFIX = '/api/auth/';
 
 // The two endpoints the participants' Android app calls. They are public

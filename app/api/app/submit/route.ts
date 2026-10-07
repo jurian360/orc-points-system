@@ -195,6 +195,8 @@ async function storeCard(
     existing.merkPenalty = merkPenalty;
     existing.totalPenalty = totalPenalty;
     existing.submittedAt = new Date();
+    // The crew changed the card: see `revision` in app/models/index.ts.
+    existing.$inc('revision', 1);
     await existing.save();
   } else {
     await AnswerSheet.create({

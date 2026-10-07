@@ -199,7 +199,12 @@ export async function POST(
         operations.push({
           updateOne: {
             filter: { _id: sheet._id },
-            update: { $set: { timePenalties: timeRowsWith(sheet.timePenalties, wpt) } },
+            // A WPT is typed data, so the card's revision moves with it (see
+            // `revision` in app/models/index.ts); the re-score below does not.
+            update: {
+              $set: { timePenalties: timeRowsWith(sheet.timePenalties, wpt) },
+              $inc: { revision: 1 },
+            },
           },
         });
         continue;

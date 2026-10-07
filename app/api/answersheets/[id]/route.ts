@@ -147,6 +147,10 @@ export async function PUT(
     sheet.totalPenalty =
       calculateTotalPenalty(stage ? stage.scoreKey : [], answers) + merkPenalty;
 
+    // An official changed the card: the offline workspace's copy of it is out
+    // of date from here on (see "Offline mode" in CLAUDE.md).
+    sheet.$inc('revision', 1);
+
     const updatedSheet = await sheet.save();
 
     // Renumbering a sheet moves it between two participants' time chains, so
