@@ -93,8 +93,9 @@ export function parseSheetTime(value: string): string | null {
 
 // What the rally already knows about the sheet being imported.
 export interface TimeImportContext {
-  // The EQ numbers that have a participant record in this rally. A time can
-  // only be imported for a crew that is in the entry list.
+  // The EQ numbers that have a participant record in this rally. A time is
+  // only imported for a crew that is in the entry list; a line for any other
+  // number is ignored.
   participantEqs: ReadonlySet<number>;
   // The EQ numbers that already have an answer sheet for this stage.
   sheetEqs: ReadonlySet<number>;
@@ -107,7 +108,8 @@ export interface TimeImportContext {
 // What importing one line of the file would do.
 //   update — an existing sheet gets this time on the chosen row
 //   create — a new sheet is written for this participant with only this time
-//   skip   — nothing to import here (no time, or another control)
+//   skip   — nothing to import here (no time, another control, or a crew that
+//            is not in the entry list)
 //   error  — the line cannot be imported and stops the whole import
 export type TimeImportOutcome = 'update' | 'create' | 'skip' | 'error';
 
@@ -123,6 +125,9 @@ export interface TimeImportRow {
   outcome: TimeImportOutcome;
   // Why the row is skipped, or what is wrong with it.
   message: string;
+  // Skipped because the EQ is not a participant of this rally. Counted on its
+  // own in the preview, so an official sees how much of the file was ignored.
+  notEntered: boolean;
 }
 
 const cellAt = (row: string[], column: number): string =>
@@ -183,6 +188,7 @@ export function buildTimeImportRows(
       control,
       outcome: 'skip',
       message: '',
+      notEntered: false,
     };
 
     // A file for another control is left out before anything else is judged:
@@ -202,21 +208,24 @@ export function buildTimeImportRows(
       continue;
     }
 
+    // A control's export can hold more crews than this rally has entered — the
+    // full 1..100, or the field of another event run on the same course. Only
+    // the crews in the entry list are imported; every other line is ignored,
+    // whatever is on it, because it is not this rally's business. That check
+    // comes before the time is read, so a bad cell on an ignored line does not
+    // stop the import either.
     if (eq === null) {
       entry.outcome = 'error';
       entry.message = 'A time without an EQ number';
-    } else if (!Number.isInteger(eq) || eq < 1 || eq > 100) {
-      entry.outcome = 'error';
-      entry.message = `EQ ${rawEq} is outside 1-100`;
+    } else if (!context.participantEqs.has(eq)) {
+      entry.notEntered = true;
+      entry.message = `EQ ${eq} is not in the entry list — ignored`;
     } else if (seen.has(eq)) {
       entry.outcome = 'error';
       entry.message = `EQ ${eq} has a time twice (line ${seen.get(eq)})`;
     } else if (wpt === null) {
       entry.outcome = 'error';
       entry.message = `"${rawWpt}" is not a time — use 19:27`;
-    } else if (!context.participantEqs.has(eq)) {
-      entry.outcome = 'error';
-      entry.message = `EQ ${eq} is not a participant of this rally`;
     } else if (context.sheetEqs.has(eq)) {
       entry.outcome = 'update';
       entry.message = 'Sets the time on the existing sheet';
@@ -227,7 +236,7 @@ export function buildTimeImportRows(
       entry.message = 'No sheet for this stage yet';
     }
 
-    if (eq !== null && entry.outcome !== 'error') seen.set(eq, lineNumber);
+    if (eq !== null && entry.outcome !== 'error' && !entry.notEntered) seen.set(eq, lineNumber);
 
     imported.push(entry);
   }

@@ -30,10 +30,11 @@ import mongoose from 'mongoose';
 //
 // Two rules the wizard shows before it sends:
 //
-//   * a time can only be imported for a crew that is in the entry list of the
-//     rally. An EQ without a participant record rejects the whole import: it
-//     means the file and the rally disagree about who is riding, and a control
-//     export is not the place to invent a participant.
+//   * a time is only imported for a crew that is in the entry list of the
+//     rally. A control's export can hold more numbers than the rally has
+//     entered, so an EQ without a participant record is ignored — reported
+//     back as `ignored`, never written. A control export is not the place to
+//     invent a participant.
 //   * a participant who has no sheet for this stage yet gets one when
 //     `createMissingSheets` is set, holding only this time. Without it those
 //     lines are reported as skipped instead.
@@ -127,38 +128,39 @@ export async function POST(
       return NextResponse.json({ error: 'Stage not found' }, { status: 404 });
     }
 
-    const eqs = times.map((time) => time.eq);
+    const fileEqs = times.map((time) => time.eq);
     // `mongoose.trusted` is the documented opt-out of the `sanitizeFilter`
     // backstop (app/lib/mongodb.ts), and it is safe here for the same reason it
     // is in app/lib/rescore.ts: these are integers `parseEq` has proven, never a
     // value off the wire. A fresh one per query, so no two queries share the
     // object they are cast from.
-    const eqFilter = () => mongoose.trusted({ $in: eqs });
+    const eqFilter = (eqs: number[]) => mongoose.trusted({ $in: eqs });
 
-    // The rally has to know these crews first: the entry list is what says who
-    // is riding, and a control export naming somebody else is a mismatch the
-    // officials have to resolve, not something to import halfway.
-    const participants = await Participant.find({ rallyId: stage.rallyId, eq: eqFilter() })
+    // Only the crews in the entry list are imported: it is what says who is
+    // riding, and a control's export can name more numbers than the rally has
+    // entered. Those lines are left out, not refused.
+    const participants = await Participant.find({ rallyId: stage.rallyId, eq: eqFilter(fileEqs) })
       .select('eq')
       .lean();
     const known = new Set(participants.map((participant: any) => participant.eq as number));
-    const unknown = eqs.filter((eq) => !known.has(eq));
+    const ignored = fileEqs.filter((eq) => !known.has(eq));
+    const entered = times.filter((time) => known.has(time.eq));
 
-    if (unknown.length > 0) {
-      const listed = unknown.slice(0, 10).join(', ');
+    if (entered.length === 0) {
       return NextResponse.json(
         {
           error:
-            `These EQ numbers are not participants of this rally: ${listed}` +
-            `${unknown.length > 10 ? `, and ${unknown.length - 10} more` : ''}. ` +
+            'None of these EQ numbers are participants of this rally — nothing to import. ' +
             'Import the entry list first.',
-          unknownEqs: unknown,
+          ignoredEqs: ignored,
         },
         { status: 400 }
       );
     }
 
-    const sheets = await AnswerSheet.find({ stageId: id, eq: eqFilter() });
+    const eqs = entered.map((time) => time.eq);
+
+    const sheets = await AnswerSheet.find({ stageId: id, eq: eqFilter(eqs) });
     const sheetByEq = new Map<number, any>(sheets.map((sheet: any) => [sheet.eq, sheet]));
 
     // The 10 time rows of a sheet, with this import's time on the chosen row and
@@ -189,7 +191,7 @@ export async function POST(
     let created = 0;
     const skipped: number[] = [];
 
-    for (const { eq, wpt } of times) {
+    for (const { eq, wpt } of entered) {
       const sheet = sheetByEq.get(eq);
 
       if (sheet) {
@@ -248,7 +250,7 @@ export async function POST(
 
       // A WPT moves the delta this participant carries into every later stage,
       // so their whole rally is re-scored — never just this sheet.
-      await rescoreParticipants(stage.rallyId, times.map((time) => time.eq));
+      await rescoreParticipants(stage.rallyId, eqs);
     }
 
     if (writeError) throw writeError;
@@ -261,6 +263,8 @@ export async function POST(
       created,
       skipped: skipped.length,
       skippedEqs: skipped,
+      ignored: ignored.length,
+      ignoredEqs: ignored,
     });
   } catch (error) {
     // The unique {stageId, eq} index is the authoritative guard: a sheet created

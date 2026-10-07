@@ -654,8 +654,13 @@ stage's time column.
   stage, which of the 10 time rows (START / GTC 1-8 / FINISH, each shown with its
   IPT 0), then the file and its columns. Opening it from a rally or a stage
   pre-selects those (`/time-import?rallyId=…&stageId=…`).
-- **The rally needs its entry list first.** A time is imported for a *crew*: an
-  EQ with no `Participant` record rejects the import rather than inventing one.
+- **The rally needs its entry list first.** A time is imported for a *crew*: a
+  line for an EQ with no `Participant` record is **ignored**, never turned into
+  a new participant. A control's export can hold more numbers than the rally
+  entered, so those lines are left out — counted in the preview as "not in the
+  entry list", checked before the time is read so a bad cell on them cannot
+  block the import, and filtered out again by the route (`ignored` /
+  `ignoredEqs` in its response; a request with no entered crew at all is a 400).
   A participant who has no sheet for the stage yet gets one holding only this
   time (`createMissingSheets`, on by default); its `answers` stay empty until an
   official types the card, and an empty card scores every letter of the key as
