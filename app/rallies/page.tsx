@@ -179,19 +179,18 @@ export default function RalliesPage() {
                   {rallies.map((rally) => (
                     <tr key={rally._id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-lg font-medium text-gray-900">{rally.name}</div>
+                        <Link
+                          href={`/rallies/${rally._id}`}
+                          className="text-lg font-medium text-gray-900 hover:text-blue-700 hover:underline"
+                        >
+                          {rally.name}
+                        </Link>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-base text-gray-600">{formatDate(rally.createdAt)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex justify-end space-x-4">
-                          <Link
-                            href={`/rallies/${rally._id}`}
-                            className="text-blue-600 hover:text-blue-900 font-medium text-base"
-                          >
-                            Open
-                          </Link>
                           {isAdmin && (
                             <>
                               <button

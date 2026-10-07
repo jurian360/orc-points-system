@@ -40,6 +40,14 @@ interface ParticipantDetails {
   navigatorName: string;
 }
 
+// The crew after this one on the entry list, and where their card for the same
+// stage is typed: their own sheet when they already have one (a time import
+// creates it), otherwise the answer-sheets wizard opened at that stage and EQ.
+interface NextParticipant {
+  eq: number;
+  href: string;
+}
+
 interface AnswerSheetScoringViewProps {
   rallyId: string;
   sheetId: string;
@@ -53,6 +61,8 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
+  // undefined while it is not known, null on the last crew of the entry list.
+  const [next, setNext] = useState<NextParticipant | null | undefined>(undefined);
 
   useEffect(() => {
     if (!sheetId) return;
@@ -76,6 +86,33 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
           `/api/rallies/${sheetData.rallyId}/participants/${sheetData.eq}`
         );
         setDetails(detailsRes.ok ? await detailsRes.json() : null);
+
+        // Officials type a stage's cards one crew after another, so the next
+        // card is offered from here. Only a convenience: if it cannot be
+        // worked out, the button is simply not shown.
+        const participantsRes = await fetch(`/api/rallies/${sheetData.rallyId}/participants`);
+        const participants: { eq: number }[] = participantsRes.ok ? await participantsRes.json() : [];
+        const nextEq = participants
+          .map((participant) => participant.eq)
+          .filter((eq) => eq > sheetData.eq)
+          .sort((a, b) => a - b)[0];
+
+        if (nextEq === undefined) {
+          if (participantsRes.ok) setNext(null);
+        } else {
+          const nextSheetRes = await fetch(
+            `/api/answersheets?stageId=${sheetData.stageId}&eq=${nextEq}`
+          );
+          if (nextSheetRes.ok) {
+            const [nextSheet]: { _id: string }[] = await nextSheetRes.json();
+            setNext({
+              eq: nextEq,
+              href: nextSheet
+                ? `/rallies/${rallyId}/answer-sheets/${nextSheet._id}/edit`
+                : `/rallies/${rallyId}/answer-sheets?stageId=${sheetData.stageId}&eq=${nextEq}`,
+            });
+          }
+        }
       } catch (err) {
         setError('Failed to load answer sheet scoring.');
         console.error(err);
@@ -85,7 +122,7 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
     };
 
     fetchData();
-  }, [sheetId]);
+  }, [sheetId, rallyId]);
 
   // Deleting this sheet re-scores the rest of the participant's rally, so the
   // list is where the corrected numbers show up.
@@ -184,6 +221,18 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
           <div className="px-6 py-3 border-b-2 border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
             <h2 className="text-lg font-bold text-gray-800">Answer Sheet Scoring</h2>
             <div className="flex flex-wrap items-center gap-4">
+              {next ? (
+                <Link
+                  href={next.href}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-base shadow-sm transition-colors"
+                >
+                  Next Participant (EQ {next.eq}) &rarr;
+                </Link>
+              ) : next === null ? (
+                <span className="text-sm font-medium text-gray-500">
+                  Last participant of the entry list
+                </span>
+              ) : null}
               <span className="text-lg font-bold text-red-600">
                 {totalPenalties} penalty points
                 <span className="ml-2 text-sm font-semibold text-gray-600">

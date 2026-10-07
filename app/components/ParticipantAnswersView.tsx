@@ -94,19 +94,24 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
   // The rally's legs. Empty on a rally with no routes, and then this page lists
   // the crew's stages the way it always did.
   const [routes, setRoutes] = useState<RallyRoute[]>([]);
+  // The EQ numbers of the entry list, to step to the previous and the next crew
+  // without going back to the rally.
+  const [entryEqs, setEntryEqs] = useState<number[]>([]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const [rallyRes, stagesRes, sheetsRes, detailsRes, routesRes] = await Promise.all([
-        fetch(`/api/rallies/${rallyId}`),
-        fetch(`/api/stages?rallyId=${rallyId}`),
-        fetch(`/api/answersheets?rallyId=${rallyId}&eq=${eq}`),
-        fetch(`/api/rallies/${rallyId}/participants/${eq}`),
-        fetch(`/api/rallies/${rallyId}/routes`),
-      ]);
+      const [rallyRes, stagesRes, sheetsRes, detailsRes, routesRes, participantsRes] =
+        await Promise.all([
+          fetch(`/api/rallies/${rallyId}`),
+          fetch(`/api/stages?rallyId=${rallyId}`),
+          fetch(`/api/answersheets?rallyId=${rallyId}&eq=${eq}`),
+          fetch(`/api/rallies/${rallyId}/participants/${eq}`),
+          fetch(`/api/rallies/${rallyId}/routes`),
+          fetch(`/api/rallies/${rallyId}/participants`),
+        ]);
 
       if (!rallyRes.ok) throw new Error('Failed to fetch rally');
       setRally(await rallyRes.json());
@@ -117,6 +122,12 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
       if (routesRes.ok) {
         const data = await routesRes.json();
         setRoutes(data.routes || []);
+      }
+
+      // Only the previous/next buttons read it: without it they are not shown.
+      if (participantsRes.ok) {
+        const participants: { eq: number }[] = await participantsRes.json();
+        setEntryEqs(participants.map((participant) => participant.eq).sort((a, b) => a - b));
       }
 
       if (!sheetsRes.ok) throw new Error('Failed to fetch answer sheets');
@@ -288,9 +299,35 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
         });
   const crew = crewLabel(details);
 
+  // The neighbours on the entry list. Worked out from the list rather than from
+  // this EQ's place in it, so an EQ with sheets but no entry still has both.
+  const previousEq = entryEqs.filter((candidate) => candidate < eq).at(-1);
+  const nextEq = entryEqs.find((candidate) => candidate > eq);
+  const navButtonClass =
+    'inline-flex items-center px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-base shadow-sm transition-colors';
+  const participantNav =
+    previousEq !== undefined || nextEq !== undefined ? (
+      <div className="flex flex-wrap justify-between gap-3">
+        {previousEq !== undefined ? (
+          <Link href={`/rallies/${rallyId}/participants/${previousEq}`} className={navButtonClass}>
+            &larr; Previous Participant (EQ {previousEq})
+          </Link>
+        ) : (
+          <span />
+        )}
+        {nextEq !== undefined && (
+          <Link href={`/rallies/${rallyId}/participants/${nextEq}`} className={navButtonClass}>
+            Next Participant (EQ {nextEq}) &rarr;
+          </Link>
+        )}
+      </div>
+    ) : null;
+
   return (
     <div className="min-h-screen bg-gray-100 py-4">
       <div className={`${PAGE_CONTAINER} py-4`}>
+        {participantNav && <div className="mb-4">{participantNav}</div>}
+
         <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 mb-1">
@@ -549,6 +586,8 @@ const ParticipantAnswersView: React.FC<ParticipantAnswersViewProps> = ({ rallyId
             );
           })
         )}
+
+        {participantNav && <div className="mt-8">{participantNav}</div>}
 
         <div className="mt-8 flex flex-wrap gap-6">
           <Link

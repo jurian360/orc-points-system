@@ -67,6 +67,18 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
   const [eq, setEq] = useState<number | null>(null);
   const [eqSearch, setEqSearch] = useState('');
 
+  // `?stageId=…&eq=…` opens the wizard on that card — the "Next Participant"
+  // button of a saved sheet links here for a crew who has no sheet yet. Read
+  // once, applied when the rally has loaded.
+  const [preselect, setPreselect] = useState<{ stageId: string; eq: number } | null>(null);
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const queryStage = query.get('stageId');
+    const queryEq = Number(query.get('eq'));
+    if (queryStage) setPreselect({ stageId: queryStage, eq: queryEq });
+  }, []);
+
   useEffect(() => {
     const getParams = async () => {
       const resolved = await params;
@@ -112,6 +124,25 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
   useEffect(() => {
     if (!stageId && stages.length === 1) setStageId(stages[0]._id);
   }, [stages, stageId]);
+
+  useEffect(() => {
+    if (!preselect || loading) return;
+    setPreselect(null);
+    if (!stages.some((candidate) => candidate._id === preselect.stageId)) return;
+    setStageId(preselect.stageId);
+    if (!participants.some((participant) => participant.eq === preselect.eq)) return;
+
+    // A sheet typed or imported since the link was made is corrected, not
+    // entered a second time.
+    const existing = sheets.find(
+      (sheet) => sheet.stageId === preselect.stageId && sheet.eq === preselect.eq
+    );
+    if (existing) {
+      router.replace(`/rallies/${rallyId}/answer-sheets/${existing._id}/edit`);
+    } else {
+      setEq(preselect.eq);
+    }
+  }, [preselect, loading, stages, participants, sheets, rallyId, router]);
 
   const stage = useMemo(() => stages.find((candidate) => candidate._id === stageId) || null, [
     stages,
@@ -172,9 +203,16 @@ export default function AnswerSheetsPage({ params }: { params: Promise<{ id: str
         throw new Error(errorData.error || 'Failed to submit answer sheet');
       }
 
+      // On to the scored card, the same page a corrected sheet lands on: it
+      // shows what this card cost and offers the next crew's card, because a
+      // stage's cards are typed one after another.
+      const saved = await response.json().catch(() => null);
+      if (saved?._id) {
+        router.push(`/rallies/${rallyId}/answer-sheets/${saved._id}`);
+        return;
+      }
+
       setSuccess(`Answer sheet for EQ ${answerSheet.eq} submitted successfully!`);
-      // Back to the participant step — a stage's cards are usually typed one
-      // after another, so the next crew should be one click away.
       setEq(null);
       setEqSearch('');
       await loadData();
