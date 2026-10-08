@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../components/AuthContext';
 import { copyRallyName } from '../lib/rallyCodes';
 import { PAGE_CONTAINER } from '../lib/pageContainer';
@@ -23,6 +24,9 @@ export default function RalliesPage() {
   // The rally a duplicate is being made of, and what the last one reported.
   const [duplicating, setDuplicating] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const router = useRouter();
+  const importInput = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     const fetchRallies = async () => {
@@ -103,6 +107,54 @@ export default function RalliesPage() {
     }
   };
 
+  // A rally export file from another installation of this app — the laptop
+  // used offline, or the server (see "Offline use" in CLAUDE.md). The rally
+  // with the file's code is updated, or created when there is none here.
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    let data: any;
+    try {
+      data = JSON.parse(await file.text());
+    } catch {
+      alert('This file is not a rally export.');
+      return;
+    }
+
+    const rally = data?.rally ?? {};
+    const count = (value: unknown) => (Array.isArray(value) ? value.length : 0);
+    if (
+      !window.confirm(
+        `Import "${rally.name}" (${rally.code})? ` +
+          `${count(data?.stages)} stages, ${count(data?.participants)} participants, ` +
+          `${count(data?.answerSheets)} answer sheets.\n\n` +
+          `A rally with the code ${rally.code} on this server is overwritten with what the ` +
+          'file holds: its stage keys, its entry list and the cards in the file. ' +
+          'Nothing is deleted, and the rally is re-scored.'
+      )
+    ) {
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const response = await fetch('/api/rallies/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || 'Failed to import rally');
+      router.push(`/rallies/${result.rallyId}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to import rally. Please try again.');
+      console.error(err);
+      setImporting(false);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -119,12 +171,29 @@ export default function RalliesPage() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800">Rally Management</h1>
           {isAdmin && (
-            <Link
-              href="/rallies/new"
-              className="px-5 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-lg font-medium shadow-md transition duration-150"
-            >
-              Create New Rally
-            </Link>
+            <div className="flex items-center gap-3">
+              <input
+                ref={importInput}
+                type="file"
+                accept=".json,application/json"
+                onChange={handleImportFile}
+                className="hidden"
+              />
+              <button
+                onClick={() => importInput.current?.click()}
+                disabled={importing}
+                title="Import a rally from an export file of another installation (offline laptop or server)"
+                className="px-5 py-3 bg-gray-100 text-gray-800 border border-gray-300 rounded-md hover:bg-gray-200 text-lg font-medium disabled:opacity-60"
+              >
+                {importing ? 'Importing…' : 'Import Rally'}
+              </button>
+              <Link
+                href="/rallies/new"
+                className="px-5 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-lg font-medium shadow-md transition duration-150"
+              >
+                Create New Rally
+              </Link>
+            </div>
           )}
         </div>
 

@@ -481,6 +481,14 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   >
                     {duplicating ? 'Duplicating…' : 'Duplicate'}
                   </button>
+                  {/* A plain download: the route answers with the file. */}
+                  <a
+                    href={`/api/rallies/${rally._id}/export`}
+                    title="Download this rally (stages, keys, entry list and cards) to import on another installation"
+                    className="px-4 py-2 bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200 font-medium border border-gray-300"
+                  >
+                    Export
+                  </a>
                   <button
                     onClick={handleRecalculate}
                     disabled={rescoring}

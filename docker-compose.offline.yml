@@ -1,0 +1,32 @@
+# The app on a laptop with no internet, in Docker Desktop: the app and its own
+# MongoDB. Rallies move between this and the server as export files (Export on
+# the rally dashboard, Import Rally on the rally list) — see "Offline use" in
+# README.md. The two databases never connect to each other.
+#
+#   cp .env.offline.example .env.offline   # then fill in the two secrets
+#   docker compose -f docker-compose.offline.yml up -d --build
+#   open http://localhost:3000
+#
+# Browse via localhost on this laptop: the session cookie is always Secure,
+# and browsers only accept that over plain http on localhost.
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    env_file: .env.offline
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/orc-points-system
+    ports:
+      # Only this laptop can reach it.
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  mongo-data:

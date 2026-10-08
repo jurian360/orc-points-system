@@ -9,6 +9,11 @@ import 'server-only';
 
 const MAX_BODY_BYTES = 256 * 1024; // 256 KB — generous for these payloads.
 
+// The one route allowed more: a whole rally imported from an export file
+// (POST /api/rallies/import) carries every stage key and every answer sheet,
+// which is several hundred KB on a real rally. Admin-only, like the route.
+export const RALLY_IMPORT_MAX_BODY_BYTES = 5 * 1024 * 1024;
+
 export class BodyTooLargeError extends Error {}
 export class InvalidJsonError extends Error {}
 
@@ -20,7 +25,7 @@ export class InvalidJsonError extends Error {}
 // size check ran, on the public app endpoints as much as anywhere. Reading the
 // stream chunk by chunk and cancelling it the moment the cap is passed is what
 // bounds the memory a request can take.
-async function readBoundedText(request: Request): Promise<string> {
+async function readBoundedText(request: Request, maxBytes: number): Promise<string> {
   if (!request.body) return '';
 
   const reader = request.body.getReader();
@@ -32,7 +37,7 @@ async function readBoundedText(request: Request): Promise<string> {
     if (done) break;
 
     total += value.byteLength;
-    if (total > MAX_BODY_BYTES) {
+    if (total > maxBytes) {
       // Stop the upload rather than draining it; a failed cancel changes nothing.
       await reader.cancel().catch(() => {});
       throw new BodyTooLargeError();
@@ -49,7 +54,10 @@ async function readBoundedText(request: Request): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-export async function readJsonBody(request: Request): Promise<unknown> {
+export async function readJsonBody(
+  request: Request,
+  maxBytes: number = MAX_BODY_BYTES
+): Promise<unknown> {
   // A declared length over the cap is refused before anything is read. A
   // declared length that is not a plain byte count is refused too — it is not
   // something a real client sends. An absent one is fine: the stream is
@@ -57,10 +65,10 @@ export async function readJsonBody(request: Request): Promise<unknown> {
   const declared = request.headers.get('content-length');
   if (declared !== null) {
     if (!/^\d{1,15}$/.test(declared.trim())) throw new InvalidJsonError();
-    if (Number(declared) > MAX_BODY_BYTES) throw new BodyTooLargeError();
+    if (Number(declared) > maxBytes) throw new BodyTooLargeError();
   }
 
-  const text = await readBoundedText(request);
+  const text = await readBoundedText(request, maxBytes);
 
   let parsed: unknown;
   try {

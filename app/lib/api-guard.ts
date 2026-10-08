@@ -91,9 +91,11 @@ type BodyResult =
   | { ok: true; body: Record<string, unknown> }
   | { ok: false; response: NextResponse };
 
-export async function readBody(request: Request): Promise<BodyResult> {
+// `maxBytes` raises the 256 KB cap for the one route that needs it (see
+// RALLY_IMPORT_MAX_BODY_BYTES); every other route leaves it out.
+export async function readBody(request: Request, maxBytes?: number): Promise<BodyResult> {
   try {
-    const body = (await readJsonBody(request)) as Record<string, unknown>;
+    const body = (await readJsonBody(request, maxBytes)) as Record<string, unknown>;
     return { ok: true, body };
   } catch (error) {
     if (error instanceof BodyTooLargeError) {
