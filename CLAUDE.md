@@ -959,6 +959,40 @@ copies exactly that.
 - It takes no body — the rally in the path is the whole request — and its guard
   is `requireRallyAdmin()`, like everything else that changes a rally.
 
+## Offline use: rally export and import (`app/lib/rallyTransfer.ts`)
+
+At an event without internet the app runs on a laptop in Docker Desktop
+(`docker-compose.offline.yml`: the app image plus its own `mongo`, bound to
+`127.0.0.1`). The server's MongoDB stays closed to the outside, so the two never
+talk: a rally moves as a **file**, by hand, through the app's own routes.
+
+- **`GET /api/rallies/[id]/export`** (*Export* on the dashboard) downloads the
+  rally, its routes, its stages (keys, `timeConfig`, `usesSecondCard`,
+  `createdAt` for the order inside a route), the entry list, and per sheet only
+  what was typed: letters, WPT's, merk letters, `diversenCount`. No points, no
+  accounts, no `CardAccess`, no public-results switch. It assigns a missing
+  rally code or `cardId` first, the way the QR page does, because the other side
+  matches on them.
+- **`POST /api/rallies/import`** (*Import Rally* on the rally list; the file is
+  read in the browser and posted as JSON) matches the rally by **code**, a route
+  by **name**, a stage by **`cardId`**, a crew by **EQ**, and a sheet by
+  `{stage, eq}`, then calls `rescoreRally` — penalties are never taken from the
+  file. All of it is validated with the routes' own parsers before the first
+  write (`parseRallyImport`); the writes are upserts, so a failed import is
+  finished by importing the same file again (no transactions on a standalone
+  mongod). **It never deletes** a stage, a crew or a sheet; a route the file
+  lacks is dropped only once it is empty. `cardIdSeq` is raised to the highest
+  imported `cardId` so the next stage created does not reuse one.
+- **The one route with a body cap above 256 KB**: `readBody(request,
+  RALLY_IMPORT_MAX_BODY_BYTES)` (5 MB), admin-only. `next.config.ts`'s
+  `middlewareClientMaxBodySize` is `6mb` to let it through whole — it buffers
+  every request up to that size, so keep the two in step and do not raise
+  either for anything else.
+- **One side owns a rally at a time.** A sheet typed on both sides for the same
+  `{stage, eq}` is not merged: the imported one wins. Stages created on both
+  sides independently get colliding `cardId`s — set the rally up on one side and
+  carry it over.
+
 ## The participants' Android app
 
 The crews type their own cards on their phones. The app
@@ -1178,6 +1212,8 @@ app/
                   rallies/[id]/rescore to re-score a whole rally on demand,
                   rallies/[id]/times for the WPT overview of a whole rally,
                   rallies/[id]/duplicate to copy a rally's stages and keys,
+                  rallies/[id]/export + rallies/import to move a rally between
+                  the server and an offline laptop as a file,
                   rallies/[id]/public-results to turn a rally's public results
                   page on or off,
                   stages/[id]/times/import for the times of one control,
@@ -1206,6 +1242,7 @@ app/
                   results group A and H into, shared client + server),
                   spreadsheet + columnMapping + participantImport + timeImport
                   (entry-list and time imports, browser side),
+                  rallyTransfer (a rally as an export file, and importing one),
                   rallyCodes (a rally's public code and the name and code a
                   duplicate gets, shared client + server),
                   appCards (codes and identifiers of the Android app) + qrcode

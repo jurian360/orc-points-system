@@ -163,6 +163,31 @@ navigation bar; everyone can change their own password under their name.
 > cookie over HTTPS or from localhost — over `http://192.168.x.x` the login
 > will appear to succeed but no session will be stored.
 
+## Offline use (Docker Desktop)
+
+At an event without internet the app runs on a laptop, with its own MongoDB, in
+Docker Desktop. The laptop and the server never connect to each other: a rally
+moves between them as a file, and an admin does the moving by hand.
+
+1. **Once, on the laptop:** `cp .env.offline.example .env.offline`, fill in
+   `SESSION_SECRET` and `ADMIN_PASSWORD_HASH` (see step 3 above), then
+   `docker compose -f docker-compose.offline.yml up -d --build`. Open
+   <http://localhost:3000> on the laptop itself — the session cookie is
+   `Secure`, which a browser accepts over plain http on `localhost` only.
+2. **Before the event, online:** set the rally up on the server (stages, keys,
+   entry list), click **Export** on its dashboard and on the laptop click
+   **Import Rally** on the rally list with that file.
+3. **At the event:** type the cards on the laptop.
+4. **Afterwards, online:** **Export** on the laptop, **Import Rally** on the
+   server. The server's rally is updated and re-scored.
+
+The file holds the rally, its routes, its stages with their answer keys, the
+entry list and what was typed on every card — no points (they are scored again
+on import), no accounts, no QR codes. An import matches the rally by its code
+and adds or updates; it **never deletes** a stage, a crew or a card. Let one
+side own a rally at a time: cards typed for the same stage and EQ on both sides
+are not merged, the imported one wins.
+
 ## Available scripts
 
 | Command         | What it does                                             |
