@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ClassificationBadge from './ClassificationBadge';
+import { isMerkErrorRow, MerkRowNote, MerkSummary } from './MerkRowNote';
 import { crewLabel, type ClassificationValue } from '../lib/participants';
 import {
   answerVariants,
@@ -145,7 +146,7 @@ interface AnswerSheetFormProps {
 const ANSWER_ROWS = 30; // ORC's letters (was 40)
 const LETTER_COLUMNS = 4;
 const TIME_ROWS = 10; // IPT / WPT / +/- / strafp
-const MERK_ROWS = 6; // Merk letters, scored vertically against the stage key
+const MERK_ROWS = 6; // Merk letters, each scored against its own row of the stage key
 
 // Grid identifiers used for keyboard navigation between cells. Each visible
 // table is its own grid so arrow keys stay within the column the user is
@@ -1122,9 +1123,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
                     <tr
                       key={row.rowNumber}
                       className={
-                        scored?.status === 'double' ||
-                        scored?.status === 'false' ||
-                        scored?.status === 'missing'
+                        isMerkErrorRow(scored)
                           ? 'bg-red-50'
                           : rowIndex % 2 === 0
                             ? 'bg-white'
@@ -1147,30 +1146,7 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
                           onChange={(e) => handleMerkChange(rowIndex, e.target.value)}
                           aria-label={`Merk letter for row ${row.rowNumber}`}
                         />
-                        {scored?.status === 'false' && (
-                          <span
-                            className="ml-1 text-[10px] font-semibold text-red-700"
-                            title="A letter this stage's merk key rules out"
-                          >
-                            fout
-                          </span>
-                        )}
-                        {scored?.status === 'missing' && (
-                          <span
-                            className="ml-1 text-[10px] font-semibold text-red-700"
-                            title="A letter of this stage's merk key the column never got"
-                          >
-                            {scored.missingMerk} ontbreekt
-                          </span>
-                        )}
-                        {scored?.status === 'ignored' && (
-                          <span
-                            className="ml-1 text-[10px] text-gray-500"
-                            title="In neither list of this stage's merk key — it never costs points"
-                          >
-                            not in key
-                          </span>
-                        )}
+                        <MerkRowNote row={scored} className="ml-1 text-[10px]" />
                       </td>
                       <td
                         className={`py-0.5 px-0.5 border-b border-gray-300 text-center text-sm font-bold ${
@@ -1186,63 +1162,8 @@ const AnswerSheetForm: React.FC<AnswerSheetFormProps> = ({
             </table>
           </div>
 
-          {/* The merk check is vertical: the column as a whole is compared with
-              the key. A missing letter belongs to no row of its own, so it is
-              charged to an empty one — the key row asking for it when it is
-              free — and the column adds up to what it costs. */}
           <div className="mt-1 text-[11px] leading-tight text-gray-700 space-y-0.5">
-            <p>
-              <span className="font-semibold">Key:</span>{' '}
-              {merkResult.keyLetters.length > 0 ? merkResult.keyLetters.join(' ') : '—'}
-              {merkResult.keyLetters.length > 0 && (
-                <span className="text-gray-500"> · any row, any order</span>
-              )}
-            </p>
-            {merkResult.falseLetters.length > 0 && (
-              <p>
-                <span className="font-semibold">Fout:</span>{' '}
-                <span className="text-red-700 font-bold">
-                  {merkResult.falseLetters.join(' ')}
-                </span>
-                <span className="text-gray-500"> · {PENALTY_PER_ERROR} each, any row</span>
-              </p>
-            )}
-            {merkResult.missing.length > 0 && (
-              <p className="text-red-700 font-semibold">
-                Missing: {merkResult.missing.join(' ')} —{' '}
-                {merkResult.missing.length * PENALTY_PER_ERROR}
-              </p>
-            )}
-            {merkResult.doubled.length > 0 && (
-              <p className="text-red-700 font-semibold">
-                Doubled: {merkResult.doubled.join(' ')} —{' '}
-                {merkResult.doubled.length * PENALTY_PER_ERROR}
-              </p>
-            )}
-            {merkResult.falseGiven.length > 0 && (
-              <p className="text-red-700 font-semibold">
-                False: {merkResult.falseGiven.join(' ')} —{' '}
-                {merkResult.falseGiven.length * PENALTY_PER_ERROR}
-              </p>
-            )}
-            {(merkResult.keyLetters.length > 0 || merkResult.falseLetters.length > 0) &&
-              merkResult.missing.length === 0 &&
-              merkResult.doubled.length === 0 &&
-              merkResult.falseGiven.length === 0 && (
-                <p className="text-green-700 font-semibold">Column complete — no merk penalty.</p>
-              )}
-            {merkResult.capped && (
-              <p className="text-gray-600">Capped at the stage maximum of {merkResult.maxPenalty}.</p>
-            )}
-            {merkResult.diversenCount > 0 && (
-              <p className="text-red-700 font-semibold">
-                Diversen: {merkResult.diversenCount} × {PENALTY_PER_ERROR} ={' '}
-                {merkResult.diversenPenalty}
-                {merkResult.maxPenalty > 0 && (
-                  <span className="text-gray-500 font-normal"> · not capped</span>
-                )}
-              </p>
-            )}
+            <MerkSummary result={merkResult} />
           </div>
 
           {/* Totaal Strafpunten overview */}

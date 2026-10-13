@@ -44,7 +44,7 @@ in code and UI — do not "translate" them:
 | **IPT 0** | The stage timetable as written for participant 0. Participant `eq` passes `eq` minutes later. |
 | **GTC** | "Geheime Tijds Controle" — a secret time control, rows 2-9 of the time column. Participants do not know its ideal time beforehand. A stage uses as many as it needs (2, 4, ...); a row without an IPT 0 is not a checkpoint. |
 | **Delta** | How many minutes a participant is off their own schedule. It runs from the start of the rally to the last stage. |
-| **Merk** | Marker/sign rows, 6 rows, one letter each. Scored *vertically* against the stage's merk key, which holds the correct letters and the letters it rules out. |
+| **Merk** | Marker/sign rows, 6 rows, one letter each. Every row is scored on its own against the same row of the stage's merk key, which holds the correct letter and the letter it rules out. |
 | **Diversen** | The merk part of a sheet's penalty, the third line of TOTAAL STRAFPUNTEN next to ORC's and Tijd. Also the name of merk row 6, where an official writes a count of 30-point fines (see *Merk scoring rules*). |
 | **Admin** | An official who runs the rally: stages, answer keys, entry list, imports, QR codes and the accounts. |
 | **Data entry** | An official who types control cards (ORC's, tijd, merk) and reads the standings — nothing else. |
@@ -77,10 +77,9 @@ Rally ──< Stage ──< AnswerSheet
   `timeScoreKey` (10 rows) holds the stage timetable — `ipt` is the ideal
   passage time of participant 0 — and `timeConfig` its time-penalty settings
   (windows, maximum, break after the stage). `merkScoreKey` (6 rows) holds one
-  correct letter (`merk`) and one letter the key rules out (`falseMerk`) per row;
-  because the merk check is vertical, both are read as sets over the whole column
-  and its `maxPenalty` fields are not row caps — they are summed into one cap on
-  the whole column.
+  correct letter (`merk`) and one letter the key rules out (`falseMerk`) per row,
+  and its `maxPenalty` caps that row — each merk row is scored on its own, like a
+  one-letter ORC row.
   **`usesSecondCard`** doubles `scoreKey` to 60 rows and `merkScoreKey` to 12 —
   see *Second answer card* below — while `timeScoreKey` stays 10 either way.
 - `AnswerSheet` — `{ eq, rallyId, stageId, answers[], timePenalties[], merkScores[],
@@ -242,13 +241,12 @@ uses: `routes.length === 0` means "render exactly what you rendered before", not
    that only as often as the key lists it: a key that rules out `D` charges 30
    whether the participant wrote one `D` or four, and a key that rules `D` out
    in two columns can charge 60. Writing the same wrong letter again is the
-   same mistake, exactly as in the merk column.
+   same mistake.
 2. Each correct letter given **more often than the key asks for** → **+30**,
    once per letter: `R D R D` on the key `R D` costs 60 — one error for the
    extra `R` and one for the extra `D` — while `R R R` on that key costs 30
    for the doubled `R` (plus 30 for the missing `D`), because writing the
-   same surplus letter again is the same mistake, exactly as in the merk
-   column.
+   same surplus letter again is the same mistake.
 3. Each required correct letter **missing** → **+30**.
 4. On a row with `orderMatters`, the correct letters given **out of the key's
    order** → **+30**, once, on top of what the letters themselves cost.
@@ -333,7 +331,7 @@ calls the three functions a real sheet is scored by, with nothing to score.
   around it. Neither the crew's EQ nor the delta they carry in changes any of
   this, so a stage's blank card is scored once and costs every crew the same.
 - **The merk column**: `calculateMerkPenalty(merkScoreKey, [])`, an untyped
-  column — every letter of the key missing.
+  column — every key row missing its letter.
 - So it is exactly the total a stage's sheet would hold if an official opened it
   in the form and saved it untouched, and exactly what the empty sheet a time
   import creates already scores. The letters the key *rules out* are not
@@ -472,45 +470,45 @@ they cannot read the flat flag differently.
 ## Merk scoring rules (`app/lib/scoring.ts`)
 
 The merk column is the second lettered check of a stage: 6 rows, **one letter per
-row**, and it is scored **vertically** — the column as a whole is compared with
-the stage's `merkScoreKey`, so which row a letter was written on and in what
-order do not matter. A key row holds the correct letter *and* a letter the key
-rules out (`falseMerk`, the merk counterpart of an ORC row's `falseAnswers`);
-because the check is vertical, both lists count for the whole column, not for the
-row they were typed on. Three things cost 30 points, and no letter can cost them
-more than once:
+row**, and **every row is scored on its own** against the row of the stage's
+`merkScoreKey` with the same number. A key row holds the correct letter (`merk`),
+a letter it rules out (`falseMerk`, the merk counterpart of an ORC row's
+`falseAnswers`) and a cap (`maxPenalty`). `calculateMerkPenalty` hands each row
+to `calculateRowPenalty` as a one-letter ORC row (`scoreMerkRow`), so the merk
+column and the ORC's cannot read the same mistake differently:
 
-1. a key letter given **fewer** times than the key asks for (a missing letter);
-2. a key letter given **more** times than the key asks for (a double);
-3. a letter the key **rules out**, however often it is written.
+1. the row's key letter **missing** — left empty, or another letter written
+   instead → **+30**;
+2. the letter the row **rules out** written → **+30** (so the ruled-out letter
+   *instead of* the key's costs 60);
+3. the row's total capped at its `maxPenalty` when that is > 0.
 
-A letter in **neither list** is ignored, however often it is written — the key
-decides what is scored here, exactly as it does for the ORC rows. A letter in
-*both* lists is a key that contradicts itself: the correct list wins, so a
-participant is never charged for writing what the key asked for. Against the key
-`A A C` with `B` ruled out:
+A key row with no letters costs nothing, whatever is written on it. A letter in
+*both* lists of one row is a key that contradicts itself: the correct letter
+wins. Against the key `G`, `-`, `G` on rows 1-3:
 
 | Given | Costs | Why |
 | --- | --- | --- |
-| `A C` | 30 | one `A` missing |
-| `A A C C` | 30 | `C` doubled |
-| `B A A C` | 30 | `B` is ruled out by the key |
-| `B B A A C` | 30 | still one `B` — never twice for the same letter |
-| `D A A C` | 0 | `D` is in neither list |
-| `A A A C` | 30 | `A` doubled |
-| `A A A C A` | 30 | still one double of `A` — never twice for the same letter |
+| `- G -` | 60 | rows 1 and 3 each miss their `G` |
+| `G - G` | 0 | |
+| `H - G` | 30 | row 1 misses its `G` |
+| `G G G` | 0 | row 2 asks for nothing |
 
-The column total is capped at the sum of the key rows' `maxPenalty` when that sum
-is > 0 (the merk check has no rows of its own to cap). A sheet with no merk rows
-is an untyped column, not an unscored one: every letter of the key counts as
-missing, the same as the blank card it stands for.
+This used to be a **vertical** check — the column compared with the key as a set
+of letters, in any row and any order, a missing letter charged once however many
+rows asked for it — and was changed to row by row. Sheets stored before the
+change keep their old `merkPenalty` until their rally is re-scored
+(*Recalculate Scores*). A sheet with no merk rows is an untyped column, not an
+unscored one: every key row costs its missing letter, the same as the blank card
+it stands for.
 
 **Row 6 is the Diversen row, not a letter row.** An official writes a number
 there: how many 30-point fines the crew got for something the letters do not
 cover, so 1 costs 30, 2 costs 60, 4 costs 120. The count is stored on the sheet
 as `diversenCount` (whole number 0-99, `parseDiversenCount`), not in a merk
-row, and `calculateMerkPenalty` adds `count × 30` to the merk penalty **after**
-the cap: the cap is on the letters, and a fine is always charged in full.
+row, and `calculateMerkPenalty` adds `count × 30` to the merk penalty on top of
+the letter rows: a row's cap is on its letter, and a fine is always charged in
+full.
 `DIVERSEN_ROW` / `isMerkLetterRow` in `app/lib/scoring.ts` are the rule; every
 merk function drops row 6 from the key and from the sheet before reading them,
 so a letter an older key or card still holds there is never scored, and a
@@ -525,16 +523,12 @@ already wrote on the sheet. Views render row 6 from `diversenCount`
 
 The merk penalty is the **Diversen** line of TOTAAL STRAFPUNTEN and **is** part
 of `totalPenalty` and of the standings. It is stored on the sheet as
-`merkPenalty`. A row's `strafp` carries the 30 points that row's letter cost as a
-double or as a ruled-out letter; a *missing* letter belongs to no row, so it is
-charged to an **empty** row — the key row that asks for it when that row is still
-empty, otherwise the first empty row of the column — and shown there (`status:
-'missing'`, with the letter in `missingMerk`) so the column adds up to what it
-costs instead of reading 0 on every row. A column with no empty row left keeps
-those points in `merkPenalty` only, as does the cap: the cap is on the column,
-the rows are not capped. `calculateMerkPenalty` therefore returns a row per row
-of the sheet **and** per row of the key, so a key row a sheet never got is still
-a row of the column.
+`merkPenalty`. A row's `strafp` is what that row cost against its own key row
+(`status` says why: `missing`, `wrong`, `false`, with the key's letter in
+`expectedMerk`), and the rows add up to the letter part of `merkPenalty`.
+`calculateMerkPenalty` returns a row per row of the sheet **and** per row of the
+key, so a key row a sheet never got is still a row of the column.
+`MerkRowNote.tsx` is the one place the entry form and the card describe a row.
 
 Because the delta chains, **a sheet cannot be scored on its own**: writing a
 sheet re-scores that participant's whole rally (`rescoreParticipants`), and

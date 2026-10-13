@@ -72,10 +72,8 @@ export interface TimeScoreKeyRow {
 }
 
 // Merk key row of a stage: one correct letter and one letter the key rules out.
-// The merk column is scored vertically — the column as a whole is compared with
-// the key — so both letters are read as part of a column-wide set and
-// `maxPenalty` is not a row cap; the row maximums are summed into one cap on the
-// column.
+// Every merk row is scored on its own against this row of the key, and
+// `maxPenalty` caps the row (see app/lib/scoring.ts).
 export interface MerkScoreKeyRow {
   rowNumber: number;
   merk: string;
@@ -148,8 +146,9 @@ export interface TimePenaltyRow {
 
 // Merk row of a sheet. Officials type the letter the participant wrote; the
 // `strafp` is computed from the stage's merk key (see app/lib/scoring.ts) and is
-// the 30 points that letter cost as a double or as a false merk — a *missing*
-// letter belongs to no row and is only in the sheet's `merkPenalty`.
+// what the row cost against its own key row: its key letter missing (empty or
+// another letter) and the letter it rules out written, 30 each, capped by the
+// row's maximum.
 export interface MerkScoreRow {
   rowNumber: number;
   merk: string;

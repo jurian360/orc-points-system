@@ -8,6 +8,7 @@ import {
 import type { AnswerRow, MerkKeyRow, ScoreKeyRow } from '../lib/scoring';
 import { timeRowLabel } from '../lib/timeScoring';
 import OrcAnswerGrid from './OrcAnswerGrid';
+import { isMerkErrorRow, MerkRowNote, MerkSummary } from './MerkRowNote';
 
 export interface TimePenaltyRow {
   rowNumber: number;
@@ -199,9 +200,7 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                   <tr
                     key={row.rowNumber}
                     className={
-                      row.status === 'double' ||
-                      row.status === 'false' ||
-                      row.status === 'missing'
+                      isMerkErrorRow(row)
                         ? 'bg-red-50'
                         : index % 2 === 0
                           ? 'bg-white'
@@ -213,33 +212,7 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
                     </td>
                     <td className="py-1.5 px-2 border-b border-r border-gray-300 text-base text-gray-800">
                       <span className="font-bold">{row.merk || '-'}</span>
-                      {row.status === 'double' && (
-                        <span className="ml-2 text-sm font-semibold text-red-700">double</span>
-                      )}
-                      {row.status === 'false' && (
-                        <span
-                          className="ml-2 text-sm font-semibold text-red-700"
-                          title="A letter this stage's merk key rules out"
-                        >
-                          fout
-                        </span>
-                      )}
-                      {row.status === 'missing' && (
-                        <span
-                          className="ml-2 text-sm font-semibold text-red-700"
-                          title="A letter of this stage's merk key the column never got"
-                        >
-                          {row.missingMerk} ontbreekt
-                        </span>
-                      )}
-                      {row.status === 'ignored' && (
-                        <span
-                          className="ml-2 text-sm text-gray-500"
-                          title="In neither list of this stage's merk key — it never costs points"
-                        >
-                          not in key
-                        </span>
-                      )}
+                      <MerkRowNote row={row} />
                     </td>
                     <td
                       className={`py-1.5 px-1 border-b border-gray-300 text-center text-base font-bold ${
@@ -256,56 +229,8 @@ const ControlekaartCard: React.FC<ControlekaartCardProps> = ({
           </div>
         )}
 
-        {/* The merk check is vertical, so the errors belong to the column, not
-            to a row. A missing letter is still shown on an empty row — the key
-            row that asks for it when it is free — so the column adds up. */}
         <div className="mt-2 text-sm text-gray-700 space-y-0.5">
-          <p>
-            <span className="font-semibold">Key:</span>{' '}
-            {merkResult.keyLetters.length > 0 ? merkResult.keyLetters.join(' ') : '—'}
-            {merkResult.keyLetters.length > 0 && (
-              <span className="text-gray-500"> (in any row, in any order)</span>
-            )}
-          </p>
-          {merkResult.falseLetters.length > 0 && (
-            <p>
-              <span className="font-semibold">Ruled out:</span>{' '}
-              <span className="text-red-700 font-bold">
-                {merkResult.falseLetters.join(' ')}
-              </span>
-              <span className="text-gray-500"> (30 points each, in any row)</span>
-            </p>
-          )}
-          {merkResult.missing.length > 0 && (
-            <p className="text-red-700 font-semibold">
-              Missing: {merkResult.missing.join(' ')} — {merkResult.missing.length * 30} points
-            </p>
-          )}
-          {merkResult.doubled.length > 0 && (
-            <p className="text-red-700 font-semibold">
-              Doubled: {merkResult.doubled.join(' ')} — {merkResult.doubled.length * 30} points
-            </p>
-          )}
-          {merkResult.falseGiven.length > 0 && (
-            <p className="text-red-700 font-semibold">
-              False: {merkResult.falseGiven.join(' ')} — {merkResult.falseGiven.length * 30} points
-            </p>
-          )}
-          {(merkResult.keyLetters.length > 0 || merkResult.falseLetters.length > 0) &&
-            merkResult.missing.length === 0 &&
-            merkResult.doubled.length === 0 &&
-            merkResult.falseGiven.length === 0 && (
-              <p className="text-green-700 font-semibold">Column complete — no merk penalty.</p>
-            )}
-          {merkResult.capped && (
-            <p className="text-gray-600">Capped at the stage maximum of {merkResult.maxPenalty}.</p>
-          )}
-          {merkResult.diversenCount > 0 && (
-            <p className="text-red-700 font-semibold">
-              Diversen: {merkResult.diversenCount} × {PENALTY_PER_ERROR} —{' '}
-              {merkResult.diversenPenalty} points
-            </p>
-          )}
+          <MerkSummary result={merkResult} />
         </div>
 
         {/* Totaal Strafpunten overview, like the paper card */}

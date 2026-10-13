@@ -2,8 +2,6 @@ import React from 'react';
 import {
   isMerkLetterRow,
   maxMerkPenalty,
-  merkColumnCap,
-  merkFalseLetters,
   PENALTY_PER_ERROR,
 } from '../lib/scoring';
 import {
@@ -31,8 +29,7 @@ export interface StageScoreKeyRow {
 export interface StageMerkKeyRow {
   rowNumber: number;
   merk?: string;
-  // A letter the key rules out; read as part of the column-wide false set, like
-  // `merk` is read as part of the correct one.
+  // The letter this row rules out. Like `merk`, it counts on its own row only.
   falseMerk?: string;
   maxPenalty?: number;
 }
@@ -83,20 +80,9 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
   // `endsRoute`. Being the rally's finish costs nothing extra — a
   // disqualification is not a penalty.
   const tijdTotal = maxStageTimePenalty(timeRows, config, endsRoute);
-  // The merk column is scored vertically, so its maximum is not the sum of the
-  // rows: it is one error per distinct letter of the key and one per letter it
-  // rules out, bounded by the cap the stage's row maximums add up to.
+  // Every merk row is scored on its own, so the column's maximum is the sum of
+  // each row's worst, each bounded by its own cap.
   const diversenTotal = maxMerkPenalty(merkRows);
-  // Row 6 is the Diversen row, scored from a count on the card, so a letter an
-  // older key still holds there is not part of the key.
-  const merkKeyLetters = merkRows
-    .filter((row) => isMerkLetterRow(row.rowNumber))
-    .map((row) => (row.merk || '').trim().toUpperCase())
-    .filter(Boolean);
-  // The false letters are a set over the whole column, so they are shown as one
-  // list rather than as something belonging to the row they were typed on.
-  const merkFalse = merkFalseLetters(merkRows);
-  const merkCap = merkColumnCap(merkRows);
 
   const columnRange = (rows: StageScoreKeyRow[]): string =>
     rows.length > 0 ? `${rows[0].rowNumber}–${rows[rows.length - 1].rowNumber}` : '';
@@ -419,13 +405,13 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
                   </th>
                   <th
                     className="py-2 px-1 border-b border-r border-gray-300 text-center font-bold text-sm text-gray-800"
-                    title="Writing this letter anywhere in the column costs one error"
+                    title="Writing this letter on this row costs one error"
                   >
                     Fout
                   </th>
                   <th
                     className="py-2 px-1 border-b border-gray-300 text-center font-bold text-sm text-gray-800"
-                    title="The merk column is capped at the sum of these, not row by row"
+                    title="The most this row can cost; 0 is no cap"
                   >
                     Max
                   </th>
@@ -513,25 +499,12 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
 
         <div className="text-sm text-gray-700 mt-2 space-y-0.5">
           <p>
-            The merk column is scored <span className="font-semibold">vertically</span>: the key
-            asks for{' '}
-            {merkKeyLetters.length > 0 ? (
-              <span className="font-bold">{merkKeyLetters.join(' ')}</span>
-            ) : (
-              'nothing'
-            )}{' '}
-            in any rows, in any order. Every key letter given too few or too many times costs{' '}
-            {PENALTY_PER_ERROR} points, once. The letters it rules out —{' '}
-            {merkFalse.length > 0 ? (
-              <span className="font-bold text-red-700">{merkFalse.join(' ')}</span>
-            ) : (
-              'none'
-            )}{' '}
-            — cost {PENALTY_PER_ERROR} points each wherever in the column they are written, however
-            often. A letter in neither list never costs anything.
-            {merkCap > 0 && ` The column is capped at ${merkCap}.`} Row 6 is Diversen: each
-            count written there costs {PENALTY_PER_ERROR} points on top, never capped, so it is not
-            part of the maximum.
+            Every merk row is scored on its own, against the key letters of that row: the
+            row&apos;s letter missing or another letter written instead costs{' '}
+            {PENALTY_PER_ERROR} points, and so does the letter the row rules out. A row with no
+            key letters never costs anything, and a row is capped at its Max when that is set.
+            Row 6 is Diversen: each count written there costs {PENALTY_PER_ERROR} points on top,
+            never capped, so it is not part of the maximum.
           </p>
           <p className="text-gray-600">
             The most a participant can lose on this stage. ORC&apos;s, Tijd and Diversen all count
