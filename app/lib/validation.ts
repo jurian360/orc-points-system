@@ -352,8 +352,8 @@ export function processScoreKey(
     return {
       rowNumber: num(r.rowNumber),
       merk: str(r.merk),
-      // The letter this row rules out; read as part of the column-wide false
-      // set, exactly like `merk` is read as part of the correct one.
+      // The letter this row rules out. Like `merk`, it counts on its own row
+      // only (app/lib/scoring.ts).
       falseMerk: str(r.falseMerk),
       maxPenalty: num(r.maxPenalty),
     };

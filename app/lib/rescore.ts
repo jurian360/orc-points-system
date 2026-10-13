@@ -85,7 +85,7 @@ export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {
 
       const orcPenalty = stage ? calculateTotalPenalty(stage.scoreKey, sheet.answers) : 0;
       const timePenalty = timeResult ? timeResult.totalPenalty : 0;
-      // The merk column is scored against the stage's merk key, vertically: an
+      // The merk column is scored against the stage's merk key, row by row: an
       // untyped column costs every letter of the key, exactly like a blank card.
       // The Diversen fine on row 6 is added on top of it.
       const merkResult = calculateMerkPenalty(
@@ -119,7 +119,7 @@ export async function rescoreRally(rallyId: unknown, options: RescoreOptions = {
                 : sheet.timePenalties,
               timePenalty,
               // The officials' letters are kept; only the derived penalty of a
-              // row — the 30 points it made a double — is (re)written. The rows
+              // row — what it cost against its own key row — is (re)written. The rows
               // are the letter rows only, so a letter left on the Diversen row
               // from before it was one is dropped here.
               merkScores: merkResult.rows.map((row) => ({

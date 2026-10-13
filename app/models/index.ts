@@ -209,14 +209,13 @@ const StageSchema = new mongoose.Schema({
     finishOutOfWindowFlat: { type: Boolean, default: false },
   },
   // Merk key of the stage, 6 rows: one correct letter and one explicitly false
-  // letter per row. The merk column is scored vertically — the column as a whole
-  // is compared with the key, not row by row (see app/lib/scoring.ts) — so both
-  // letter lists are read as sets over the whole column, and `maxPenalty` is not
-  // a row cap: the row maximums are summed into one cap on the whole column.
+  // letter per row. Every merk row is scored on its own against the key row
+  // with the same number (see app/lib/scoring.ts), and `maxPenalty` caps that
+  // row.
   merkScoreKey: [{
     rowNumber: Number,
     merk: String,
-    // A letter that costs 30 points wherever in the column it is written, the
+    // A letter that costs 30 points when it is written on this row, the
     // merk counterpart of an ORC row's falseAnswers.
     falseMerk: String,
     maxPenalty: {
@@ -351,11 +350,10 @@ const AnswerSheetSchema = new mongoose.Schema({
   // Merk rows, 6 of them (12 with a second card), of which row 6 is the
   // Diversen row and holds no letter — see `diversenCount`. Officials type only the `merk` letter the participant
   // wrote; `strafp` is computed server-side from the stage's merk key, like the
-  // time rows. The column is scored vertically, so a row's `strafp` is the 30
-  // points that row's letter cost as a double or as a false merk — or, on a row
-  // left empty, the 30 points of a key letter the column never got, charged
-  // there so the column adds up to `merkPenalty` on screen. `merkPenalty` stays
-  // the total: it is capped as a column and the rows are not.
+  // time rows. Every row is scored against its own key row, so a row's `strafp`
+  // is what that row cost — its key letter missing (empty or another letter) and
+  // the letter it rules out written, 30 each, capped by the row's maximum — and
+  // the rows add up to the letter part of `merkPenalty`.
   merkScores: [{
     rowNumber: Number,
     merk: String,

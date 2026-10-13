@@ -35,10 +35,8 @@ interface TimeScoreKeyRow {
 }
 
 // One row of the merk key: the correct letter and, next to it, a letter the key
-// rules out. The merk column is scored vertically — the column as a whole is
-// compared with the key, in any order — so both letters are read as part of a
-// column-wide set and `maxPenalty` is not a row cap: the row maximums are summed
-// into one cap on the whole column.
+// rules out. Every merk row is scored on its own against this row of the key,
+// like a one-letter ORC row, and `maxPenalty` caps the row.
 interface MerkScoreKeyRow {
   rowNumber: number;
   merk: string;
@@ -944,15 +942,12 @@ const StageForm: React.FC<StageFormProps> = ({
             Merk{usesSecondCard ? ` (1–${merkScoreKey.length})` : ''}
           </h2>
           <p className="text-sm text-gray-700 mb-2">
-            One correct letter (green) and, under it, one false letter (red) per row. The merk
-            column is scored <span className="font-semibold">vertically</span>: the
-            participant&apos;s letters are compared with the key as a column, so the rows they wrote
-            them on and the order do not matter — and so both lists count for the whole column, not
-            for the row they are typed on. Every key letter given too few or too many times costs{' '}
-            {PENALTY_PER_ERROR} points, once, and so does every false letter the participant wrote,
-            however often they wrote it. A letter in neither list never costs anything. Leave a
-            field blank to use fewer letters. Max Penalty caps the column as a whole (their sum);
-            0 is no cap. Row 6 is <span className="font-semibold">Diversen</span>: the official
+            One correct letter (green) and, under it, one false letter (red) per row. Every row
+            is scored <span className="font-semibold">on its own</span>, against the letters of
+            that row: the row&apos;s correct letter missing, or another letter written instead,
+            costs {PENALTY_PER_ERROR} points, and so does the row&apos;s false letter. A row with no
+            letters never costs anything. Leave a field blank to use fewer letters. Max Penalty
+            caps the row; 0 is no cap. Row 6 is <span className="font-semibold">Diversen</span>: the official
             writes a number on the card, and each one costs {PENALTY_PER_ERROR} points, never capped.
           </p>
           <div className="border border-gray-300 rounded-lg shadow-md overflow-x-auto">
