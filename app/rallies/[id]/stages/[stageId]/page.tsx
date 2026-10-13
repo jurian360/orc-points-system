@@ -204,6 +204,12 @@ export default function ViewStagePage({
           >
             Answer Sheets &rarr;
           </Link>
+          <Link
+            href={`/rallies/${rallyId}/report?stageId=${stage._id}&row=1`}
+            className="inline-flex items-center px-5 py-3 bg-gray-100 text-gray-800 hover:bg-gray-200 rounded-lg text-lg font-medium transition-colors"
+          >
+            Row Report &rarr;
+          </Link>
         </div>
       </div>
     </div>

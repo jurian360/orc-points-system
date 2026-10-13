@@ -364,6 +364,13 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   >
                     View
                   </Link>
+                  <Link
+                    href={`/rallies/${rally._id}/report?stageId=${stage._id}&row=1`}
+                    className="text-purple-700 hover:text-purple-900 font-medium text-base"
+                    title="How the crews answered one row of this stage"
+                  >
+                    Report
+                  </Link>
                   {isAdmin && (
                     <>
                       <Link
