@@ -338,3 +338,74 @@ export interface RallyTimes {
     navigatorName: string;
   }[];
 }
+
+// --- Row report -------------------------------------------------------------
+//
+// GET /api/stages/[id]/row-report?row=N: how the field answered one ORC row of
+// one stage — who was charged on it, which answers were given most and what
+// every crew wrote. Read by app/rallies/[id]/report/page.tsx.
+
+// Where a crew's answer on the row comes from:
+//   answered — a typed card with letters on this row;
+//   blank    — a typed card with this row left empty;
+//   untyped  — a sheet with no letters typed at all yet (the one a time import
+//              creates), scored as a blank card;
+//   noSheet  — no sheet for this stage, scored as a blank card by the standings.
+export type RowReportEntryStatus = 'answered' | 'blank' | 'untyped' | 'noSheet';
+
+export interface RowReportEntry {
+  eq: number;
+  classification: ClassificationValue;
+  driverName: string;
+  navigatorName: string;
+  status: RowReportEntryStatus;
+  sheetId: string | null;
+  // The letters as typed, column by column (empty columns kept, so the grid can
+  // show where on the card they were written).
+  selectedAnswers: string[];
+  // What this row costs the crew, from app/lib/scoring.ts — the same number the
+  // card and the standings carry.
+  penalty: number;
+  orderError: boolean;
+}
+
+// One distinct answer and how many typed cards gave it. The letters are the
+// non-empty ones in the order they were written: the penalty depends on
+// nothing else, so every crew in a group paid the same.
+export interface RowReportAnswerGroup {
+  letters: string[];
+  count: number;
+  penalty: number;
+  orderError: boolean;
+  eqs: number[];
+}
+
+export interface RowReport {
+  rally: { _id: string; name: string };
+  stage: { _id: string; name: string };
+  rowNumber: number;
+  // The rows this stage has: 30, or 60 on a stage with a second card.
+  rowCount: number;
+  key: {
+    answers: string[];
+    alternativeAnswers: string[][];
+    falseAnswers: string[];
+    maxPenalty: number;
+    orderMatters: boolean;
+  };
+  summary: {
+    // Crews whose card for this stage has been typed (answered + blank). The
+    // counts below are taken over these, so a card nobody has typed yet does
+    // not read as a crew who got the row wrong.
+    typedCards: number;
+    withPenalty: number;
+    withoutPenalty: number;
+    blank: number;
+    totalPenalty: number;
+    // Not part of the counts above, but charged by the standings all the same.
+    untyped: number;
+    noSheet: number;
+  };
+  answers: RowReportAnswerGroup[];
+  entries: RowReportEntry[];
+}

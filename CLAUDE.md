@@ -721,6 +721,28 @@ came in outside their window — instead of opening 56 cards.
   a data-entry official types the cards and checks the times of the control they
   are typing from.
 
+## The row report
+
+`/rallies/[id]/report?stageId=…&row=…` (*Report* in the dashboard's stage list,
+*Row Report* on the stage page) answers how the field did on **one ORC row of
+one stage**: how many crews were charged on it, which answers were given most,
+and what every crew wrote. It is what officials read when a row looks wrong — a
+key with a typo, or a question the whole field read the same way — before they
+correct the key or uphold an appeal.
+
+- **It scores nothing of its own.** `GET /api/stages/[id]/row-report?row=N`
+  runs `calculateRowPenalty` / `hasOrderError` over the stage's key, the same
+  functions the card and the re-score use. The response shape is `RowReport`
+  in `app/types/index.ts`. It is a read, so its guard is `requireSession()`.
+- **The counts are over typed cards only.** A sheet with no letters typed (the
+  one a time import creates) and a crew with no sheet for the stage are listed,
+  and carry the blank row's penalty the standings charge them, but they are
+  counted apart (`untyped` / `noSheet`) so a card nobody typed yet does not read
+  as a crew who got the row wrong.
+- **Answers are grouped on their non-empty letters in the order written**, which
+  is all a row's penalty depends on, so every crew in a group paid the same.
+- The row is 1..30, or 1..60 on a `usesSecondCard` stage; anything else is a 400.
+
 ## Printing the standings
 
 The standings tab is the whole field in one table, which is what an official
@@ -1217,6 +1239,7 @@ app/
                   rallies/[id]/public-results to turn a rally's public results
                   page on or off,
                   stages/[id]/times/import for the times of one control,
+                  stages/[id]/row-report for how the crews answered one row,
                   stages/[id]/access-codes for the QR codes of one stage,
                   app/card + app/submit, the two public endpoints of the
                   Android app,
@@ -1253,6 +1276,7 @@ app/
                   stages/[stageId]/qr-codes: the printable sheet of QR codes,
                   rallies/[id]/standings/print: the results on A4, one sheet
                   per classification,
+                  rallies/[id]/report: the row report of one stage row,
                   rallies/[id]/public-results: turn the public results page on
                   or off and print its QR code, admin only)
   public/rallies/[id]/  the public results page itself — no session, no app nav
