@@ -1,6 +1,6 @@
 # Deploying to Coolify
 
-This is a Next.js 15 app (App Router) that stores data in MongoDB via Mongoose.
+This is a Next.js 16 app (App Router) that stores data in MongoDB via Mongoose.
 
 ## 1. Create the MongoDB database
 
@@ -129,7 +129,7 @@ findings and rationale):
   time, rate-limited to 5 attempts per IP per 15 minutes.
 - Cookies are `HttpOnly`, `Secure`, `SameSite=Lax`; mutating requests are
   origin-checked.
-- Pages and API routes are both protected at the edge by `middleware.ts`, and
+- Pages and API routes are both protected at the edge by `proxy.ts`, and
   every route handler re-checks the session independently.
 - A CSP, HSTS (without `preload`), `X-Frame-Options`, `nosniff`,
   `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy` are set on all

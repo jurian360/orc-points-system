@@ -9,7 +9,7 @@ import { BodyTooLargeError, InvalidJsonError, readJsonBody } from './body';
 
 // Per-handler guards.
 //
-// middleware.ts already rejects unauthenticated API requests and keeps a
+// proxy.ts already rejects unauthenticated API requests and keeps a
 // data-entry user off the admin pages. These run again inside each handler on
 // purpose: middleware is a single matcher regex, and a future edit to it should
 // not be able to silently unprotect the entire API. Authorization belongs next

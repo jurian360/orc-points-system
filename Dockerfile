@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# The base image is pinned to a digest, not only to the `22-alpine` tag: a tag
+# The base image is pinned to a digest, not only to the `26-alpine` tag: a tag
 # moves, so the same commit could build on a different Node or Alpine from one
 # deploy to the next without anybody choosing that. A pinned digest also stops
 # picking up their security patches, so .github/dependabot.yml proposes the
@@ -8,13 +8,13 @@
 # All three stages use the same image; Dependabot updates them together.
 
 # ---- Dependencies ----
-FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS deps
+FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # ---- Builder ----
-FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS builder
+FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -24,7 +24,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ---- Runner ----
-FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS runner
+FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

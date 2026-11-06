@@ -21,7 +21,7 @@ codes, one per participant, that the **Android control-card app**
 crew finalises comes back here and is scored like any other sheet — see
 *The participants' Android app* below.
 
-Stack: **Next.js 15 (App Router) + React 19 + TypeScript + Tailwind v4**, data in
+Stack: **Next.js 16 (App Router) + React 19 + TypeScript + Tailwind v4**, data in
 **MongoDB via Mongoose**. Deployed as a single container (see `COOLIFY.md`).
 
 ## Domain glossary
@@ -228,7 +228,7 @@ uses: `routes.length === 0` means "render exactly what you rendered before", not
   a body without it leaves the stored value alone). Renaming a route is the one
   write that does not, a name being no part of the chain.
 - **Route management lives in the dashboard's Stages tab**, not on a page of its
-  own, so `middleware.ts`'s `RESTRICTED_PAGES` gains nothing: the dashboard is
+  own, so `proxy.ts`'s `RESTRICTED_PAGES` gains nothing: the dashboard is
   deliberately not restricted, a data-entry official reads it. The panel is
   gated on `manage:rally` in the component *and* every route it calls is guarded
   — hiding a button is never the control.
@@ -920,7 +920,7 @@ opens the link, reads the current standings with **no account at all**.
   costs the route nothing beyond the one flag it was refused on. Do not add a
   fourth public route without an equally-considered gate of its own — a rate
   limit alone is not one.
-- **`middleware.ts` treats `/public/` and `/api/public/` as prefixes**, not
+- **`proxy.ts` treats `/public/` and `/api/public/` as prefixes**, not
   exact paths like `/login` — a rally's id is part of the address, so a fixed
   list of paths cannot cover it. Both the page and the API answer with no
   session; the API additionally skips the CSRF same-origin check the way the
@@ -1001,7 +1001,7 @@ talk: a rally moves as a **file**, by hand, through the app's own routes.
   imported `cardId` so the next stage created does not reuse one.
 - **The one route with a body cap above 256 KB**: `readBody(request,
   RALLY_IMPORT_MAX_BODY_BYTES)` (5 MB), admin-only. `next.config.ts`'s
-  `middlewareClientMaxBodySize` is `6mb` to let it through whole — it buffers
+  `proxyClientMaxBodySize` is `6mb` to let it through whole — it buffers
   every request up to that size, so keep the two in step and do not raise
   either for anything else.
 - **One side owns a rally at a time.** A sheet typed on both sides for the same
@@ -1094,7 +1094,7 @@ roles and no plan for a third:
 | Own password, own email | yes | yes |
 
 `app/lib/roles.ts` is the one table: it is pure and shared, so the buttons a
-view hides, the pages `middleware.ts` gates and the routes `api-guard.ts`
+view hides, the pages `proxy.ts` gates and the routes `api-guard.ts`
 refuses cannot drift apart. **Hiding a button is never the control** — the route
 guard is; a hidden button only spares an official a 403.
 
@@ -1158,7 +1158,7 @@ guard is; a hidden button only spares an official a 403.
 An official who forgets a password does not have to wait for an admin:
 `/forgot-password` emails a reset link through Postmark, and `/reset-password`
 spends it. Both pages and their two API routes are public — reachable with no
-session, listed in `middleware.ts`'s `PUBLIC_PATHS` / the `/api/auth/` prefix —
+session, listed in `proxy.ts`'s `PUBLIC_PATHS` / the `/api/auth/` prefix —
 the same reason `/login` is: a visitor asking for this has none yet.
 
 - **The token is never stored raw.** `generateResetToken` (32 random bytes,
@@ -1185,7 +1185,7 @@ the same reason `/login` is: a visitor asking for this has none yet.
   deactivated account gets no link, and `reset-password` refuses one mailed
   before it was deactivated.
 - **The reset link's domain comes from `APP_BASE_URL`, never from a request
-  header.** `middleware.ts`'s CSRF check trusts `x-forwarded-host` because
+  header.** `proxy.ts`'s CSRF check trusts `x-forwarded-host` because
   Coolify's proxy sets it and a browser cannot forge it cross-origin — but that
   argument only holds for same-origin comparisons. A mail this app sends on its
   own behalf is not one; deriving its link from a header an attacker's request
@@ -1281,7 +1281,7 @@ app/
   reset-password/  spend one, from the link the email carries (public)
   forbidden/      where middleware sends an official who lacks the role
   types/          shared TS interfaces
-middleware.ts     auth + rate limit + CSRF at the edge
+proxy.ts     auth + rate limit + CSRF at the edge
 scripts/          generate-secret.mjs, hash-password.mjs
 ```
 
@@ -1326,7 +1326,7 @@ Do not regress them.**
   `requireUserAdmin()` for `/api/users`. They all return
   `{ ok, user | response }`, so a handler starts
   `if (!session.ok) return session.response;` and can read `session.user`.
-  `middleware.ts` also blocks unauthenticated requests and keeps a data-entry
+  `proxy.ts` also blocks unauthenticated requests and keeps a data-entry
   account off the admin *pages* — the per-handler guard is deliberate defence in
   depth, keep both. **Public routes are the deliberate exception**, and there
   are two kinds so far, each with its own reasoning for what stands in for a
@@ -1356,8 +1356,9 @@ Do not regress them.**
   bounded parsers in `app/lib/validation.ts`. This is what closes NoSQL
   operator injection (`{"$gt": 0}`); `sanitizeFilter` is only a backstop.
 - Server-only modules import `'server-only'` at the top. `app/lib/session.ts`
-  and `app/lib/rate-limit.ts` run on the **Edge** runtime (middleware) — use
-  **Web Crypto**, never `node:crypto`, and no timers there.
+  and `app/lib/rate-limit.ts` are imported by `proxy.ts` (Next 16's renamed
+  middleware). They use **Web Crypto**, not `node:crypto`, and no timers, so
+  they stay portable between the proxy and the route handlers — keep it so.
 - Secrets are read lazily via `requireEnv()` inside functions, never at module
   scope: `next build` runs without secrets and a module-scope throw breaks it.
 - Error responses are generic strings; details go to `console.error` only.
@@ -1368,7 +1369,7 @@ Do not regress them.**
 
 - Pages and form components are `'use client'` and fetch from `/api/*` with
   `fetch`; there are no Server Components reading the DB yet. Route params
-  arrive as `Promise` (Next 15) — `await`/resolve them.
+  arrive as `Promise` (since Next 15) — `await`/resolve them.
 - Fixed grid sizes: **30 answer rows × 4 letter columns, 10 time rows (start,
   8 GTC's, finish), 6 merk rows × 1 correct + 1 false letter** (row 6 being
   the Diversen count, not a letter) — except the
@@ -1438,9 +1439,9 @@ Do not regress them.**
   included.** A file named after one of Next's special files — `layout`,
   `page`, `route`, `loading`, `error`, `template`, `default`, `not-found` — is
   read as that file for a `/lib` or `/components` segment, whatever it
-  exports. Next 15.5's route type check fails the build on it, which is why
+  exports. Next's route type check fails the build on it, which is why
   `PAGE_CONTAINER` lives in `pageContainer.ts` and not `layout.ts`.
-- **`middleware.ts`'s matcher skips static files by name at the root only**
+- **`proxy.ts`'s matcher skips static files by name at the root only**
   (`[^/]+\.png$` and friends). It used to skip *any* path ending in an image
   extension, so `/rallies/<id>.png` got past the session check, the role gate
   and the rate limit. An asset served from a subdirectory of `public/` needs
@@ -1451,7 +1452,7 @@ Do not regress them.**
   (`routeId: null`), filter in code (`user.active !== false`), or wrap a value
   you built yourself in `mongoose.trusted()` — never one from a request.
 - A role is checked in three places and they must agree: `app/lib/roles.ts` (the
-  table), `middleware.ts` (which *pages* a role may open) and the route guards
+  table), `proxy.ts` (which *pages* a role may open) and the route guards
   (what it may actually do). Adding an admin-only page means adding it to
   `RESTRICTED_PAGES` as well as guarding the routes behind it — a page missing
   from that list still refuses every write, it just looks broken instead of

@@ -7,7 +7,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    # Stay on Node 22: a major version is a migration, not a patch.
+    # Stay on Node 26: a major version is a migration, not a patch.
     ignore:
       - dependency-name: node
         update-types: ["version-update:semver-major"]

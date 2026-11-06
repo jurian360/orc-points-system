@@ -73,8 +73,8 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
 
   experimental: {
-    // Because middleware.ts exists, Next buffers every request body so the
-    // middleware could read it and the route handler still can — up to this
+    // Because proxy.ts exists, Next buffers every request body so the
+    // proxy could read it and the route handler still can — up to this
     // size, cutting off the rest (default 10 MB). That buffer is held whether or
     // not anything reads it, so it is the real per-request memory ceiling,
     // on the public app endpoints as much as anywhere. Every route refuses more
@@ -83,7 +83,7 @@ const nextConfig: NextConfig = {
     // whole rally rides in one request. This sits just above that, so an
     // oversized file reaches the route whole enough to be refused with a 413
     // rather than cut off into invalid JSON. Keep the two in step.
-    middlewareClientMaxBodySize: "6mb",
+    proxyClientMaxBodySize: "6mb",
   },
 
   async headers() {

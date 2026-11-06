@@ -11,7 +11,7 @@
 // `requireAdmin()` re-reads the user server-side, so a demoted account loses
 // its admin pages on its next request rather than when its token expires.
 //
-// This module uses Web Crypto (not node:crypto) deliberately: middleware.ts
+// This module uses Web Crypto (not node:crypto) deliberately: proxy.ts
 // runs on the Edge runtime, where node:crypto is unavailable. Web Crypto is
 // available in both runtimes, so server and edge share one implementation and
 // cannot drift apart.

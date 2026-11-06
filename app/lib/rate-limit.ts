@@ -6,7 +6,7 @@
 // otherwise each instance enforces the limit independently and the effective
 // limit multiplies by the instance count.
 //
-// No setInterval here: this module is imported by middleware.ts, which runs on
+// No setInterval here: this module is imported by proxy.ts, which runs on
 // the Edge runtime where long-lived timers are not available. Expired entries
 // are evicted lazily instead.
 

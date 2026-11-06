@@ -84,7 +84,7 @@ function isSameOrigin(request: NextRequest): boolean {
   return Boolean(host) && originHost === host;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname.startsWith('/api/');
   const isAppApi = pathname.startsWith(PUBLIC_APP_PREFIX);

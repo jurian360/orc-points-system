@@ -5,7 +5,7 @@ import { useAuth } from '../components/AuthContext';
 import UserForm, { type UserValue } from '../components/UserForm';
 import { ROLE_DESCRIPTIONS, ROLE_LABELS, ROLES } from '../lib/roles';
 
-// The officials' accounts. Admin only — middleware.ts keeps a data-entry
+// The officials' accounts. Admin only — proxy.ts keeps a data-entry
 // account off this page and /api/users refuses them anyway.
 export default function UsersPage() {
   const { user: currentUser } = useAuth();

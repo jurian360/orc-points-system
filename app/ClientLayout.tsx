@@ -35,7 +35,7 @@ const Navigation: React.FC = () => {
         Rallies
       </Link>
       {/* The admin links are hidden for a data-entry account. Hiding is
-          a courtesy, not the control: middleware.ts redirects the page
+          a courtesy, not the control: proxy.ts redirects the page
           and every route behind it answers 403. Nothing renders until
           /api/auth/check has answered, so the links do not flash away
           from an admin. */}

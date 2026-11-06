@@ -1,6 +1,6 @@
 # SARK Points System
 
-A Next.js 15 (App Router) app for scoring rally events, storing its data in
+A Next.js 16 (App Router) app for scoring rally events, storing its data in
 MongoDB via Mongoose.
 
 This README covers **running the app locally against a hosted MongoDB**
@@ -43,7 +43,7 @@ across all of their answer sheets.
 
 ## Requirements
 
-- **Node.js 22** or newer (the production image is built on `node:22-alpine`)
+- **Node.js 26** or newer (the production image is built on `node:26-alpine`)
 - **npm** (a `package-lock.json` is committed — use `npm ci` for a clean install)
 - A **MongoDB connection string** you can reach from your machine
 

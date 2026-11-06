@@ -7,7 +7,7 @@ import { can, type Permission, type Role } from '../lib/roles';
 // Who is signed in, and the login/logout actions.
 //
 // This context does not gate access to anything. Route protection lives in
-// middleware.ts (which verifies the signed session cookie at the edge and keeps
+// proxy.ts (which verifies the signed session cookie at the edge and keeps
 // a data-entry account off the admin pages) and in the per-route guards. A
 // client-side flag is not an access control — it can be flipped in devtools —
 // so what `can()` does here is hide buttons that would answer 403, nothing more.

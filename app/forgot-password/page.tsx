@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { MAX_EMAIL_LENGTH } from '../lib/roles';
 
-// Request a reset link. Public — see middleware.ts's PUBLIC_PATHS — because a
+// Request a reset link. Public — see proxy.ts's PUBLIC_PATHS — because a
 // visitor asking for this has no session yet, the same reason /login is.
 //
 // The API answers `{ success: true }` for every well-formed request whether or

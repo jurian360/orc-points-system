@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, PASSWORD_RULE } from '../lib/roles';
 
-// Finish a forgot-password request. Public — see middleware.ts's
+// Finish a forgot-password request. Public — see proxy.ts's
 // PUBLIC_PATHS — the token in the URL is the whole credential, the same way
 // the code behind a QR is for the Android app.
 //

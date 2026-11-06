@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-// Where middleware.ts sends an official who opened a page their role does not
+// Where proxy.ts sends an official who opened a page their role does not
 // have. It is a page rather than a redirect to the dashboard so the answer is
 // "not you", not a silent bounce that reads like a broken link.
 export default function ForbiddenPage() {
