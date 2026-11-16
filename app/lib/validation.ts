@@ -59,6 +59,9 @@ export const MAX_COLUMNS = 8; // forms send 4
 // form offers two, which covers the appeals that occur in practice ("both DR
 // and DRR are correct"); the cap keeps headroom over that.
 export const MAX_ALTERNATIVE_ANSWERS = 4; // forms send up to 2
+// Combinations of ruled-out letters that are one error together, per ORC row.
+// The stage form offers a handful; a row has only four false letters to group.
+export const MAX_FALSE_COMBINATIONS = 4;
 export const MAX_FIELD_LENGTH = 64;
 export const MAX_NAME_LENGTH = 200;
 // The controlekaart the Android app renders: one physical card's worth of ORC
@@ -235,6 +238,7 @@ export interface NormalizedScoreKey {
     answers: string[];
     alternativeAnswers: string[][];
     falseAnswers: { column: number; value: string }[];
+    falseCombinations: string[][];
     maxPenalty: number;
     orderMatters: boolean;
   }[];
@@ -329,6 +333,17 @@ export function processScoreKey(
         const f = (fa ?? {}) as Record<string, unknown>;
         return { column: num(f.column), value: str(f.value) };
       }),
+      // Groups of ruled-out letters that are one error together. A
+      // combination of fewer than two letters groups nothing and is dropped;
+      // the scoring further ignores letters the row does not rule out.
+      falseCombinations: rows(r.falseCombinations, MAX_FALSE_COMBINATIONS)
+        .map((combination) =>
+          rows(combination, MAX_COLUMNS)
+            .map(str)
+            .map((letter) => letter.trim().toUpperCase())
+            .filter(Boolean)
+        )
+        .filter((combination) => combination.length >= 2),
       maxPenalty: num(r.maxPenalty),
       // Only the ORC rows carry an order; anything but `true` is "no order",
       // never an object that could reach a query.

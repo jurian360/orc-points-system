@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  falseCombinationsOf,
   isMerkLetterRow,
   maxMerkPenalty,
   PENALTY_PER_ERROR,
@@ -21,6 +22,9 @@ export interface StageScoreKeyRow {
   // The row costs the least of its accepted answers — see app/lib/scoring.ts.
   alternativeAnswers?: string[][];
   falseAnswers?: { column: number; value: string }[];
+  // Groups of ruled-out letters that are one error together — see
+  // app/lib/scoring.ts.
+  falseCombinations?: string[][];
   maxPenalty?: number;
   // The correct letters of this row have to be given in the order of the key.
   orderMatters?: boolean;
@@ -121,6 +125,7 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
     const alternatives = (row.alternativeAnswers || []).filter((variant) =>
       (variant || []).some(Boolean)
     );
+    const combinations = falseCombinationsOf(row);
 
     return (
     <tr key={row.rowNumber} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
@@ -135,6 +140,15 @@ const StageKeyCard: React.FC<StageKeyCardProps> = ({
               of
             </span>
           )}
+          {combinations.map((combination, comboIndex) => (
+            <span
+              key={comboIndex}
+              className="text-[10px] font-bold leading-tight text-red-700"
+              title={`Combinatie: ${combination.join(' + ')} together cost one error (${PENALTY_PER_ERROR})`}
+            >
+              {combination.join('')}
+            </span>
+          ))}
         </div>
       </td>
       {Array.from({ length: LETTER_COLUMNS }).map((_, colIndex) => {

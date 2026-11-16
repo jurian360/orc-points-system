@@ -38,6 +38,14 @@ export interface ScoreKeyRow {
   // appeals could be written down.
   alternativeAnswers?: string[][];
   falseAnswers?: { column: number; value: string }[];
+  // Groups of ruled-out letters that are one mistake together, not one each:
+  // the false letters of a wrong route the crew can ride, where passing all of
+  // them is still having ridden that one wrong route. On the key B with A, A, D
+  // ruled out and the combination A D, "A D B" costs 30, not 60. A letter in a
+  // combination that the row does not rule out (the B of "B A") is ignored, so
+  // officials can write the combination down the way the route reads. Absent or
+  // empty is the per-letter charging every key had before.
+  falseCombinations?: string[][];
   maxPenalty?: number;
   // The letters of this row have to be given in the order of the key ("volgorde").
   // Only ORC rows can ask for an order — the time and merk columns have none.
@@ -111,6 +119,59 @@ function variantOrderError(key: string[], selected: string[]): boolean {
   return false;
 }
 
+// Does `group` fit inside `combination`, counting each letter as often as it
+// occurs (multiset containment)?
+function fitsCombination(group: string[], combination: string[]): boolean {
+  const available = new Map<string, number>();
+  combination.forEach((letter) => available.set(letter, (available.get(letter) || 0) + 1));
+  return group.every((letter) => {
+    const remaining = available.get(letter) || 0;
+    if (remaining === 0) return false;
+    available.set(letter, remaining - 1);
+    return true;
+  });
+}
+
+// The fewest mistakes the charged false letters of a row can be read as: every
+// letter is a mistake of its own unless it is grouped with others inside one
+// of the row's combinations, and a group — the whole combination or part of it
+// — is one mistake. A row holds at most a handful of letters, so the search is
+// exhaustive rather than greedy: greedy would read "A A D" against the
+// combinations "A A" and "A D" as A A + D (two) or A D + A (two) depending on
+// where it started, and the exhaustive search cannot pick worse than the best.
+function falseMistakes(charged: string[], combinations: string[][]): number {
+  if (charged.length === 0) return 0;
+  if (combinations.length === 0) return charged.length;
+
+  const [first, ...rest] = charged;
+  let best = 1 + falseMistakes(rest, combinations);
+
+  // Every group that holds `first` plus some of the letters after it.
+  for (let mask = 1; mask < 1 << rest.length; mask++) {
+    const group = [first];
+    const remaining: string[] = [];
+    rest.forEach((letter, index) =>
+      (mask & (1 << index) ? group : remaining).push(letter)
+    );
+    if (!combinations.some((combination) => fitsCombination(group, combination))) continue;
+    best = Math.min(best, 1 + falseMistakes(remaining, combinations));
+  }
+
+  return best;
+}
+
+// A row's combinations, kept to the letters the row actually rules out. A
+// combination left with fewer than two such letters groups nothing and is
+// dropped.
+export function falseCombinationsOf(scoreKeyRow: ScoreKeyRow | undefined): string[][] {
+  const ruledOut = new Set(
+    (scoreKeyRow?.falseAnswers || []).map((falseAnswer) => falseAnswer?.value).filter(Boolean)
+  );
+  return (scoreKeyRow?.falseCombinations || [])
+    .map((combination) => (combination || []).filter((letter) => letter && ruledOut.has(letter)))
+    .filter((combination) => combination.length >= 2);
+}
+
 // What one accepted answer costs, before the row's cap. `calculateRowPenalty`
 // runs this over every variant of the row and charges the lowest.
 function variantPenalty(
@@ -128,19 +189,24 @@ function variantPenalty(
   //    key: at most 60 on that row). The false letters belong to the row, not
   //    to one of its accepted answers, so they cost the same against every
   //    variant and never decide which variant is the cheapest.
+  //    False letters the row lists as one combination are one mistake together
+  //    (see `falseCombinations`): on the combination A D, writing both A and D
+  //    costs 30, not 60.
   const falseAllowance = new Map<string, number>();
   (scoreKeyRow.falseAnswers || []).forEach((falseAnswer) => {
     const letter = falseAnswer?.value;
     if (!letter) return;
     falseAllowance.set(letter, (falseAllowance.get(letter) || 0) + 1);
   });
+  const charged: string[] = [];
   selected.forEach((answer) => {
     const remaining = answer ? falseAllowance.get(answer) || 0 : 0;
     if (remaining > 0) {
       falseAllowance.set(answer, remaining - 1);
-      rowPenalty += PENALTY_PER_ERROR;
+      charged.push(answer);
     }
   });
+  rowPenalty += falseMistakes(charged, falseCombinationsOf(scoreKeyRow)) * PENALTY_PER_ERROR;
 
   // 2. A correct letter given more often than the key asks for costs 30 points,
   //    once per letter: a row of R D R D against the key R D pays 60 — one

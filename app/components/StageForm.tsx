@@ -19,6 +19,10 @@ interface ScoreKeyRow {
   // least of them. See app/lib/scoring.ts.
   alternativeAnswers?: string[][];
   falseAnswers?: { column: number; value: string }[];
+  // Groups of ruled-out letters that are one error together — the false
+  // letters of one wrong route. Typed as text ("AD", or "AD BC" for two) in
+  // the row's Comb. field. See app/lib/scoring.ts.
+  falseCombinations?: string[][];
   maxPenalty?: number;
   // "Volgorde": the correct letters of this row have to be given in the order
   // of the key. Only the ORC rows have an order — the time and merk columns
@@ -102,6 +106,19 @@ const MERK_ROWS = 6; // Merk (officials)
 // app/lib/validation.ts caps what the API stores a little higher again.
 const MAX_ALTERNATIVES = 2;
 
+// A row's combinations as the official types them: one combination per word,
+// "AD" or "AD BC", separated by spaces, commas or slashes. A word of fewer than
+// two letters groups nothing and is left out.
+const parseCombinationText = (text: string): string[][] =>
+  text
+    .toUpperCase()
+    .split(/[\s,;/]+/)
+    .map((word) => Array.from(word.replace(/[^A-Z0-9]/g, '')))
+    .filter((letters) => letters.length >= 2);
+
+const combinationText = (combinations: string[][] | undefined): string =>
+  (combinations || []).map((combination) => combination.join('')).join(' ');
+
 const StageForm: React.FC<StageFormProps> = ({
   onSubmit,
   initialData,
@@ -175,6 +192,19 @@ const StageForm: React.FC<StageFormProps> = ({
   const [timeConfig, setTimeConfig] = useState<StageTimeConfig>(() =>
     resolveTimeConfig(initialData?.timeConfig)
   );
+
+  // The Comb. field of every ORC row, as typed: kept as text so a space typed
+  // between two combinations is not swallowed before the next one is written.
+  // Parsed into `falseCombinations` on submit.
+  const [combinationInputs, setCombinationInputs] = useState<Record<number, string>>(() =>
+    Object.fromEntries(
+      (initialData?.scoreKey || []).map((row) => [row.rowNumber, combinationText(row.falseCombinations)])
+    )
+  );
+
+  const handleCombinationChange = (rowNumber: number, value: string) => {
+    setCombinationInputs((prev) => ({ ...prev, [rowNumber]: value.toUpperCase() }));
+  };
 
   const handleTimeConfigChange = (field: keyof StageTimeConfig, value: string) => {
     const numValue = parseInt(value, 10);
@@ -352,6 +382,7 @@ const StageForm: React.FC<StageFormProps> = ({
     row.answers.some((letter) => letter.trim() !== '') ||
     (row.alternativeAnswers || []).some((variant) => variant.some((letter) => letter.trim() !== '')) ||
     (row.falseAnswers || []).length > 0 ||
+    (combinationInputs[row.rowNumber] || '').trim() !== '' ||
     Boolean(row.orderMatters) ||
     (row.maxPenalty || 0) > 0;
   const hasMerkScoreKeyData = (row: MerkScoreKeyRow) =>
@@ -435,6 +466,7 @@ const StageForm: React.FC<StageFormProps> = ({
         .map((variant) => variant.filter((answer) => answer.trim() !== ''))
         .filter((variant) => variant.length > 0),
       falseAnswers: row.falseAnswers || [],
+      falseCombinations: parseCombinationText(combinationInputs[row.rowNumber] || ''),
       maxPenalty: row.maxPenalty || 0,
       orderMatters: Boolean(row.orderMatters),
     }));
@@ -565,6 +597,16 @@ const StageForm: React.FC<StageFormProps> = ({
           onChange={(e) => handleMaxPenaltyChange(rowIndex, e.target.value)}
           aria-label={`Maximum penalty points for row ${row.rowNumber}`}
         />
+        <input
+          type="text"
+          className="mt-1 w-14 h-8 p-1 border border-red-200 rounded text-center text-xs font-bold focus:border-red-500 focus:ring-1 focus:ring-red-200 text-gray-700 placeholder:font-normal placeholder:text-gray-400"
+          maxLength={20}
+          placeholder="comb."
+          value={combinationInputs[row.rowNumber] || ''}
+          onChange={(e) => handleCombinationChange(row.rowNumber, e.target.value)}
+          aria-label={`False letters of row ${row.rowNumber} that are one error together`}
+          title={`Combinatie: false letters that cost one error (${PENALTY_PER_ERROR}) together, e.g. AD — or AD BC for two`}
+        />
       </td>
     </tr>
     );
@@ -589,7 +631,7 @@ const StageForm: React.FC<StageFormProps> = ({
           Volgorde
         </th>
         <th className="py-2 px-1 border-b border-gray-300 text-[11px] font-semibold text-gray-800">
-          Max Penalty
+          Max / Comb.
         </th>
       </tr>
     </thead>
@@ -708,6 +750,15 @@ const StageForm: React.FC<StageFormProps> = ({
           be given in the order of the key: the wrong order costs one extra error (30). A
           participant who gives only one of the letters pays for the missing ones and nothing more
           — a single letter cannot be out of order. The time and merk columns have no order.
+        </p>
+        <p className="text-sm text-gray-600 mt-1">
+          False letters that belong to one wrong route go in the row&apos;s{' '}
+          <span className="font-semibold">Comb.</span> field (under the max penalty): together
+          they are one error. With B correct, A A D ruled out and the combination AD, A D B costs{' '}
+          {PENALTY_PER_ERROR} instead of {2 * PENALTY_PER_ERROR}, and B A A D costs{' '}
+          {2 * PENALTY_PER_ERROR} (AD and the second A). Type more than one combination with a
+          space between them (AD BC). Letters the row does not rule out are ignored, so BA AD
+          means the same as AD.
         </p>
       </div>
 
