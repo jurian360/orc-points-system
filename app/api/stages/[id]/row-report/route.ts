@@ -8,6 +8,7 @@ import { requireSession } from '../../../../lib/api-guard';
 import { ORC_ROWS_PER_CARD, parseObjectId } from '../../../../lib/validation';
 import {
   calculateRowPenalty,
+  falseCombinationsOf,
   hasOrderError,
   type ScoreKeyRow,
 } from '../../../../lib/scoring';
@@ -87,6 +88,9 @@ export async function GET(
       falseAnswers: (storedKeyRow?.falseAnswers || [])
         .filter((entry: any) => entry?.value)
         .map((entry: any) => ({ column: entry.column, value: entry.value })),
+      falseCombinations: (storedKeyRow?.falseCombinations || []).map((combination: string[]) =>
+        (combination || []).filter(Boolean)
+      ),
       maxPenalty: storedKeyRow?.maxPenalty || 0,
       orderMatters: Boolean(storedKeyRow?.orderMatters),
     };
@@ -171,6 +175,7 @@ export async function GET(
         answers: keyRow.answers,
         alternativeAnswers: keyRow.alternativeAnswers || [],
         falseAnswers: (keyRow.falseAnswers || []).map((entry) => entry.value),
+        falseCombinations: falseCombinationsOf(keyRow),
         maxPenalty: keyRow.maxPenalty || 0,
         orderMatters: Boolean(keyRow.orderMatters),
       },

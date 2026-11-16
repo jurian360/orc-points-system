@@ -56,6 +56,9 @@ export interface ScoreKeyRow {
   // the least of its accepted answers — see app/lib/scoring.ts.
   alternativeAnswers?: string[][];
   falseAnswers?: { column: number; value: string }[];
+  // Groups of ruled-out letters that are one error together, not one each.
+  // See app/lib/scoring.ts.
+  falseCombinations?: string[][];
   maxPenalty?: number;
   // The letters of this row have to be given in the order of the key.
   orderMatters?: boolean;
@@ -389,6 +392,7 @@ export interface RowReport {
     answers: string[];
     alternativeAnswers: string[][];
     falseAnswers: string[];
+    falseCombinations: string[][];
     maxPenalty: number;
     orderMatters: boolean;
   };

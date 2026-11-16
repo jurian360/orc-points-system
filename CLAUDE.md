@@ -67,7 +67,10 @@ Rally ──< Stage ──< AnswerSheet
 
 - `Stage.scoreKey` — 30 rows:
   `{ rowNumber, answers[], alternativeAnswers[][], falseAnswers[{column,value}],
-  maxPenalty, orderMatters }`.
+  falseCombinations[][], maxPenalty, orderMatters }`.
+  `falseCombinations` groups ruled-out letters that are **one error together**
+  (the false letters of one wrong route), typed in the stage form's *Comb.*
+  field; absent on every key that charges each false letter on its own.
   `orderMatters` is the officials' "volgorde" tick: the row's letters have to be
   given in the order of the key. Only ORC rows carry it — the time and merk
   columns hold single values and have no order.
@@ -241,7 +244,9 @@ uses: `routes.length === 0` means "render exactly what you rendered before", not
    that only as often as the key lists it: a key that rules out `D` charges 30
    whether the participant wrote one `D` or four, and a key that rules `D` out
    in two columns can charge 60. Writing the same wrong letter again is the
-   same mistake.
+   same mistake. False letters the row lists in one **combination**
+   (`falseCombinations`) are one mistake together: they are read as the fewest
+   groups that fit inside a combination, each group 30 (see below).
 2. Each correct letter given **more often than the key asks for** → **+30**,
    once per letter: `R D R D` on the key `R D` costs 60 — one error for the
    extra `R` and one for the extra `D` — while `R R R` on that key costs 30
@@ -252,6 +257,26 @@ uses: `routes.length === 0` means "render exactly what you rendered before", not
    order** → **+30**, once, on top of what the letters themselves cost.
 5. The row total is then **capped at `maxPenalty`** when `maxPenalty > 0`
    (`0` / undefined means no cap).
+
+A row's ruled-out letters can be **grouped into combinations**. A wrong route
+can pass more than one false control, and riding it is one mistake, not one per
+control. On the key `B` with `A`, `A`, `D` ruled out, a cap of 60 and the
+combination `AD`:
+
+| Given | Costs | Why |
+| --- | --- | --- |
+| `B` | 0 | |
+| `BA`, `BD` | 30 | one false letter |
+| `ADB` | 30 | `A` + `D` is the one combination |
+| `BAAD` | 60 | `AD` and the second `A` |
+| `AD`, `A`, `D` | 60 | missing `B` and the false letter(s) |
+| `AAD` | 60 | 90, capped |
+
+The order inside a combination does not matter, and part of a combination is
+still one mistake. A letter in a combination that the row does not rule out is
+ignored (`falseCombinationsOf`), so officials can write `BA AD` the way the
+routes read and it means `AD`. The search for the fewest groups is exhaustive:
+a row holds at most four letters.
 
 A row can accept **more than one answer**. After a rally, participants may
 appeal a key, and the sport's rules answer an upheld appeal by accepting both

@@ -160,6 +160,14 @@ const StageSchema = new mongoose.Schema({
       column: Number,
       value: String
     }], // Array of false answers for each column
+    // Groups of ruled-out letters that cost one error together (the false
+    // letters of one wrong route), e.g. [['A','D']]: writing both A and D costs
+    // 30, not 60. Absent on every key that charges each false letter on its
+    // own — see app/lib/scoring.ts.
+    falseCombinations: {
+      type: [[String]],
+      default: undefined
+    },
     maxPenalty: {
       type: Number,
       default: 0
