@@ -823,6 +823,11 @@ stage.
   and a card that disqualifies (only the rally's last finish can) is a DNF.
   Addressed as `?stage=<id>` (or `?stage=all`), a `stage:<id>` `PrintMode`. A
   rally of one stage has none: that stage *is* the rally.
+- **Any of them can be printed in EQ order** (*Order: EQ number*, `?order=eq`),
+  for checking a sheet against the pile of cards. Only the rows move: each crew
+  keeps the place (or DNF / DNS) it has on that sheet in the # column, and the
+  heading says *in volgorde van EQ* so the list is not read as the ranking. The
+  default, *Ranking*, prints exactly what it always did.
 - **It scores nothing.** It is `GET /api/rallies/[id]/standings` read onto paper,
   like `RallyTimesPanel` is for the times, and its guard is that route's
   `requireSession()`: reading the standings is a data-entry official's too, so

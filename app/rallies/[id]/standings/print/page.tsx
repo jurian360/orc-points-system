@@ -192,6 +192,12 @@ const WEDSTRIJD_KEY = 'wedstrijd';
 // list, then the crews without one.
 const SECTION_CLASSES: ClassificationValue[] = [...CLASSIFICATIONS, ''];
 
+// The order the crews are printed in. `rank` is the sheet's own ranking, what
+// every sheet has always printed; `eq` lists the same crews by EQ number — for
+// checking a sheet against the pile of cards, which is sorted that way — and
+// keeps each crew's place (or DNF / DNS) in the # column, so nothing is lost.
+type PrintOrder = 'rank' | 'eq';
+
 const classLabel = (value: ClassificationValue) =>
   value ? `Klasse ${value}` : 'Zonder klasse';
 
@@ -211,6 +217,7 @@ export default function StandingsPrintPage({
   // single class, `?view=combined` for the whole field — so Print from the
   // standings prints what is on screen.
   const [mode, setMode] = useState<PrintMode>('classes');
+  const [order, setOrder] = useState<PrintOrder>('rank');
 
   useEffect(() => {
     const resolve = async () => {
@@ -224,6 +231,8 @@ export default function StandingsPrintPage({
   // below is what decides what is printed.
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
+
+    if (query.get('order') === 'eq') setOrder('eq');
 
     const view = query.get('view');
     if (view === 'combined' || view === 'wedstrijd') {
@@ -463,7 +472,7 @@ export default function StandingsPrintPage({
       .filter((sheet) => sheet.entries.length > 0);
   }, [stages, routes, standings]);
 
-  const printedSheets = useMemo<Sheet[]>(() => {
+  const selectedSheets = useMemo<Sheet[]>(() => {
     if (mode === 'combined') return combinedSheet ? [combinedSheet] : [];
     if (mode === 'stages') return stageSheets;
     if (mode.startsWith(STAGE_MODE_PREFIX)) {
@@ -483,6 +492,23 @@ export default function StandingsPrintPage({
     if (mode === 'classes') return wedstrijdSheet ? [wedstrijdSheet, ...classSheets] : classSheets;
     return classSheets.filter((sheet) => sheet.key === (mode || 'none'));
   }, [mode, combinedSheet, wedstrijdSheet, classSheets, routeSheets, stageSheets]);
+
+  // The same sheets, re-sorted on EQ when that order is picked. Only the order
+  // of the rows changes: every crew keeps the place it has on that sheet, and
+  // the heading says the list is not the ranking.
+  const printedSheets = useMemo<Sheet[]>(
+    () =>
+      order === 'rank'
+        ? selectedSheets
+        : selectedSheets.map((sheet) => ({
+            ...sheet,
+            subtitle: sheet.subtitle
+              ? `${sheet.subtitle} — in volgorde van EQ`
+              : 'In volgorde van EQ',
+            entries: [...sheet.entries].sort((a, b) => a.eq - b.eq),
+          })),
+    [selectedSheets, order]
+  );
 
   // A rally ridden in legs groups its stage columns under them and adds the four
   // numbers per route. A stage in no route would be dropped from every group, so
@@ -631,6 +657,18 @@ export default function StandingsPrintPage({
                   ))}
                 </optgroup>
               )}
+            </select>
+            <label htmlFor="print-order" className="ml-2 text-base font-medium text-gray-700">
+              Order:
+            </label>
+            <select
+              id="print-order"
+              value={order}
+              onChange={(event) => setOrder(event.target.value as PrintOrder)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="rank">Ranking</option>
+              <option value="eq">EQ number</option>
             </select>
           </div>
 
