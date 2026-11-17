@@ -739,6 +739,17 @@ came in outside their window — instead of opening 56 cards.
   the route and the panel. It is a **read**, so its guard is `requireSession()`:
   a data-entry official types the cards and checks the times of the control they
   are typing from.
+- **It prints too**: *Print* in the panel opens `/rallies/[id]/times/print`, which
+  puts the times on **A4 landscape, one sheet per stage** — headed with the stage's
+  number and name (and its route), one row per crew in EQ order and a box to tick
+  each card off — for checking the times against the physical cards. The panel's
+  stage, class, search and detail filters travel as `?stage=`, `?class=`, `?q=`,
+  `?detail=` and are only a preselection. Every mark reads in black and white too:
+  a time outside its window is boxed, a missed control says `gemist`. The columns,
+  the crews and the line under a time are `app/lib/timesOverview.ts`, shared by
+  the panel and the print page so the paper is the grid. Like the standings print
+  it scores nothing and is not in `RESTRICTED_PAGES` (a data-entry official checks
+  the times), and its `@page` rules are its own `<style>`, not globals.css.
 
 ## The row report
 

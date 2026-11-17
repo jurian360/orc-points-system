@@ -326,7 +326,8 @@ export interface RallyTimeStage {
 }
 
 export interface RallyTimes {
-  rally: { _id: string; name: string };
+  // The code heads the printed time sheets, next to the name.
+  rally: { _id: string; name: string; code: string };
   // The rally's legs, in the order they are ridden. Empty on a rally with no
   // routes, so the grid draws the header rows it always drew.
   routes: StandingsRoute[];
