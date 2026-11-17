@@ -778,8 +778,9 @@ correct the key or uphold an appeal.
 The standings tab is the whole field in one table, which is what an official
 reads on a screen. What goes on the wall at the finish is a **result sheet**:
 `/rallies/[id]/standings/print` (the *Print* button next to the standings
-filters) lays the same numbers out on A4, in one of four shapes — the last only
-on a rally ridden in routes.
+filters) lays the same numbers out on A4, in one of five shapes — *per route*
+only on a rally ridden in routes, *per stage* only on a rally of more than one
+stage.
 
 - **Algemeen klassement** — every class together in one ranking, the whole field
   on one sheet. The place is the API's own rank, so this sheet *is* the standings
@@ -813,6 +814,15 @@ on a rally ridden in routes.
   nothing about one leg. Addressed as `?route=<id>` (or `?route=all`), and a
   `route:<id>` `PrintMode`: a 24-character hex id cannot collide with a class
   letter or with any of the words.
+- **Per stage** (*Proefklassement*) — one A4 per stage with its own 1, 2, 3,
+  ranked on what that proef alone cost a crew, built exactly like a route sheet
+  (the stage's numbers written onto the copied entry as its totals, the
+  standings' comparator over them). The status is `stageStatus` in
+  `app/lib/standings.ts`, a reading of the one rule: no card for the stage is a
+  DNS for it — the blank card the standings charge is printed as it stands —
+  and a card that disqualifies (only the rally's last finish can) is a DNF.
+  Addressed as `?stage=<id>` (or `?stage=all`), a `stage:<id>` `PrintMode`. A
+  rally of one stage has none: that stage *is* the rally.
 - **It scores nothing.** It is `GET /api/rallies/[id]/standings` read onto paper,
   like `RallyTimesPanel` is for the times, and its guard is that route's
   `requireSession()`: reading the standings is a data-entry official's too, so
@@ -834,8 +844,22 @@ on a rally ridden in routes.
   same three parts as the totals, taken from that one sheet) — so the sheet
   still scores nothing. A stage a crew has no sheet for carries that stage's
   blank card (`missingSheet`), which the standings charge them, so it is printed
-  like any other stage with a `*` and a footnote under the table. More stages make the per-stage columns narrower and
-  smaller (`stageSizing`) rather than pushing a stage off the sheet.
+  like any other stage with a `*` and a footnote under the table.
+- **A sheet too wide for one A4 continues on the next ones, left to right**
+  (`layoutSheet` / `paginateStages` in `app/components/StandingsSheet.tsx`). The
+  widths are CSS pixels against a 1000px sheet — A4 landscape at the print
+  margins is ~1016px — with the crew names never narrower than
+  `NAME_MIN_WIDTH`. A sheet that fits stays one page (at the comfortable size,
+  else the compact one); one that does not is split at the comfortable size,
+  and every page repeats #, EQ, Kl., Navigator and Bestuurder, is headed *Blad
+  n van m*, and the last one ends with the rally total. The names get the same
+  width on every page so a crew's row is as tall on each — a page's spare width
+  widens its numbers instead. A rally ridden in routes is split **on its
+  routes** where it can (whole days per page; a route too long for one page is
+  spread evenly and continues "(vervolg)"), and the total travels with the last
+  leg so no page is a page of totals alone. Each page is a `.standings-page`;
+  `PRINT_STYLES` breaks the paper between two of them. The public results
+  page's PDF uses the same component, so it splits the same way.
 - **A rally ridden in legs prints the per-stage sheet with the legs written over
   it**: the four numbers per stage, the stages grouped under the route they are
   ridden in, and the rally total behind them. Three header rows — route, stage,
@@ -844,12 +868,12 @@ on a rally ridden in routes.
   official reading the sheet wants the proeven; the leg's own number is what the
   per-route ranking sheets rank on, which is where it is the point. Leaving it
   off also keeps the sheet exactly as wide as the per-stage sheet — `4 × stages +
-  4` numeric columns either way — so **`stageSizing` sizes both** and the routes
-  cost a header row rather than a column. That is why there is no fit test and no
-  per-stage toggle on this sheet: there is no narrower shape to fall back to.
-  The `<colgroup>`, the three header rows and the body all take a leg's width
-  from **`routeColumns(group)`** rather than restating the arithmetic: a header
-  row that does not add up is what shears a printed table sideways.
+  4` numeric columns either way — so one layout sizes both and the routes cost a
+  header row rather than a column.
+  The `<colgroup>`, the three header rows and the body all take a leg's width on
+  a page from **`segmentColumns(segment)`** rather than restating the
+  arithmetic: a header row that does not add up is what shears a printed table
+  sideways.
 - On a routed sheet the rally total is headed **`ORC` … `Tot.`**, so every group
   on the sheet reads the same; the plain and per-stage sheets keep `ORC's` and
   `Totaal`.

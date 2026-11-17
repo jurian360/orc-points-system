@@ -8,7 +8,7 @@ import StandingsSheet, {
   PRINT_STYLES,
   type Sheet as PrintableSheet,
 } from '../../../../components/StandingsSheet';
-import { STATUS_ORDER, type StandingsStatus } from '../../../../lib/standings';
+import { STATUS_ORDER, stageStatus, type StandingsStatus } from '../../../../lib/standings';
 import {
   groupStagesByRoute,
   routeTotals,
@@ -72,13 +72,16 @@ import {
 //     route can carry the rally's own disqualification, because inside the rally
 //     a blown finish is a penalty and the crew rode on.
 //
-// A rally ridden in legs also changes what the *rally* sheets show. Four numbers
-// per stage on top of four per route and four for the rally do not fit on A4, so
-// there **a stage gets one column — its subtotal — and a route gets the four**.
-// That is the decomposition the results are ranked on, and a crew's own
-// per-stage split is on their card page. Where even that does not fit the
-// per-stage columns come off and the sheet prints the four numbers per route;
-// the checkbox beside the select forces it either way.
+//   * **Per stage** — on a rally of more than one stage, one A4 per stage with
+//     its own 1, 2, 3, ranked on what that proef alone cost a crew. No card for
+//     the stage is a DNS for it (scored as the blank card the standings charge),
+//     and only the card that disqualifies — the rally's last finish — is a DNF.
+//
+// A rally ridden in legs groups the per-stage columns of the *rally* sheets
+// under the route each stage is ridden in. A rally of many stages does not fit
+// four numbers per stage on one A4, so `StandingsSheet` splits that sheet over
+// two or three pages, left to right, whole routes per page where it can — every
+// page repeating the crew, the last one ending with the rally total.
 //
 // A crew whose class was never recorded is not dropped — they are on the
 // combined sheet like everybody else, and get a sheet of their own at the back
@@ -163,19 +166,23 @@ type Sheet = Omit<PrintableSheet, 'entries'> & { entries: SheetEntry[] };
 //
 // A rally ridden in legs adds three: `routes` is a sheet per route, each with
 // its own 1, 2, 3; `combined-routes` is the rally sheet with those behind it;
-// and `route:<id>` is one route on its own. A 24-character hex id cannot collide
-// with a class letter, with `''`, or with any of the words, so a mode is still
-// one string.
+// and `route:<id>` is one route on its own. A rally of more than one stage adds
+// `stages`, a sheet per stage, and `stage:<id>`, one stage on its own. A
+// 24-character hex id cannot collide with a class letter, with `''`, or with
+// any of the words, so a mode is still one string.
 type PrintMode =
   | 'combined'
   | 'classes'
   | 'wedstrijd'
   | 'routes'
   | 'combined-routes'
+  | 'stages'
   | `route:${string}`
+  | `stage:${string}`
   | ClassificationValue;
 
 const ROUTE_MODE_PREFIX = 'route:';
+const STAGE_MODE_PREFIX = 'stage:';
 
 // The key of the wedstrijdklasse sheet. It cannot collide with a class letter
 // or with `'none'`, so a sheet is still addressed by its key alone.
@@ -233,6 +240,17 @@ export default function StandingsPrintPage({
     }
     if (route && /^[a-f0-9]{24}$/i.test(route)) {
       setMode(`${ROUTE_MODE_PREFIX}${route}`);
+      return;
+    }
+
+    // One stage, or a sheet per stage — the same rules as a route.
+    const stage = query.get('stage');
+    if (stage === 'all') {
+      setMode('stages');
+      return;
+    }
+    if (stage && /^[a-f0-9]{24}$/i.test(stage)) {
+      setMode(`${STAGE_MODE_PREFIX}${stage}`);
       return;
     }
 
@@ -397,8 +415,61 @@ export default function StandingsPrintPage({
     [routeGroups, standings, routeTotalsByEq]
   );
 
+  // One sheet per stage: the field ranked on what that proef alone cost them,
+  // the same way a route sheet ranks a leg — the stage's numbers written onto
+  // the copied entry as its totals, the order the standings' comparator over
+  // them. One stage means the stage *is* the rally, so there are none.
+  const stageSheets = useMemo<Sheet[]>(() => {
+    if (stages.length < 2) return [];
+    const routeName = new Map(routes.map((route) => [route._id, route.name]));
+
+    return stages
+      .map((stage, index) => {
+        const entries = standings
+          .map((entry) => {
+            const score = entry.stagePenalties?.[stage._id];
+            return { entry, score, status: stageStatus(score) };
+          })
+          .filter(
+            (row): row is { entry: StandingsEntry; score: StageScore; status: StandingsStatus } =>
+              Boolean(row.score)
+          )
+          .sort(
+            (a, b) =>
+              STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
+              a.score.totalPenalty - b.score.totalPenalty ||
+              a.entry.eq - b.entry.eq
+          )
+          .map(({ entry, score, status }, place) => ({
+            ...entry,
+            orcPenalty: score.orcPenalty,
+            timePenalty: score.timePenalty,
+            merkPenalty: score.merkPenalty,
+            totalPenalty: score.totalPenalty,
+            status,
+            placing: place + 1,
+          }));
+
+        const route = stage.routeId ? routeName.get(stage.routeId) : undefined;
+        return {
+          key: `stage-${stage._id}`,
+          title: `Proefklassement ${index + 1}: ${stage.name}`,
+          subtitle: `${route ? `${route} — ` : ''}alleen de strafpunten van deze proef`,
+          showClass: true,
+          kind: 'stage' as const,
+          entries,
+        };
+      })
+      .filter((sheet) => sheet.entries.length > 0);
+  }, [stages, routes, standings]);
+
   const printedSheets = useMemo<Sheet[]>(() => {
     if (mode === 'combined') return combinedSheet ? [combinedSheet] : [];
+    if (mode === 'stages') return stageSheets;
+    if (mode.startsWith(STAGE_MODE_PREFIX)) {
+      const stageId = mode.slice(STAGE_MODE_PREFIX.length);
+      return stageSheets.filter((sheet) => sheet.key === `stage-${stageId}`);
+    }
     if (mode === 'wedstrijd') return wedstrijdSheet ? [wedstrijdSheet] : [];
     if (mode === 'routes') return routeSheets;
     if (mode === 'combined-routes')
@@ -411,7 +482,7 @@ export default function StandingsPrintPage({
     // classes ride for, and their own sheets follow it.
     if (mode === 'classes') return wedstrijdSheet ? [wedstrijdSheet, ...classSheets] : classSheets;
     return classSheets.filter((sheet) => sheet.key === (mode || 'none'));
-  }, [mode, combinedSheet, wedstrijdSheet, classSheets, routeSheets]);
+  }, [mode, combinedSheet, wedstrijdSheet, classSheets, routeSheets, stageSheets]);
 
   // A rally ridden in legs groups its stage columns under them and adds the four
   // numbers per route. A stage in no route would be dropped from every group, so
@@ -468,21 +539,25 @@ export default function StandingsPrintPage({
             The results on A4: every class together in one ranking, a sheet per classification
             with its own 1, 2, 3, the wedstrijdklasse — {WEDSTRIJDKLASSE_CLASSES.join(' and ')}{' '}
             ranked as one competition
-            {routeSheets.length > 0 ? ', or a ranking per route' : ''}. The numbers are the
+            {routeSheets.length > 0 ? ', a ranking per route' : ''}
+            {stageSheets.length > 0 ? ', or a ranking per stage' : ''}. The numbers are the
             standings as they are on screen — printing scores nothing of its own.
           </p>
           {showStages && (
             <p className="text-gray-700 text-base mt-2">
               {stages.length} stages, so every sheet shows the ORC&apos;s, Tijd, Diversen and the
-              subtotal per stage in running order, with the rally total behind them.
+              subtotal per stage in running order, with the rally total behind them. When that
+              is too wide for one A4 the sheet continues on a second or third page, every page
+              repeating the crews.
             </p>
           )}
           {showRoutes && (
             <p className="text-gray-700 text-base mt-2">
               {stages.length} stages over {routeGroups.length} routes, so the rally sheets show the
               ORC&apos;s, Tijd, Diversen and subtotal per stage, grouped under the route it is
-              ridden in, with the rally total behind them. What a whole route cost is what the
-              per-route ranking sheets rank on — each route can be printed as a ranking of its own.
+              ridden in, with the rally total behind them — over two or three pages, whole routes
+              per page, when one A4 is too narrow. What a whole route cost is what the per-route
+              ranking sheets rank on — each route can be printed as a ranking of its own.
             </p>
           )}
           {routeGroups.length > 0 && !everyStageRouted && (
@@ -541,6 +616,20 @@ export default function StandingsPrintPage({
                     </option>
                   ))}
                 </>
+              )}
+              {/* Only on a rally of more than one stage. */}
+              {stageSheets.length > 0 && (
+                <optgroup label="Per stage">
+                  <option value="stages">Per stage — one sheet each ({stageSheets.length})</option>
+                  {stageSheets.map((sheet) => (
+                    <option
+                      key={sheet.key}
+                      value={`${STAGE_MODE_PREFIX}${sheet.key.slice('stage-'.length)}`}
+                    >
+                      {sheet.title} ({sheet.entries.length})
+                    </option>
+                  ))}
+                </optgroup>
               )}
             </select>
           </div>

@@ -58,6 +58,19 @@ export interface StatusInput {
   missingLastStageSheet: boolean;
 }
 
+// The same three groups read over **one stage**, for the printed per-stage
+// ranking — a reading of the rule above, not a fourth status. No card for the
+// stage is a DNS for it (the standings score it as a blank card, and the points
+// are printed as they stand); a card that disqualifies — only the finish of the
+// rally's last stage can — is a DNF; any other card finished the stage.
+export function stageStatus(
+  score: { missingSheet?: boolean; disqualified?: boolean } | undefined
+): StandingsStatus {
+  if (!score || score.missingSheet) return 'dns';
+  if (score.disqualified) return 'dnf';
+  return 'finished';
+}
+
 export function resolveStatus({
   sheetsSubmitted,
   disqualified,
