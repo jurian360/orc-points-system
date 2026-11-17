@@ -3,7 +3,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import ClassificationBadge from './ClassificationBadge';
-import { CLASSIFICATIONS, crewLabel, type ClassificationValue } from '../lib/participants';
+import { CLASSIFICATIONS, crewLabel } from '../lib/participants';
+import {
+  TIME_DETAIL_LABELS as DETAIL_LABELS,
+  crewDetailsByEq,
+  filterTimeEqs,
+  rallyTimeEqs,
+  timeCellDetail,
+  visibleTimeColumns,
+  type TimeDetail as Detail,
+} from '../lib/timesOverview';
 import type { RallyTimeCell, RallyTimeEntry, RallyTimeStage, RallyTimes } from '../types';
 
 interface RallyTimesPanelProps {
@@ -12,18 +21,6 @@ interface RallyTimesPanelProps {
   // fetching the times a second time.
   onStageCountChange?: (count: number) => void;
 }
-
-// What a cell shows underneath the WPT. The WPT itself is what this page is
-// for; the rest is the context an official wants while they are checking one
-// control, and only one of them fits in a cell.
-type Detail = 'delta' | 'ipt' | 'strafp' | 'none';
-
-const DETAIL_LABELS: Record<Detail, string> = {
-  delta: 'WPT + ⁺∕₋',
-  ipt: 'WPT + IPT',
-  strafp: 'WPT + strafp.',
-  none: 'WPT only',
-};
 
 // The three crew columns are frozen while the stages scroll past them, so their
 // widths have to be exact: each one is offset by the sum of the widths before
@@ -103,24 +100,11 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
 
   // Who rides under an EQ number. A crew that only exists as a sheet has no
   // record, so the row still shows — with an empty class and no names.
-  const detailsByEq = useMemo(() => {
-    const map = new Map<
-      number,
-      { classification: ClassificationValue; driverName: string; navigatorName: string }
-    >();
-    for (const participant of data?.participants || []) map.set(participant.eq, participant);
-    return map;
-  }, [data]);
+  const detailsByEq = useMemo(() => crewDetailsByEq(data), [data]);
 
   // One row per crew, whatever the rally has stages: every EQ that appears in
   // any stage, in number order.
-  const eqs = useMemo(() => {
-    const all = new Set<number>();
-    for (const stage of data?.stages || []) {
-      for (const entry of stage.entries) all.add(entry.eq);
-    }
-    return Array.from(all).sort((a, b) => a - b);
-  }, [data]);
+  const eqs = useMemo(() => rallyTimeEqs(data), [data]);
 
   // The stages to lay side by side, each with the columns it actually needs:
   // the controls it uses, plus any row a time was imported onto without the key
@@ -132,10 +116,7 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
         stage,
         position: index + 1,
         routeId: stage.routeId || '',
-        columns: stage.columns.filter(
-          (column) =>
-            column.active || stage.entries.some((entry) => entry.cells[column.rowNumber - 1]?.wpt)
-        ),
+        columns: visibleTimeColumns(stage),
         entriesByEq: new Map<number, RallyTimeEntry>(
           stage.entries.map((entry) => [entry.eq, entry])
         ),
@@ -178,16 +159,22 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
 
   // The same filter over the whole grid: a control is checked for one crew, or
   // for one class, across every stage at once.
-  const visibleEqs = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return eqs.filter((eq) => {
-      const details = detailsByEq.get(eq);
-      if (classFilter && (details?.classification || '') !== classFilter) return false;
-      if (!term) return true;
-      if (String(eq) === term || String(eq).startsWith(term)) return true;
-      return crewLabel(details).toLowerCase().includes(term);
-    });
-  }, [eqs, detailsByEq, search, classFilter]);
+  const visibleEqs = useMemo(
+    () => filterTimeEqs(eqs, detailsByEq, search, classFilter),
+    [eqs, detailsByEq, search, classFilter]
+  );
+
+  // The print page opens on what is on screen: the same stage, class, search
+  // and detail line. It is only a preselection — its own controls decide.
+  const printHref = useMemo(() => {
+    const query = new URLSearchParams();
+    if (stageFilter) query.set('stage', stageFilter);
+    if (classFilter) query.set('class', classFilter);
+    if (search.trim()) query.set('q', search.trim());
+    if (detail !== 'delta') query.set('detail', detail);
+    const qs = query.toString();
+    return `/rallies/${rallyId}/times/print${qs ? `?${qs}` : ''}`;
+  }, [rallyId, stageFilter, classFilter, search, detail]);
 
   // The crew columns span every header row, and the control row is frozen under
   // whatever is above it.
@@ -245,16 +232,7 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
       );
     }
 
-    const sub =
-      detail === 'delta'
-        ? cell.plusMinus
-        : detail === 'ipt'
-          ? cell.ipt
-          : detail === 'strafp'
-            ? cell.strafp > 0
-              ? `${cell.strafp} p.`
-              : ''
-            : '';
+    const sub = timeCellDetail(cell, detail);
 
     return (
       <>
@@ -360,6 +338,13 @@ const RallyTimesPanel: React.FC<RallyTimesPanelProps> = ({ rallyId, onStageCount
               </option>
             ))}
           </select>
+          <Link
+            href={printHref}
+            className="px-4 py-1.5 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 font-medium text-base transition-colors"
+            title="Print these times on A4 landscape, one sheet per stage"
+          >
+            Print
+          </Link>
         </div>
       </div>
 

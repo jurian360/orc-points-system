@@ -141,7 +141,7 @@ export async function GET(
     });
 
     const payload: RallyTimes = {
-      rally: { _id: String(rally._id), name: rally.name },
+      rally: { _id: String(rally._id), name: rally.name, code: rally.code || '' },
       // The rally's legs, in the order they are ridden. Empty on a rally with no
       // routes, so the grid draws the two header rows it always drew.
       routes: routes.map((route: any) => ({ _id: String(route._id), name: route.name })),
