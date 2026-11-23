@@ -198,6 +198,13 @@ const SECTION_CLASSES: ClassificationValue[] = [...CLASSIFICATIONS, ''];
 // keeps each crew's place (or DNF / DNS) in the # column, so nothing is lost.
 type PrintOrder = 'rank' | 'eq';
 
+// What is printed of each crew. `full` is the result sheet as it has always
+// been, with the numbers per stage (and per route) on a rally of more than one;
+// `announcer` is the list the speaker reads out at the finish — the place, the
+// EQ, the navigator, the driver and the four rally totals, set large. It works
+// with every sheet above and with either order: only the columns change.
+type PrintLayout = 'full' | 'announcer';
+
 const classLabel = (value: ClassificationValue) =>
   value ? `Klasse ${value}` : 'Zonder klasse';
 
@@ -218,6 +225,7 @@ export default function StandingsPrintPage({
   // standings prints what is on screen.
   const [mode, setMode] = useState<PrintMode>('classes');
   const [order, setOrder] = useState<PrintOrder>('rank');
+  const [layout, setLayout] = useState<PrintLayout>('full');
 
   useEffect(() => {
     const resolve = async () => {
@@ -233,6 +241,7 @@ export default function StandingsPrintPage({
     const query = new URLSearchParams(window.location.search);
 
     if (query.get('order') === 'eq') setOrder('eq');
+    if (query.get('layout') === 'announcer') setLayout('announcer');
 
     const view = query.get('view');
     if (view === 'combined' || view === 'wedstrijd') {
@@ -496,8 +505,8 @@ export default function StandingsPrintPage({
   // The same sheets, re-sorted on EQ when that order is picked. Only the order
   // of the rows changes: every crew keeps the place it has on that sheet, and
   // the heading says the list is not the ranking.
-  const printedSheets = useMemo<Sheet[]>(
-    () =>
+  const printedSheets = useMemo<Sheet[]>(() => {
+    const ordered =
       order === 'rank'
         ? selectedSheets
         : selectedSheets.map((sheet) => ({
@@ -506,9 +515,17 @@ export default function StandingsPrintPage({
               ? `${sheet.subtitle} — in volgorde van EQ`
               : 'In volgorde van EQ',
             entries: [...sheet.entries].sort((a, b) => a.eq - b.eq),
-          })),
-    [selectedSheets, order]
-  );
+          }));
+
+    // The announcer's list says so under its title, so it is never pinned up
+    // in place of the full result sheet.
+    return layout === 'announcer'
+      ? ordered.map((sheet) => ({
+          ...sheet,
+          subtitle: sheet.subtitle ? `Omroeperslijst — ${sheet.subtitle}` : 'Omroeperslijst',
+        }))
+      : ordered;
+  }, [selectedSheets, order, layout]);
 
   // A rally ridden in legs groups its stage columns under them and adds the four
   // numbers per route. A stage in no route would be dropped from every group, so
@@ -596,7 +613,7 @@ export default function StandingsPrintPage({
         </div>
 
         <div className="bg-white rounded-xl shadow-xl border-2 border-gray-200 mb-6 px-6 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <label htmlFor="print-mode" className="text-base font-medium text-gray-700">
               Print:
             </label>
@@ -670,6 +687,18 @@ export default function StandingsPrintPage({
               <option value="rank">Ranking</option>
               <option value="eq">EQ number</option>
             </select>
+            <label htmlFor="print-layout" className="ml-2 text-base font-medium text-gray-700">
+              Layout:
+            </label>
+            <select
+              id="print-layout"
+              value={layout}
+              onChange={(event) => setLayout(event.target.value as PrintLayout)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="full">Full result sheet</option>
+              <option value="announcer">Announcer — totals only</option>
+            </select>
           </div>
 
           <div className="flex items-center gap-3">
@@ -710,6 +739,7 @@ export default function StandingsPrintPage({
             showStages={showStages}
             showRoutes={showRoutes}
             printedOn={printedOn}
+            announcer={layout === 'announcer'}
           />
         ))}
       </div>

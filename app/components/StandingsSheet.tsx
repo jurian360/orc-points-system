@@ -331,6 +331,7 @@ export default function StandingsSheet({
   showStages,
   showRoutes,
   printedOn,
+  announcer = false,
 }: {
   rally: { name: string; code?: string };
   sheet: Sheet;
@@ -343,15 +344,22 @@ export default function StandingsSheet({
   // …or the same columns grouped under the route each stage is ridden in.
   showRoutes: boolean;
   printedOn: string;
+  // The **announcer's list**: the place, the EQ, the crew and the four rally
+  // totals, nothing else — no per-stage or per-route columns and no class
+  // column — set large enough to be read out loud. The same crews in the same
+  // order with the same numbers; only what is printed of them is less.
+  announcer?: boolean;
 }) {
   // A **route** or **stage** sheet prints one part's numbers *as* the crew's
   // totals, so it never carries the groups — they would print the same numbers
-  // twice. Only the rally sheets group.
-  const sheetGroupsByRoute = showRoutes && sheet.kind === 'rally';
-  const sheetGroupsByStage = !sheetGroupsByRoute && showStages && sheet.kind === 'rally';
+  // twice. Only the rally sheets group, and never on the announcer's list.
+  const showClass = sheet.showClass && !announcer;
+  const sheetGroupsByRoute = !announcer && showRoutes && sheet.kind === 'rally';
+  const sheetGroupsByStage =
+    !announcer && !sheetGroupsByRoute && showStages && sheet.kind === 'rally';
   const grouped = sheetGroupsByRoute || sheetGroupsByStage;
 
-  const fixedWidth = PLACE_WIDTH + EQ_WIDTH + (sheet.showClass ? CLASS_WIDTH : 0);
+  const fixedWidth = PLACE_WIDTH + EQ_WIDTH + (showClass ? CLASS_WIDTH : 0);
   const layout: SheetLayout | null = grouped
     ? layoutSheet(
         sheetGroupsByRoute
@@ -363,6 +371,14 @@ export default function StandingsSheet({
   const pages: SheetPage[] = layout ? layout.pages : [{ segments: [], withTotal: true }];
   const density = layout?.density ?? COMFORTABLE;
 
+  // The plain sheet's type sizes. The announcer's list is read out loud from
+  // the paper in hand, so it is set a size up — it has the room, with five
+  // columns fewer than the smallest result sheet.
+  const headText = announcer ? 'text-xs' : 'text-[10px]';
+  const bodyText = announcer ? 'text-base' : 'text-xs';
+  const nameText = announcer ? 'text-base' : 'text-[0.65rem]/[0.85rem]';
+  const cellY = announcer ? 'py-1' : 'py-0.5';
+
   // The fixed left-hand columns span every header row above the numbers,
   // so their label sits beside the sub-headings of the groups rather
   // than above them. Three rows on a routed sheet (route → stage → the
@@ -372,33 +388,33 @@ export default function StandingsSheet({
     <>
       <th
         rowSpan={headSpan}
-        className="py-0.5 pr-1 text-left align-bottom text-[10px] font-bold uppercase tracking-wide"
+        className={`py-0.5 pr-1 text-left align-bottom ${headText} font-bold uppercase tracking-wide`}
       >
         #
       </th>
       <th
         rowSpan={headSpan}
-        className="py-0.5 px-1 text-left align-bottom text-[10px] font-bold uppercase tracking-wide"
+        className={`py-0.5 px-1 text-left align-bottom ${headText} font-bold uppercase tracking-wide`}
       >
         EQ
       </th>
-      {sheet.showClass && (
+      {showClass && (
         <th
           rowSpan={headSpan}
-          className="py-0.5 px-1 text-left align-bottom text-[10px] font-bold uppercase tracking-wide"
+          className={`py-0.5 px-1 text-left align-bottom ${headText} font-bold uppercase tracking-wide`}
         >
           Kl.
         </th>
       )}
       <th
         rowSpan={headSpan}
-        className="py-0.5 px-1 text-left align-bottom text-[10px] font-bold uppercase tracking-wide"
+        className={`py-0.5 px-1 text-left align-bottom ${headText} font-bold uppercase tracking-wide`}
       >
         Navigator
       </th>
       <th
         rowSpan={headSpan}
-        className="py-0.5 px-1 text-left align-bottom text-[10px] font-bold uppercase tracking-wide"
+        className={`py-0.5 px-1 text-left align-bottom ${headText} font-bold uppercase tracking-wide`}
       >
         Bestuurder
       </th>
@@ -414,22 +430,22 @@ export default function StandingsSheet({
           total does too — the same reason its last column reads Tot.
           rather than Totaal. */}
       <th
-        className={`py-0.5 px-1 text-right align-bottom text-[10px] font-bold uppercase tracking-wide${
+        className={`py-0.5 px-1 text-right align-bottom ${headText} font-bold uppercase tracking-wide${
           grouped ? ' border-l-2 border-gray-800' : ''
         }`}
       >
         {sheetGroupsByRoute ? 'ORC' : <>ORC&apos;s</>}
       </th>
-      <th className="py-0.5 px-1 text-right align-bottom text-[10px] font-bold uppercase tracking-wide">
+      <th className={`py-0.5 px-1 text-right align-bottom ${headText} font-bold uppercase tracking-wide`}>
         Tijd
       </th>
       <th
-        className="py-0.5 px-1 text-right align-bottom text-[10px] font-bold uppercase tracking-wide"
+        className={`py-0.5 px-1 text-right align-bottom ${headText} font-bold uppercase tracking-wide`}
         title="The merk column of every sheet"
       >
         Div.
       </th>
-      <th className="py-0.5 pl-1 text-right align-bottom text-[10px] font-bold uppercase tracking-wide">
+      <th className={`py-0.5 pl-1 text-right align-bottom ${headText} font-bold uppercase tracking-wide`}>
         {sheetGroupsByRoute ? 'Tot.' : 'Totaal'}
       </th>
     </>
@@ -485,6 +501,8 @@ export default function StandingsSheet({
     );
   };
 
+  const numberCol = announcer ? 'w-20' : 'w-12';
+
   const renderTable = (page: SheetPage) => {
     const pageStages = page.segments.flatMap((segment) => segment.stages);
 
@@ -524,7 +542,7 @@ export default function StandingsSheet({
           <colgroup>
             <col style={{ width: PLACE_WIDTH }} />
             <col style={{ width: EQ_WIDTH }} />
-            {sheet.showClass && <col style={{ width: CLASS_WIDTH }} />}
+            {showClass && <col style={{ width: CLASS_WIDTH }} />}
             <col style={{ width: widths.name }} />
             <col style={{ width: widths.name }} />
             {pageStages.map((stage) => (
@@ -546,15 +564,15 @@ export default function StandingsSheet({
           </colgroup>
         ) : (
           <colgroup>
-            <col className="w-11" />
-            <col className="w-10" />
-            {sheet.showClass && <col className="w-10" />}
+            <col className={announcer ? 'w-14' : 'w-11'} />
+            <col className={announcer ? 'w-14' : 'w-10'} />
+            {showClass && <col className="w-10" />}
             <col />
             <col />
-            <col className="w-12" />
-            <col className="w-12" />
-            <col className="w-12" />
-            <col className="w-12" />
+            <col className={numberCol} />
+            <col className={numberCol} />
+            <col className={numberCol} />
+            <col className={numberCol} />
           </colgroup>
         )}
         <thead>
@@ -650,21 +668,21 @@ export default function StandingsSheet({
                   because the standings have to put them somewhere, not
                   because they came 32nd. The sheet says what happened
                   instead — DNF or DNS. */}
-              <td className="py-0.5 pr-1 text-xs font-bold">
+              <td className={`${cellY} pr-1 ${bodyText} font-bold`}>
                 {isRanked(entry.status) ? entry.placing : STATUS_LABEL[entry.status]}
               </td>
-              <td className="py-0.5 px-1 text-xs font-bold">{entry.eq}</td>
-              {sheet.showClass && (
-                <td className="py-0.5 px-1 text-xs">{entry.classification || '—'}</td>
+              <td className={`${cellY} px-1 ${bodyText} font-bold`}>{entry.eq}</td>
+              {showClass && (
+                <td className={`${cellY} px-1 ${bodyText}`}>{entry.classification || '—'}</td>
               )}
               {/* The crew names run a shade smaller than the rest of
                   the row: they are the widest thing on the sheet and
                   the only one that wraps, so the size they are set at
                   is what decides how many crews fit on a page. */}
-              <td className="py-0.5 px-1 text-[0.65rem]/[0.85rem] break-words">
+              <td className={`${cellY} px-1 ${nameText} break-words`}>
                 {entry.navigatorName || '—'}
               </td>
-              <td className="py-0.5 px-1 text-[0.65rem]/[0.85rem] break-words">
+              <td className={`${cellY} px-1 ${nameText} break-words`}>
                 {entry.driverName || '—'}
               </td>
               {sheetGroupsByRoute &&
@@ -676,19 +694,19 @@ export default function StandingsSheet({
               {page.withTotal && (
                 <>
                   <td
-                    className={`py-0.5 px-1 text-xs text-right tabular-nums${
+                    className={`${cellY} px-1 ${bodyText} text-right tabular-nums${
                       grouped ? ' border-l-2 border-gray-800' : ''
                     }`}
                   >
                     {entry.orcPenalty}
                   </td>
-                  <td className="py-0.5 px-1 text-xs text-right tabular-nums">
+                  <td className={`${cellY} px-1 ${bodyText} text-right tabular-nums`}>
                     {entry.timePenalty}
                   </td>
-                  <td className="py-0.5 px-1 text-xs text-right tabular-nums">
+                  <td className={`${cellY} px-1 ${bodyText} text-right tabular-nums`}>
                     {entry.merkPenalty}
                   </td>
-                  <td className="py-0.5 pl-1 text-xs text-right font-bold tabular-nums">
+                  <td className={`${cellY} pl-1 ${bodyText} text-right font-bold tabular-nums`}>
                     {entry.totalPenalty}
                   </td>
                 </>

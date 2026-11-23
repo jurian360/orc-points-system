@@ -139,10 +139,18 @@ export default function PublicRallyResultsPage({
     load();
   }, [load]);
 
+  // The crews on screen, each with the place it takes *in what is shown*: the
+  // rally rank for the whole field, and with a class picked the place within
+  // that class — 1, 2, 3 — the way the officials' per-class sheet numbers it.
+  // Filtering keeps the API's order (finished crews first, then the DNF's and
+  // the DNS's), so the place is simply the position in what is left; the two
+  // that did not finish show their status instead of it.
   const visibleStandings = useMemo(() => {
     if (!data) return [];
-    if (!classFilter) return data.standings;
-    return data.standings.filter((entry) => (entry.classification || '') === classFilter);
+    if (!classFilter) return data.standings.map((entry) => ({ ...entry, placing: entry.rank }));
+    return data.standings
+      .filter((entry) => (entry.classification || '') === classFilter)
+      .map((entry, index) => ({ ...entry, placing: index + 1 }));
   }, [data, classFilter]);
 
   // A rally of one stage scores the same numbers twice — the stage total *is*
@@ -152,10 +160,9 @@ export default function PublicRallyResultsPage({
   const showStages = Boolean(data && data.totalStages > 1);
   const stages = data?.stages ?? [];
 
-  // What Download PDF prints: the officials' Algemeen klassement, ranked on the
-  // rally rank, or — with a class picked — that class's own sheet, numbered
-  // 1, 2, 3 within it the way the officials' per-class sheet is. Filtering
-  // keeps the API's order, so the place is the position in what is left.
+  // What Download PDF prints: the officials' Algemeen klassement, or — with a
+  // class picked — that class's own sheet. Both carry the same places as the
+  // table on screen.
   const printSheet = useMemo<Sheet>(
     () =>
       classFilter
@@ -164,14 +171,14 @@ export default function PublicRallyResultsPage({
             title: `Klasse ${classFilter}`,
             showClass: false,
             kind: 'rally',
-            entries: visibleStandings.map((entry, index) => ({ ...entry, placing: index + 1 })),
+            entries: visibleStandings,
           }
         : {
             key: 'combined',
             title: 'Algemeen klassement',
             showClass: true,
             kind: 'rally',
-            entries: visibleStandings.map((entry) => ({ ...entry, placing: entry.rank })),
+            entries: visibleStandings,
           },
     [classFilter, visibleStandings]
   );
@@ -196,12 +203,12 @@ export default function PublicRallyResultsPage({
 
   // A row's own background, repeated on its two frozen cells: a sticky cell
   // has to be opaque, or the numbers scrolling under it show through.
-  const rowBackground = (entry: PublicStandingsEntry) =>
+  const rowBackground = (entry: PublicStandingsEntry & { placing: number }) =>
     entry.status === 'dns'
       ? 'bg-gray-100'
       : entry.status === 'dnf'
         ? 'bg-red-50'
-        : entry.rank === 1
+        : entry.placing === 1
           ? 'bg-yellow-50'
           : 'bg-white';
 
@@ -451,8 +458,8 @@ export default function PublicRallyResultsPage({
                       <td className={`${STICKY_PLACE} ${rowBackground(entry)} py-2 whitespace-nowrap`}>
                         {isRanked(entry.status) ? (
                           <span className="text-sm font-bold text-gray-900">
-                            {entry.rank}
-                            {entry.rank === 1 && (
+                            {entry.placing}
+                            {entry.placing === 1 && (
                               <span className="ml-1" title="Winner">
                                 🏆
                               </span>

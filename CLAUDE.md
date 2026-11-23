@@ -828,6 +828,12 @@ stage.
   keeps the place (or DNF / DNS) it has on that sheet in the # column, and the
   heading says *in volgorde van EQ* so the list is not read as the ranking. The
   default, *Ranking*, prints exactly what it always did.
+- **Any of them can be printed as an announcer's list** (*Layout: Announcer —
+  totals only*, `?layout=announcer`), what the speaker reads out at the finish:
+  #, EQ, Navigator, Bestuurder and the four rally totals (ORC's, Tijd, Div.,
+  Totaal) in larger type — no per-stage or per-route columns and no Kl.
+  column, headed *Omroeperslijst*. It is the `announcer` prop of
+  `StandingsSheet`: the same sheets, crews, order and places, fewer columns.
 - **It scores nothing.** It is `GET /api/rallies/[id]/standings` read onto paper,
   like `RallyTimesPanel` is for the times, and its guard is that route's
   `requireSession()`: reading the standings is a data-entry official's too, so
@@ -939,7 +945,9 @@ opens the link, reads the current standings with **no account at all**.
   whole field, ranked exactly the way `/rallies/[id]/standings/print` ranks its
   combined sheet — finished crews first on points then EQ, then the DNF's, then
   the DNS's — with a classification filter (`CLASSIFICATIONS`) over the same
-  fetch, the way the dashboard's own standings tab filters. A rally of more
+  fetch, the way the dashboard's own standings tab filters. With a class
+  picked, the # column numbers the crews **within that class** (1, 2, 3, the
+  same `placing` its PDF sheet prints), not their rally rank. A rally of more
   than one stage also gets the four numbers per stage (ORC's, Tijd, Diversen,
   that stage's own total, a stage a crew has no card for marked with the same
   `*` the print sheet uses) in running order ahead of the rally total, the
