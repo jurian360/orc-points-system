@@ -199,7 +199,7 @@ export default function ViewStagePage({
             &larr; Back to Rally
           </Link>
           <Link
-            href={`/rallies/${rallyId}/answer-sheets`}
+            href={`/rallies/${rallyId}/stages/${stage._id}/sheets`}
             className="inline-flex items-center px-5 py-3 bg-gray-100 text-gray-800 hover:bg-gray-200 rounded-lg text-lg font-medium transition-colors"
           >
             Answer Sheets &rarr;

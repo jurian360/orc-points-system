@@ -773,6 +773,32 @@ correct the key or uphold an appeal.
   is all a row's penalty depends on, so every crew in a group paid the same.
 - The row is 1..30, or 1..60 on a `usesSecondCard` stage; anything else is a 400.
 
+## The answer sheets of one stage
+
+`/rallies/[id]/stages/[stageId]/sheets` (*Sheets* in the dashboard's stage list,
+*Answer Sheets* on the stage page) lists **every crew of the entry list in EQ
+order** with that stage's card: *Typed* (any ORC or merk letter on it), *Times
+only* (the sheet a time import opened before anybody typed the card) or *No
+card*, and the ORC's / Tijd / Div. / Totaal stored on the sheet. Each row opens
+the card (*View*), corrects it (*Edit*, or *Type card* on a times-only sheet) or
+starts it (*Enter card*, the entry form's `?stageId=…&eq=…` preselect). A select
+and arrows move between the stages in running order; filters and a search narrow
+the list to the cards still to be typed.
+
+- **It scores nothing**: the numbers are the sheet's stored fields, the ORC's part
+  being the total minus the other two, as the standings read it. A crew with no
+  sheet shows no numbers — the blank card the standings charge is on the
+  standings and the crew's own card page.
+- An EQ with a sheet but no `Participant` record is listed too, so a card that
+  exists is never hidden.
+- **A card leads back to it.** The sheet's view page (`AnswerSheetScoringView`)
+  and its edit page link to *Answer sheets of &lt;stage&gt;* at the top and the
+  bottom, and deleting a sheet lands there — an official works through a
+  stage's cards one after another.
+- It reads `GET /api/answersheets?stageId=…` and the participants with
+  `requireSession()`, and is not in `RESTRICTED_PAGES`: reading and typing cards
+  is a data-entry official's work.
+
 ## Printing the standings
 
 The standings tab is the whole field in one table, which is what an official
@@ -1341,6 +1367,7 @@ app/
                   / Times tabs — rallies/[id]/edit for its name and
                   code, stages, answer sheets, participant view,
                   stages/[stageId]/qr-codes: the printable sheet of QR codes,
+                  stages/[stageId]/sheets: every crew's card of one stage,
                   rallies/[id]/standings/print: the results on A4, one sheet
                   per classification,
                   rallies/[id]/report: the row report of one stage row,
