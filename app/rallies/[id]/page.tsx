@@ -364,6 +364,15 @@ export default function RallyDashboardPage({ params }: { params: Promise<{ id: s
                   >
                     View
                   </Link>
+                  {/* Every crew's card of this stage, in EQ order — every
+                      official's, since reading and typing cards is. */}
+                  <Link
+                    href={`/rallies/${rally._id}/stages/${stage._id}/sheets`}
+                    className="text-teal-700 hover:text-teal-900 font-medium text-base"
+                    title="The answer sheets of this stage, one row per EQ"
+                  >
+                    Sheets
+                  </Link>
                   <Link
                     href={`/rallies/${rally._id}/report?stageId=${stage._id}&row=1`}
                     className="text-purple-700 hover:text-purple-900 font-medium text-base"

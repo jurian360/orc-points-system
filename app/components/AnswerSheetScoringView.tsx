@@ -138,7 +138,11 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
     try {
       const response = await fetch(`/api/answersheets/${sheetId}`, { method: 'DELETE' });
       if (!response.ok) throw new Error('Failed to delete answer sheet');
-      router.push(`/rallies/${rallyId}/answer-sheets`);
+      router.push(
+        sheet
+          ? `/rallies/${rallyId}/stages/${sheet.stageId}/sheets`
+          : `/rallies/${rallyId}/answer-sheets`
+      );
     } catch (err) {
       setError('Failed to delete this answer sheet. Please try again.');
       console.error(err);
@@ -200,6 +204,14 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
     <div className="min-h-screen bg-gray-100 py-4">
       <div className={`${PAGE_CONTAINER} py-4`}>
         <div className="mb-4">
+          {/* Every crew's card of this stage — where an official goes on to the
+              next card to check or correct. */}
+          <Link
+            href={`/rallies/${rallyId}/stages/${sheet.stageId}/sheets`}
+            className="text-blue-600 hover:underline text-base"
+          >
+            &larr; Answer sheets of {stage.name}
+          </Link>
           <h1 className="text-2xl font-bold text-gray-900 mb-1">
             Participant {sheet.eq}&apos;s Answers — {stage.name}
           </h1>
@@ -280,10 +292,10 @@ const AnswerSheetScoringView: React.FC<AnswerSheetScoringViewProps> = ({ rallyId
 
         <div className="mt-8 flex flex-wrap gap-6">
           <Link
-            href={`/rallies/${rallyId}/answer-sheets`}
+            href={`/rallies/${rallyId}/stages/${sheet.stageId}/sheets`}
             className="inline-flex items-center px-5 py-3 bg-gray-100 text-gray-800 hover:bg-gray-200 rounded-lg text-lg font-medium transition-colors"
           >
-            &larr; Back to Answer Sheets
+            &larr; Answer Sheets of {stage.name}
           </Link>
           <Link
             href={`/rallies/${rallyId}`}

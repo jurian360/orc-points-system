@@ -175,11 +175,17 @@ export default function EditAnswerSheetPage({
   }
 
   const stageName = stages.find((stage) => stage._id === String(sheet.stageId))?.name || 'Unknown Stage';
+  // Every crew's card of this sheet's stage — where an official goes on to the
+  // next card to check or correct.
+  const stageSheetsHref = `/rallies/${rallyId}/stages/${String(sheet.stageId)}/sheets`;
 
   return (
     <div className="min-h-screen bg-gray-100 py-4">
       <div className={PAGE_CONTAINER}>
         <div className="mb-4">
+          <Link href={stageSheetsHref} className="text-blue-600 hover:underline text-base">
+            &larr; Answer sheets of {stageName}
+          </Link>
           <h1 className="text-2xl font-bold text-gray-900 mb-1">
             Edit Answer Sheet — Participant {sheet.eq}, {stageName}
             {rallyName ? ` (${rallyName})` : ''}
@@ -228,10 +234,10 @@ export default function EditAnswerSheetPage({
             &larr; Cancel
           </Link>
           <Link
-            href={`/rallies/${rallyId}/answer-sheets`}
+            href={stageSheetsHref}
             className="inline-flex items-center px-5 py-3 bg-gray-100 text-gray-800 hover:bg-gray-200 rounded-lg text-lg font-medium transition-colors"
           >
-            All Answer Sheets &rarr;
+            Answer Sheets of {stageName} &rarr;
           </Link>
         </div>
       </div>
